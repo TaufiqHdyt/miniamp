@@ -4,7 +4,7 @@ A native macOS music player for a local library. It plays FLAC, MP3, ALAC, and A
 
 ## Stack
 
-- **Language and UI:** Swift, SwiftUI, with AppKit (`NSTableView`) for large track lists if needed
+- **Language and UI:** Swift, SwiftUI, with AppKit (`NSTableView`) for the track lists, which stay smooth at 10,000+ tracks
 - **Decoding:** `AVAudioFile`, which handles all four formats natively
 - **Playback:** `AVAudioEngine` with `AVAudioPlayerNode`
 - **Output control:** Core Audio HAL properties for sample rate, physical format, and hog mode
@@ -20,49 +20,53 @@ A native macOS music player for a local library. It plays FLAC, MP3, ALAC, and A
 
 ## Milestones
 
+M1 to M4 are done, so the app is usable day to day. M5 is next.
+
 ### M1: Playback proof of concept
 
 This carries most of the technical risk, so it comes first.
 
-- [ ] Xcode project, app target, GRDB and TagLib dependencies
-- [ ] Play one file of each format (FLAC, MP3, ALAC, AAC) through `AVAudioEngine`
-- [ ] Switch the device's nominal sample rate to match the file, and wait for the change notification before starting
-- [ ] Set the device's physical format to its highest bit depth at that rate
-- [ ] Connect nodes using the file's processing format so the mixer converts nothing
+- [x] Xcode project, app target, GRDB and TagLib dependencies
+- [x] Play one file of each format (FLAC, MP3, ALAC, AAC) through `AVAudioEngine`
+- [x] Switch the device's nominal sample rate to match the file, and wait for the change notification before starting
+- [x] Set the device's physical format to its highest bit depth at that rate
+- [x] Connect nodes using the file's processing format so the mixer converts nothing
 
 **Done when:** a 96 kHz FLAC plays through the headphone jack and Audio MIDI Setup shows 96 kHz, then a 44.1 kHz file switches it back.
 
 ### M2: Playback core
 
-- [ ] Queue with next, previous, shuffle, and repeat
-- [ ] Seek and position reporting
-- [ ] Gapless transitions between tracks with the same format
-- [ ] Output device selection, and handling for device changes (unplugged headphones, DAC connected)
-- [ ] Fallback when the device can't do the file's rate: pick the integer half rate where possible (176.4 to 88.2, 192 to 96) and resample at high quality
-- [ ] Optional hog mode
-- [ ] Volume through the device, not through sample scaling
+- [x] Queue with next, previous, shuffle, and repeat
+- [x] Seek and position reporting
+- [x] Gapless transitions between tracks with the same format
+- [x] Output device selection, and handling for device changes (unplugged headphones, DAC connected)
+- [x] Fallback when the device can't do the file's rate: pick the integer half rate where possible (176.4 to 88.2, 192 to 96) and resample at high quality
+- [x] Optional hog mode
+- [x] Volume through the device, not through sample scaling
+- [x] Mono files play in both channels, not the left only
 
 **Done when:** an album plays gaplessly, and a 192 kHz file on the built-in jack plays at 96 kHz and reports itself as resampled.
 
 ### M3: Library
 
-- [ ] Database schema: tracks, albums, artists, playlists, play history
-- [ ] Folder picker with security-scoped bookmarks
-- [ ] Background scanner that reads tags, duration, sample rate, and bit depth
-- [ ] FSEvents watcher that rescans only changed files
-- [ ] Artwork extraction with an on-disk thumbnail cache
-- [ ] Full-text search
+- [x] Database schema: tracks, albums, artists, playlists, play history
+- [x] Folder picker with security-scoped bookmarks
+- [x] Background scanner that reads tags, duration, sample rate, and bit depth
+- [x] FSEvents watcher that rescans only changed files
+- [x] Artwork extraction with an on-disk thumbnail cache
+- [x] Full-text search
 
 **Done when:** a 10,000-track folder scans without blocking the UI, and adding a file to the folder shows up without a manual rescan.
 
 ### M4: Interface
 
-- [ ] Sidebar with artists, albums, songs, and playlists
-- [ ] Track table with sorting
-- [ ] Now-playing view with cover art and queue
-- [ ] Quality label and bit-perfect indicator
-- [ ] Search field
-- [ ] Sleep timer
+- [x] Sidebar with artists, albums, songs, and playlists
+- [x] Track table with sorting
+- [x] Now-playing view with cover art and queue
+- [x] Quality label and bit-perfect indicator
+- [x] Search field
+- [x] Sleep timer
+- [x] Position updates once a second, aligned to the second, and paused while the window is hidden, to keep CPU and power low during playback
 
 **Done when:** the app is usable day to day without touching a debugger.
 
@@ -107,6 +111,7 @@ Unordered. Pick these up as interest dictates.
 - [ ] Backup and restore of the database and settings
 - [ ] Lyric translation and romanization
 - [ ] Artwork-based tinting
+- [ ] Build TagLib from source and embed it in the app
 
 ## Out of scope
 
