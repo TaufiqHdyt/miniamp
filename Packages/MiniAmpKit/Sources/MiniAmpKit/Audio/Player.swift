@@ -28,6 +28,9 @@ public final class Player {
         didSet { if updatesPosition != oldValue { publishPosition(force: true) } }
     }
     public private(set) var duration: Duration = .zero
+    /// Goes up by one on every seek, so observers that only sync the playhead now and then
+    /// (Control Center) know when it jumped.
+    public private(set) var seekCount = 0
     /// The device playback goes to (or would go to, when stopped).
     public private(set) var outputDevice: AudioDevice?
     public private(set) var availableDevices: [AudioDevice] = []
@@ -240,6 +243,7 @@ public final class Player {
         preloadAttempted = false
         lastKnownFrame = frame
         setPlayhead(Self.time(frame, file), force: true)
+        seekCount += 1
         if state == .playing {
             do { try node.playAudio() } catch { Self.log.error("seek: \(error, privacy: .public)") }
         }

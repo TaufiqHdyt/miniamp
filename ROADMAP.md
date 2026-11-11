@@ -72,7 +72,7 @@ This carries most of the technical risk, so it comes first.
 
 ### M5: System integration and library tools
 
-- [ ] Media keys and Control Center through `MPRemoteCommandCenter` and `MPNowPlayingInfoCenter`
+- [x] Media keys and Control Center through `MPRemoteCommandCenter` and `MPNowPlayingInfoCenter`
 - [ ] Playlist create, edit, and reorder
 - [ ] M3U8 export
 - [ ] Metadata editing with TagLib, followed by a rescan of the edited file
