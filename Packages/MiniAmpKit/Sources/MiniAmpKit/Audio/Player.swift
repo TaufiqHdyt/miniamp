@@ -563,6 +563,11 @@ public final class Player {
         preloadedItem = nil
         preloadAttempted = false
         duration = Self.time(segment.file.length, segment.file)
+        // The new track has only just started. Without this the playhead keeps the old
+        // track's end until the next tick, and anything that reads it now (Control Center)
+        // gets that. A tick that got here first sets the exact frame right after.
+        lastKnownFrame = 0
+        setPlayhead(.zero, force: true)
         if let device = outputDevice {
             signalPath = SignalPath(file: segment.file, url: queue.items[segment.token], device: device, engine: engine)
         }
