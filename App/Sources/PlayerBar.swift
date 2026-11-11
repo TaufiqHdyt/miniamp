@@ -1,7 +1,9 @@
 import MiniAmpKit
 import SwiftUI
 
-/// The strip along the bottom of the window: what's playing, transport, position, and volume.
+/// The strip along the bottom of the window, in three parts: what's playing on the left,
+/// transport and position in the middle (centred on the window), and quality, sleep timer
+/// and volume on the right.
 struct PlayerBar: View {
     let app: AppState
     @State private var current: QueueEntry?
@@ -9,26 +11,23 @@ struct PlayerBar: View {
     var body: some View {
         let player = app.player
         HStack(spacing: 16) {
-            Button { app.showsNowPlaying.toggle() } label: {
-                NowPlayingSummary(entry: current, artwork: app.library?.artwork)
-            }
-            .buttonStyle(.plain)
-            .help(app.showsNowPlaying ? "Hide Now Playing" : "Show Now Playing")
-            .frame(minWidth: 200, idealWidth: 280, maxWidth: 340, alignment: .leading)
+            NowPlayingSummary(entry: current, artwork: app.library?.artwork, app: app)
+                .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 4) {
                 TransportButtons(app: app)
                 SeekBar(player: player)
             }
-            .frame(minWidth: 280, maxWidth: 560)
+            .frame(minWidth: 300, idealWidth: 520, maxWidth: 560)
+            // Sized first, so the two sides split what's left equally and the middle stays centred.
+            .layoutPriority(1)
 
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 SignalSummary(player: player)
-                Spacer(minLength: 0)
                 SleepTimerButton(timer: app.sleepTimer)
-                VolumeControl(player: player)
+                VolumeButton(player: player)
             }
-            .frame(minWidth: 200, idealWidth: 280, maxWidth: 340)
+            .frame(minWidth: 180, maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -47,24 +46,34 @@ struct PlayerBar: View {
     }
 }
 
+/// Cover, then title over artist, all left-aligned. The cover opens and closes Now Playing.
 private struct NowPlayingSummary: View {
     let entry: QueueEntry?
     let artwork: ArtworkCache?
+    let app: AppState
 
     var body: some View {
-        HStack(spacing: 10) {
-            ArtworkView(key: entry?.artworkKey, artwork: artwork,
-                        fileURL: entry?.inLibrary == false ? entry?.url : nil, size: .small, cornerRadius: 3)
-                .frame(width: 42, height: 42)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(entry?.title ?? "Not playing")
-                    .fontWeight(.medium)
+        HStack(spacing: 12) {
+            Button { app.showsNowPlaying.toggle() } label: {
+                ArtworkView(key: entry?.artworkKey, artwork: artwork,
+                            fileURL: entry?.inLibrary == false ? entry?.url : nil, size: .small, cornerRadius: 4)
+                    .frame(width: 52, height: 52)
+                    .shadow(color: .black.opacity(0.15), radius: 1.5, y: 0.5)
+            }
+            .buttonStyle(.plain)
+            .help(app.showsNowPlaying ? "Hide Now Playing" : "Show Now Playing")
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry?.title ?? "Not Playing")
+                    .fontWeight(.semibold)
                     .foregroundStyle(entry == nil ? .secondary : .primary)
-                if let subtitle = entry?.subtitle {
-                    Text(subtitle).font(.callout).foregroundStyle(.secondary)
+                if let artist = entry?.artist, !artist.isEmpty {
+                    Text(artist).font(.callout).foregroundStyle(.secondary)
                 }
             }
             .lineLimit(1)
+            .truncationMode(.tail)
+            .help(entry.map { [$0.title, $0.subtitle].compactMap { $0 }.joined(separator: "\n") } ?? "")
         }
     }
 }
@@ -192,25 +201,48 @@ private struct SignalSummary: View {
     }
 }
 
-private struct VolumeControl: View {
+/// A speaker that shows the level; click it for the slider.
+private struct VolumeButton: View {
     let player: Player
+    @State private var showsSlider = false
 
     var body: some View {
         if let volume = player.volume {
-            HStack(spacing: 4) {
-                Image(systemName: "speaker.fill").foregroundStyle(.secondary).imageScale(.small)
-                Slider(value: Binding(get: { Double(volume) }, set: { player.setVolume(Float($0)) }), in: 0...1)
-                    .controlSize(.small)
-                    .frame(width: 90)
-                    .help("Output device volume: \(Int((volume * 100).rounded()))%")
-                Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary).imageScale(.small)
+            Button { showsSlider.toggle() } label: {
+                Image(systemName: volume <= 0 ? "speaker.slash.fill" : "speaker.wave.3.fill",
+                      variableValue: Double(volume))
+                    .frame(width: 22)
+            }
+            .buttonStyle(.borderless)
+            .imageScale(.large)
+            .foregroundStyle(.secondary)
+            .help("Volume: \(percent(volume))")
+            .accessibilityLabel("Volume")
+            .accessibilityValue(percent(volume))
+            .popover(isPresented: $showsSlider, arrowEdge: .top) {
+                HStack(spacing: 8) {
+                    Image(systemName: "speaker.fill").foregroundStyle(.secondary).imageScale(.small)
+                    Slider(value: Binding(get: { Double(volume) }, set: { player.setVolume(Float($0)) }), in: 0...1)
+                        .controlSize(.small)
+                        .frame(width: 140)
+                    Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary).imageScale(.small)
+                    Text(percent(volume))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 34, alignment: .trailing)
+                }
+                .padding(12)
             }
         } else {
             Image(systemName: "speaker.slash")
-                .foregroundStyle(.secondary)
+                .imageScale(.large)
+                .frame(width: 22)
+                .foregroundStyle(.tertiary)
                 .help("\(player.outputDevice?.name ?? "This device") has no volume control. Use its own knob.")
         }
     }
+
+    private func percent(_ volume: Float) -> String { "\(Int((volume * 100).rounded()))%" }
 }
 
 extension Duration {
