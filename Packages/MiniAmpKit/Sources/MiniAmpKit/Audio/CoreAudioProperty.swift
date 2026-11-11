@@ -1,5 +1,6 @@
 import CoreAudio
 import Foundation
+import Synchronization
 
 public struct CoreAudioError: Error, CustomStringConvertible, Sendable {
     public let status: OSStatus
@@ -87,13 +88,13 @@ enum HAL {
         _ change: () throws -> Void
     ) async throws {
         let (events, continuation) = AsyncStream.makeStream(of: Void.self, bufferingPolicy: .bufferingNewest(1))
-        let queue = DispatchQueue(label: "miniamp.hal-listener")
-        let block: AudioObjectPropertyListenerBlock = { _, _ in continuation.yield() }
-        var address = address
-        try check(AudioObjectAddPropertyListenerBlock(object, &address, queue, block), "Add listener")
+        let registration = ListenerRegistration(object: object, addresses: [address]) { continuation.yield() }
         defer {
-            AudioObjectRemovePropertyListenerBlock(object, &address, queue, block)
+            registration.remove()
             continuation.finish()
+        }
+        guard registration.isRegistered else {
+            throw CoreAudioError(status: kAudioHardwareUnknownPropertyError, operation: "Add listener for \(operation)")
         }
 
         if isDone() { return }
@@ -138,28 +139,60 @@ enum HAL {
 }
 
 /// Owns a set of HAL property listeners so they can be removed from any thread.
-/// Immutable after init; the HAL calls are thread-safe.
+///
+/// Uses the function-pointer API rather than AudioObjectAddPropertyListenerBlock: a Swift
+/// closure passed as a block is bridged to a new block object on each call, so the remove call
+/// never matched what was added and every listener stayed installed for the life of the process.
 final class ListenerRegistration: @unchecked Sendable {
+    /// The listener's context. Retained while registered; released a little after removal,
+    /// so a notification already in flight on a HAL thread never sees freed memory.
+    private final class Context: @unchecked Sendable {
+        let onChange: @Sendable () -> Void
+        let removed = Atomic<Bool>(false)
+        init(_ onChange: @escaping @Sendable () -> Void) { self.onChange = onChange }
+    }
+
     private let object: AudioObjectID
-    private let queue = DispatchQueue(label: "miniamp.hal-observer")
-    private let block: AudioObjectPropertyListenerBlock
     private let registered: [AudioObjectPropertyAddress]
+    private let context: Context
+    private let pointer: UnsafeMutableRawPointer
 
     init(object: AudioObjectID, addresses: [AudioObjectPropertyAddress], onChange: @escaping @Sendable () -> Void) {
         self.object = object
-        let block: AudioObjectPropertyListenerBlock = { _, _ in onChange() }
-        self.block = block
-        let queue = self.queue
+        context = Context(onChange)
+        pointer = Unmanaged.passRetained(context).toOpaque()
+        let pointer = pointer
         registered = addresses.filter { address in
             var address = address
-            return AudioObjectAddPropertyListenerBlock(object, &address, queue, block) == noErr
+            return AudioObjectAddPropertyListener(object, &address, halListener, pointer) == noErr
         }
     }
 
+    var isRegistered: Bool { !registered.isEmpty }
+
+    /// Idempotent.
     func remove() {
+        guard !context.removed.exchange(true, ordering: .acquiringAndReleasing) else { return }
         for address in registered {
             var address = address
-            AudioObjectRemovePropertyListenerBlock(object, &address, queue, block)
+            AudioObjectRemovePropertyListener(object, &address, halListener, pointer)
+        }
+        let pointer = UInt(bitPattern: pointer)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+            Unmanaged<Context>.fromOpaque(UnsafeRawPointer(bitPattern: pointer)!).release()
         }
     }
+
+    deinit { remove() }
+
+    fileprivate static func deliver(_ pointer: UnsafeMutableRawPointer) {
+        let context = Unmanaged<Context>.fromOpaque(pointer).takeUnretainedValue()
+        if !context.removed.load(ordering: .acquiring) { context.onChange() }
+    }
+}
+
+private func halListener(_ object: AudioObjectID, _ count: UInt32, _ addresses: UnsafePointer<AudioObjectPropertyAddress>,
+                         _ context: UnsafeMutableRawPointer?) -> OSStatus {
+    if let context { ListenerRegistration.deliver(context) }
+    return noErr
 }
