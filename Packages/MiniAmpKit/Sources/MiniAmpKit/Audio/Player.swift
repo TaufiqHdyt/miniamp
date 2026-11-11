@@ -478,14 +478,25 @@ public final class Player {
                 || error.code == -10875 /* kAudioUnitErr_FailedInitialization: invalid hardware format */)
     }
 
+    /// Ticks once a second, just after the playhead reaches each whole second: that's when
+    /// the displayed time changes, and a second is plenty for preloading the next track five
+    /// seconds ahead. (It ticked every 250 ms, four wakeups a second, for the same display.)
     private func startTicker() {
         ticker?.cancel()
         ticker = Task { [weak self] in
             while !Task.isCancelled {
-                self?.tick()
-                try? await Task.sleep(for: .milliseconds(250))
+                guard let delay = self?.tickAndDelay() else { return }
+                try? await Task.sleep(for: delay, tolerance: .milliseconds(50))
             }
         }
+    }
+
+    private func tickAndDelay() -> Duration {
+        tick()
+        let attoseconds = playhead.components.attoseconds
+        let toNextSecond = Duration.seconds(1) - .nanoseconds(attoseconds / 1_000_000_000)
+        // A little past the boundary, so the next tick lands on the new second.
+        return max(toNextSecond + .milliseconds(20), .milliseconds(100))
     }
 
     /// Updates the position and opens the next track when the current one is nearly over.

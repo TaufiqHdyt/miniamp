@@ -127,17 +127,14 @@ struct MainWindow: View {
         if addsFolders, let path = defaults.string(forKey: "libraryFolder") {
             app.perform { try await app.library?.addFolder(URL(fileURLWithPath: path, isDirectory: true)) }
         }
-        #if DEBUG
-        // Debug hooks for automated checks:
         //   miniamp -autoplay /path/in/container/file.flac [-hog YES]
         //   miniamp -autoplay '(/path/a.flac, /path/b.flac)' [-sleepAtEndOfTrack YES]
-        if let paths = defaults.stringArray(forKey: "autoplay") ?? defaults.string(forKey: "autoplay").map({ [$0] }) {
+        if addsFolders, let paths = defaults.stringArray(forKey: "autoplay") ?? defaults.string(forKey: "autoplay").map({ [$0] }) {
             if defaults.object(forKey: "hog") != nil { app.player.hogMode = defaults.bool(forKey: "hog") }
             app.perform {
                 try await app.player.setQueue(paths.map { URL(fileURLWithPath: $0) })
                 if defaults.bool(forKey: "sleepAtEndOfTrack") { app.sleepTimer.stopAtEndOfTrack() }
             }
         }
-        #endif
     }
 }
