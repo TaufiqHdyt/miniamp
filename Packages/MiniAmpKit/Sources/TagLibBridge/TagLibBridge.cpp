@@ -1,5 +1,6 @@
 #include "TagLibBridge.h"
 
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -55,6 +56,18 @@ const char *codec(const TagLib::AudioProperties *p) {
     return "";
 }
 
+/// A ReplayGain value: "-6.20 dB" or "0.988" (TagLib maps ID3 TXXX, Vorbis comments, APE,
+/// and MP4 freeform atoms to the same property names). NAN when missing or not a number.
+double replayGainValue(const TagLib::PropertyMap &map, const char *key) {
+    auto it = map.find(key);
+    if (it == map.end() || it->second.isEmpty()) return NAN;
+    const std::string text = it->second.front().to8Bit(true);
+    char *end = nullptr;
+    const double value = std::strtod(text.c_str(), &end);
+    if (end == text.c_str() || !std::isfinite(value)) return NAN;
+    return value;
+}
+
 /// The front cover if one is tagged as such, otherwise the first picture.
 void copyPicture(const TagLib::FileRef &ref, MATagInfo *out) {
     const auto pictures = ref.complexProperties("PICTURE");
@@ -93,6 +106,10 @@ extern "C" bool ma_taglib_read(const char *path, bool withPicture, MATagInfo *ou
     auto props = ref.properties();
     out->albumArtist = firstValue(props, "ALBUMARTIST");
     out->discNumber = leadingNumber(props, "DISCNUMBER");
+    out->replayGainTrackGain = replayGainValue(props, "REPLAYGAIN_TRACK_GAIN");
+    out->replayGainTrackPeak = replayGainValue(props, "REPLAYGAIN_TRACK_PEAK");
+    out->replayGainAlbumGain = replayGainValue(props, "REPLAYGAIN_ALBUM_GAIN");
+    out->replayGainAlbumPeak = replayGainValue(props, "REPLAYGAIN_ALBUM_PEAK");
 
     if (auto ap = ref.audioProperties()) {
         out->durationMs = ap->lengthInMilliseconds();

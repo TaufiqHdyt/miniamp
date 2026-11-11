@@ -5,12 +5,25 @@ import MiniAmpKit
 enum Preferences {
     static let outputDeviceKey = "outputDeviceUID"
     static let hogModeKey = "hogMode"
+    static let dspModeKey = "dspMode"
+    static let equalizerKey = "equalizer"
+    static let replayGainModeKey = "replayGainMode"
+    static let replayGainPreampKey = "replayGainPreamp"
+    static let preventsClippingKey = "preventsClipping"
 
     @MainActor
     static func apply(to player: Player) {
         let defaults = UserDefaults.standard
         player.preferredDeviceUID = defaults.string(forKey: outputDeviceKey)
         player.hogMode = defaults.bool(forKey: hogModeKey)
+        player.dspMode = defaults.bool(forKey: dspModeKey)
+        if let data = defaults.data(forKey: equalizerKey), let eq = try? JSONDecoder().decode(Equalizer.self, from: data) {
+            player.equalizer = eq
+        }
+        player.replayGainMode = defaults.string(forKey: replayGainModeKey).flatMap(ReplayGain.Mode.init) ?? .off
+        player.replayGainPreamp = defaults.double(forKey: replayGainPreampKey)
+        player.preventsClipping = defaults.object(forKey: preventsClippingKey) as? Bool ?? true
+        saveDSPSettings(of: player)
     }
 
     /// Plays through `uid` (nil follows the system default) and remembers the choice.
@@ -18,5 +31,20 @@ enum Preferences {
     static func setOutputDevice(_ uid: String?, on player: Player) {
         player.preferredDeviceUID = uid
         UserDefaults.standard.set(uid, forKey: outputDeviceKey)
+    }
+
+    /// Saves the DSP settings now and whenever they change, wherever they're changed from.
+    @MainActor
+    private static func saveDSPSettings(of player: Player) {
+        withObservationTracking {
+            let defaults = UserDefaults.standard
+            defaults.set(player.dspMode, forKey: dspModeKey)
+            defaults.set(try? JSONEncoder().encode(player.equalizer), forKey: equalizerKey)
+            defaults.set(player.replayGainMode.rawValue, forKey: replayGainModeKey)
+            defaults.set(player.replayGainPreamp, forKey: replayGainPreampKey)
+            defaults.set(player.preventsClipping, forKey: preventsClippingKey)
+        } onChange: {
+            Task { @MainActor in saveDSPSettings(of: player) }
+        }
     }
 }

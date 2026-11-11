@@ -22,11 +22,21 @@ let package = Package(
             name: "TagLibBridge",
             dependencies: ["CTagLib"]
         ),
+        // libebur128 (EBU R128 loudness), vendored unmodified; see Sources/CEBUR128/VERSION.
+        .target(
+            name: "CEBUR128",
+            exclude: ["COPYING", "VERSION"],
+            cSettings: [
+                // It warns that it flushes denormals by hand on anything but SSE2, which is fine.
+                .unsafeFlags(["-Wno-#warnings"]),
+            ]
+        ),
         .target(
             name: "MiniAmpKit",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
                 "TagLibBridge",
+                "CEBUR128",
             ]
         ),
         // Developer tool: inspect the output device and play files outside the sandbox.

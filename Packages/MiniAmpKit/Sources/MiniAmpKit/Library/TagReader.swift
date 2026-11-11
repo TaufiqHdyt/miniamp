@@ -20,6 +20,8 @@ public struct TrackTags: Sendable, Equatable {
     public var codec: String
     /// The embedded cover image's bytes, when read with `includeArtwork`.
     public var artwork: Data?
+    /// From the REPLAYGAIN_* tags, when the file has them.
+    public var replayGain: ReplayGain? = nil
 }
 
 public enum TagReader {
@@ -36,6 +38,15 @@ public enum TagReader {
 
         func str(_ p: UnsafeMutablePointer<CChar>?) -> String? { p.map { String(cString: $0) } }
         func num(_ n: UInt32) -> Int? { n == 0 ? nil : Int(n) }
+        func real(_ x: Double) -> Double? { x.isNaN ? nil : x }
+
+        // A file with only an album gain still gets one: it's the best there is for the track too.
+        let replayGain = (real(info.replayGainTrackGain) ?? real(info.replayGainAlbumGain)).map { trackGain in
+            ReplayGain(trackGain: trackGain,
+                       trackPeak: real(info.replayGainTrackPeak) ?? real(info.replayGainAlbumPeak),
+                       albumGain: real(info.replayGainAlbumGain),
+                       albumPeak: real(info.replayGainAlbumPeak))
+        }
 
         return TrackTags(
             title: str(info.title),
@@ -52,7 +63,8 @@ public enum TagReader {
             channels: Int(info.channels),
             bitrateKbps: Int(info.bitrateKbps),
             codec: withUnsafeBytes(of: info.codec) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) },
-            artwork: info.picture.map { Data(bytes: $0, count: Int(info.pictureSize)) }
+            artwork: info.picture.map { Data(bytes: $0, count: Int(info.pictureSize)) },
+            replayGain: replayGain
         )
     }
 }

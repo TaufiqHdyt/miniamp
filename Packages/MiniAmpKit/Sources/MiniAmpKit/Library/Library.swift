@@ -20,6 +20,10 @@ public final class Library {
     public private(set) var progress: ScanProgress?
     public private(set) var lastScan: ScanProgress?
     public private(set) var lastError: String?
+    /// The loudness analysis in progress (see `analyzeLoudness`), or nil when idle.
+    public private(set) var loudnessProgress: LoudnessProgress?
+    /// Called after each album's ReplayGain is stored, with the paths it covered.
+    @ObservationIgnored public var onLoudnessMeasured: (@MainActor (Set<String>) -> Void)?
 
     @ObservationIgnored public let artwork: ArtworkCache?
     @ObservationIgnored private let scanner: LibraryScanner
@@ -33,6 +37,7 @@ public final class Library {
     @ObservationIgnored private var flushQueued = false
     @ObservationIgnored private var observer: Task<Void, Never>?
     @ObservationIgnored private var opened = false
+    @ObservationIgnored private var loudnessTask: Task<Void, Never>?
 
     static let log = Logger(subsystem: "dev.miniamp", category: "library")
 
@@ -43,6 +48,7 @@ public final class Library {
     }
 
     isolated deinit {
+        loudnessTask?.cancel()
         observer?.cancel()
         scanQueue?.cancel()
         watcher?.invalidate()
@@ -185,6 +191,67 @@ public final class Library {
     @concurrent
     private nonisolated static func write(_ changes: TagChanges, to url: URL, replacingFile: Bool) async throws {
         try TagWriter.write(changes, to: url, replacingFile: replacingFile)
+    }
+
+    /// Measures ReplayGain for these tracks, or for every track that has none from its tags or
+    /// an earlier analysis. The rest of their albums are measured with them, for the album gain.
+    /// Runs in the background; does nothing while an analysis is already running.
+    public func analyzeLoudness(trackIds: [Int64]? = nil) {
+        guard loudnessTask == nil else { return }
+        loudnessProgress = LoudnessProgress()
+        loudnessTask = Task { [database] in
+            defer {
+                loudnessProgress = nil
+                loudnessTask = nil
+            }
+            do {
+                let groups = try await database.writer.read { db in
+                    try LoudnessScanner.groups(for: trackIds ?? ReplayGains.unmeasuredTrackIds(db), db)
+                }
+                loudnessProgress?.tracksTotal = groups.reduce(0) { $0 + $1.count }
+                let start = ContinuousClock.now
+                try await withThrowingTaskGroup(of: ([Track], [ReplayGain?]).self) { group in
+                    var pending = groups.makeIterator()
+                    func addNext() -> Bool {
+                        guard let tracks = pending.next() else { return false }
+                        group.addTask { (tracks, await Self.measure(tracks)) }
+                        return true
+                    }
+                    for _ in 0..<max(ProcessInfo.processInfo.activeProcessorCount, 1) where !addNext() { break }
+                    while let (tracks, gains) = try await group.next() {
+                        try Task.checkCancellation()
+                        try await database.writer.write { db in
+                            for (track, gain) in zip(tracks, gains) {
+                                if let gain, let id = track.id { try ReplayGains.store(gain, source: .scan, trackId: id, db) }
+                            }
+                        }
+                        loudnessProgress?.tracksDone += tracks.count
+                        loudnessProgress?.failed += gains.filter { $0 == nil }.count
+                        onLoudnessMeasured?(Set(tracks.map(\.path)))
+                        _ = addNext()
+                    }
+                }
+                let p = loudnessProgress ?? LoudnessProgress()
+                Self.log.info("measured \(p.tracksDone) tracks in \(groups.count) groups (\(p.failed) failed) in \((ContinuousClock.now - start).formatted(), privacy: .public)")
+            } catch is CancellationError {
+            } catch {
+                report("loudness analysis failed: \(error)")
+            }
+        }
+    }
+
+    public func cancelLoudnessAnalysis() {
+        loudnessTask?.cancel()
+    }
+
+    /// Waits for a running loudness analysis (tests and the command-line tool).
+    public func waitForLoudnessAnalysis() async {
+        await loudnessTask?.value
+    }
+
+    @concurrent
+    private nonisolated static func measure(_ tracks: [Track]) async -> [ReplayGain?] {
+        LoudnessScanner.measure(tracks)
     }
 
     /// Starts downloading offloaded tracks. Once a file is local, the watcher sees it and its tags are read.

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct AppCommands: Commands {
     let app: AppState
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -48,6 +49,13 @@ struct AppCommands: Commands {
             }
             Divider()
             Menu("Sleep Timer") { SleepTimerChoices(timer: app.sleepTimer) }
+            Divider()
+            Toggle("DSP Mode", isOn: Binding(get: { player.dspMode }, set: { player.dspMode = $0 }))
+            Button("Equalizer…") { openWindow(id: "equalizer") }
+                .keyboardShortcut("e", modifiers: [.command, .option])
+            Picker("ReplayGain", selection: Binding(get: { player.replayGainMode }, set: { player.replayGainMode = $0 })) {
+                ForEach(ReplayGain.Mode.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
             Divider()
             Button("Volume Up") { if let v = player.volume { player.setVolume(min(v + 0.0625, 1)) } }
                 .keyboardShortcut(.upArrow)

@@ -12,6 +12,9 @@ struct SettingsView: View {
             Tab("Playback", systemImage: "hifispeaker") {
                 PlaybackSettings(player: app.player)
             }
+            Tab("Sound", systemImage: "slider.vertical.3") {
+                SoundSettings(app: app, player: app.player)
+            }
         }
         .frame(width: 560)
     }
@@ -77,6 +80,86 @@ private struct LibrarySettings: View {
             if scan.offloaded > 0 { text += ", \(scan.offloaded) only in iCloud" }
         }
         return text
+    }
+}
+
+/// Bit-perfect or DSP mode, the EQ, and ReplayGain.
+private struct SoundSettings: View {
+    let app: AppState
+    @Bindable var player: Player
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Signal path", selection: $player.dspMode) {
+                    Text("Bit-perfect").tag(false)
+                    Text("DSP").tag(true)
+                }
+                .pickerStyle(.segmented)
+                Text(player.dspMode
+                     ? "Samples go through the equalizer and ReplayGain on the way to the device."
+                     : "Samples reach the device unchanged. The equalizer and ReplayGain are off.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section("Equalizer") {
+                LabeledContent("Equalizer") {
+                    HStack {
+                        Text(player.equalizer.isEnabled ? player.equalizer.preset?.name ?? "Custom" : "Off")
+                            .foregroundStyle(.secondary)
+                        Button("Open Equalizer…") { openWindow(id: "equalizer") }
+                    }
+                }
+            }
+            Section {
+                Picker("ReplayGain", selection: $player.replayGainMode) {
+                    ForEach(ReplayGain.Mode.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                LabeledContent("Preamp") {
+                    HStack {
+                        Slider(value: $player.replayGainPreamp, in: -12...12, step: 0.5)
+                            .frame(width: 180)
+                        Text(String(format: "%+.1f dB", player.replayGainPreamp))
+                            .monospacedDigit()
+                            .frame(width: 64, alignment: .trailing)
+                    }
+                }
+                .disabled(player.replayGainMode == .off)
+                Toggle("Prevent clipping", isOn: $player.preventsClipping)
+                    .disabled(player.replayGainMode == .off)
+                    .help("Turns a track down less when its peaks would go past full scale")
+                if let library = app.library { LoudnessAnalysisRow(library: library) }
+            } header: {
+                Text("ReplayGain")
+            } footer: {
+                Text("Plays tracks at the same loudness, using their ReplayGain tags or miniamp's own measurement. Album mode keeps the differences between an album's tracks. Applies in DSP mode.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+/// Measures tracks that have no ReplayGain yet, with progress while it runs.
+private struct LoudnessAnalysisRow: View {
+    let library: Library
+
+    var body: some View {
+        LabeledContent("Analysis") {
+            if let p = library.loudnessProgress {
+                HStack {
+                    ProgressView(value: Double(p.tracksDone), total: Double(max(p.tracksTotal, 1)))
+                        .frame(width: 140)
+                    Text("\(p.tracksDone) of \(p.tracksTotal)").monospacedDigit().foregroundStyle(.secondary)
+                    Button("Stop") { library.cancelLoudnessAnalysis() }
+                }
+            } else {
+                Button("Analyze Unmeasured Songs") { library.analyzeLoudness() }
+                    .help("Measures the loudness of songs with no ReplayGain tags. Takes a while for a big library; playback is unaffected.")
+            }
+        }
     }
 }
 

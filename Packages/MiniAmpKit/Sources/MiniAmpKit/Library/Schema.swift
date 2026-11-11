@@ -118,4 +118,27 @@ enum Schema {
             END;
             """)
     }
+
+    /// ReplayGain, in its own table so the track rows (read for every list) stay as they are.
+    ///
+    /// A track can have two rows: what its tags say (`source` 'tags', rewritten whenever its
+    /// tags are read) and what miniamp measured ('scan', see LoudnessScanner). Tags win.
+    /// Gains are in dB, peaks linear (1.0 is full scale).
+    static func v2(_ db: Database) throws {
+        try db.execute(sql: """
+            CREATE TABLE replayGain (
+                trackId INTEGER NOT NULL REFERENCES track(id) ON DELETE CASCADE,
+                source TEXT NOT NULL CHECK (source IN ('tags', 'scan')),
+                trackGain DOUBLE NOT NULL,
+                trackPeak DOUBLE,
+                albumGain DOUBLE,
+                albumPeak DOUBLE,
+                PRIMARY KEY (trackId, source)
+            ) WITHOUT ROWID;
+
+            -- Tracks scanned before this have never had their ReplayGain tags read. Forgetting
+            -- when their files changed makes the next scan read every file once more.
+            UPDATE track SET modifiedAt = 0;
+            """)
+    }
 }

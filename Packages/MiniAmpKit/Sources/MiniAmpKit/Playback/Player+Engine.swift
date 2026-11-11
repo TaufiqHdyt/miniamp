@@ -94,7 +94,9 @@ extension Player {
         duration = Self.time(file.length, file)
         lastKnownFrame = frame
         setPlayhead(Self.time(frame, file), force: true)
-        signalPath = SignalPath(file: file, url: url, device: device, engine: engine)
+        signalPath = SignalPath(file: file, url: url, device: device, engine: engine,
+                                processing: graphHasDSP ? processing() : nil)
+        trackChanged(to: url)
         state = autoplay ? .playing : .paused
         if frame == 0 { trackStarts += 1 }
         if autoplay { startTicker() }
@@ -105,7 +107,7 @@ extension Player {
     /// already at the rate the file needs (its own, or the fallback), same channel count, and
     /// hog mode as wanted. True for every track on a fixed-rate device such as Bluetooth speakers.
     private func canSwapInPlace(file: AVAudioFile, device: AudioDevice, keepDeviceRate: Bool) -> Bool {
-        guard let output, output.isRunning, device == outputDevice, currentFile != nil,
+        guard let output, output.isRunning, device == outputDevice, currentFile != nil, graphHasDSP == dspMode,
               engine.isInManualRenderingMode, engine.isRunning,
               engine.manualRenderingFormat.channelCount == file.processingFormat.channelCount,
               hogMode == (device.hogModeOwner() == getpid()),
@@ -142,7 +144,7 @@ extension Player {
         engine.stop()
         Self.resetTimeline(engine)
         try? OutputUnit.setMaximumResamplingQuality(on: engine)
-        try Self.connectBitPerfect(node, in: engine, format: file.processingFormat)
+        try connectGraph(format: file.processingFormat)
         currentNodeStart = 0
         scheduler.append(file, from: frame, token: item)
         engine.prepare()
@@ -182,8 +184,8 @@ extension Player {
         do { try OutputUnit.setMaximumResamplingQuality(on: engine) } catch {
             Self.log.error("[\(id)] \(error, privacy: .public)")
         }
-        try Self.connectBitPerfect(node, in: engine, format: file.processingFormat)
-        Self.log.debug("[\(id)] connect player → \(device.name, privacy: .public): \(file.processingFormat, privacy: .public), rendering \(renderFormat, privacy: .public)")
+        try connectGraph(format: file.processingFormat)
+        Self.log.debug("[\(id)] connect player → \(self.dspMode ? "EQ → " : "", privacy: .public)\(device.name, privacy: .public): \(file.processingFormat, privacy: .public), rendering \(renderFormat, privacy: .public)")
 
         currentNodeStart = 0
         scheduler.append(file, from: frame, token: item)
@@ -223,6 +225,28 @@ extension Player {
     /// after a few minutes). Call with the engine stopped, before scheduling anything.
     static func resetTimeline(_ engine: AVAudioEngine) {
         engine.reset()
+    }
+
+    /// Connects the graph for the current mode. Call with the engine stopped.
+    private func connectGraph(format: AVAudioFormat) throws {
+        try Self.connect(node, through: dspMode ? eq : nil, detaching: eq, in: engine, format: format)
+        graphHasDSP = dspMode
+        applyDSP()
+    }
+
+    /// Connects player → `dsp` → output, or with no `dsp`, the player straight to the output
+    /// with `unused` detached from the engine, so nothing else is in the graph at all.
+    static func connect(_ node: AVAudioPlayerNode, through dsp: AVAudioUnitEQ?, detaching unused: AVAudioUnitEQ,
+                        in engine: AVAudioEngine, format: AVAudioFormat) throws {
+        engine.disconnectNodeOutput(node)
+        if unused.engine === engine {
+            engine.disconnectNodeOutput(unused)
+            if dsp !== unused { engine.detach(unused) }
+        }
+        guard let dsp else { return try connectBitPerfect(node, in: engine, format: format) }
+        if dsp.engine == nil { engine.attach(dsp) }
+        try engine.connectNode(node, to: dsp, format: format)
+        try engine.connectNode(dsp, to: engine.outputNode, format: format)
     }
 
     /// Connects the player straight to the output node using the file's processing format.

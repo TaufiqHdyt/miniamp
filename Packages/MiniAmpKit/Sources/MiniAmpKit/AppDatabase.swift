@@ -34,6 +34,7 @@ public final class AppDatabase: Sendable {
         m.eraseDatabaseOnSchemaChange = true
         #endif
         m.registerMigration("v1", migrate: Schema.v1)
+        m.registerMigration("v2", migrate: Schema.v2)
         return m
     }
 

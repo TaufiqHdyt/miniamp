@@ -26,3 +26,13 @@ enum TimeFormat {
             : String(format: "%d:%02d", s / 60, s % 60)
     }
 }
+
+extension ReplayGain.Mode {
+    var label: String {
+        switch self {
+        case .off: "Off"
+        case .track: "Track"
+        case .album: "Album"
+        }
+    }
+}

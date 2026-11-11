@@ -36,6 +36,10 @@ struct QualityBadge: View {
         case .resampled(let from, let to):
             "\(path.codec) \(FormatSelection.formatRate(from)) → \(FormatSelection.formatRate(to)) · Resampled"
         case .reducedBitDepth(_, let to): "\(format) → \(to)-bit"
+        case .processed:
+            path.isResampled
+                ? "\(path.codec) \(FormatSelection.formatRate(path.fileSampleRate)) → \(FormatSelection.formatRate(path.deviceSampleRate)) · DSP"
+                : "\(format) · DSP"
         }
     }
 
@@ -44,6 +48,7 @@ struct QualityBadge: View {
         case .bitPerfect: "checkmark.seal.fill"
         case .nativeRate: "checkmark.circle"
         case .resampled, .reducedBitDepth: "exclamationmark.triangle.fill"
+        case .processed: "slider.vertical.3"
         }
     }
 
@@ -52,6 +57,7 @@ struct QualityBadge: View {
         case .bitPerfect: .green
         case .nativeRate: .secondary
         case .resampled, .reducedBitDepth: .orange
+        case .processed: .blue
         }
     }
 
@@ -65,6 +71,9 @@ struct QualityBadge: View {
             "Resampled: \(path.deviceName) can't play \(FormatSelection.formatRate(from)), so the audio is converted to \(FormatSelection.formatRate(to)) at high quality."
         case .reducedBitDepth(let from, let to):
             "The device takes \(to)-bit samples, so the file's \(from)-bit samples lose their lowest bits."
+        case .processed:
+            "DSP mode: the samples are changed on the way (\(path.processing?.description ?? "gain")). Choose Bit-perfect in Settings › Sound to hear the file unchanged."
+                + (path.isResampled ? " The device can't play \(FormatSelection.formatRate(path.fileSampleRate)), so it's also resampled to \(FormatSelection.formatRate(path.deviceSampleRate))." : "")
         }
     }
 }
@@ -88,6 +97,12 @@ private struct SignalDetails: View {
                 GridRow {
                     Text("Format").foregroundStyle(.secondary)
                     Text(path.devicePhysicalFormat)
+                }
+                if let processing = path.processing {
+                    GridRow {
+                        Text("DSP").foregroundStyle(.secondary)
+                        Text(processing.description)
+                    }
                 }
                 GridRow {
                     Text("Access").foregroundStyle(.secondary)

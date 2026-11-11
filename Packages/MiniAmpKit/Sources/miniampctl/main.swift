@@ -13,6 +13,9 @@ options:
   --hog            take exclusive access (hog mode) while playing
   --repeat MODE    off | all | one
   --shuffle
+  --dsp            DSP mode instead of bit-perfect
+  --eq PRESET      DSP mode with this EQ preset (Flat, Rock, Bass Boost, …)
+  --gain DB        DSP mode, turned up or down by DB (as a preamp)
        miniampctl library ...        scan, search, and watch a library (miniampctl library for help)
 """
 
@@ -53,6 +56,9 @@ func play(_ args: [String]) async throws {
     var hog = false
     var repeatMode = PlayQueue<URL>.Repeat.off
     var shuffle = false
+    var dsp = false
+    var preset: Equalizer.Preset?
+    var gain: Float = 0
     var it = args.makeIterator()
     while let arg = it.next() {
         switch arg {
@@ -62,6 +68,18 @@ func play(_ args: [String]) async throws {
         case "--hog": hog = true
         case "--repeat": repeatMode = it.next().flatMap(PlayQueue<URL>.Repeat.init(rawValue:)) ?? .off
         case "--shuffle": shuffle = true
+        case "--dsp": dsp = true
+        case "--eq":
+            let name = it.next() ?? ""
+            guard let match = Equalizer.Preset.all.first(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) else {
+                FileHandle.standardError.write(Data("error: no EQ preset '\(name)'; presets: \(Equalizer.Preset.all.map(\.name).joined(separator: ", "))\n".utf8))
+                exit(64)
+            }
+            preset = match
+            dsp = true
+        case "--gain":
+            gain = it.next().flatMap(Float.init) ?? 0
+            dsp = true
         default: files.append(arg)
         }
     }
@@ -77,6 +95,11 @@ func play(_ args: [String]) async throws {
         player.preferredDeviceUID = device.uid
     }
     player.hogMode = hog
+    player.dspMode = dsp
+    var eq = Equalizer(isEnabled: preset != nil || gain != 0)
+    if let preset { eq.apply(preset) }
+    eq.preamp += gain
+    player.equalizer = eq
     player.repeatMode = repeatMode
     if shuffle { player.setShuffle(true) }
 

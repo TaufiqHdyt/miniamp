@@ -306,12 +306,18 @@ public final class LibraryScanner: Sendable {
         case .insert(let file, let tags):
             var track = try makeTrack(file, tags, folderId: folderId, db)
             try track.insert(db)
+            try ReplayGains.storeTags(tags.replayGain, trackId: track.id!, db)
         case .update(let id, let file, let tags):
             guard let old = try Track.fetchOne(db, key: id) else { return }
             var track = try makeTrack(file, tags, folderId: folderId, db)
             track.id = id
             track.addedAt = old.addedAt
             if track != old { try track.update(db) }
+            try ReplayGains.storeTags(tags.replayGain, trackId: id, db)
+            // Different audio (not just new tags): what was measured no longer applies.
+            if track.durationMs != old.durationMs || track.sampleRate != old.sampleRate {
+                try ReplayGains.forgetScan(trackId: id, db)
+            }
         case .offloaded(let id?, let file):
             try db.execute(sql: "UPDATE track SET path = ?, fileSize = ?, modifiedAt = ?, isEvicted = 1 WHERE id = ?",
                            arguments: [file.path, file.size, file.modified, id])

@@ -328,6 +328,9 @@ struct TrackTable: NSViewRepresentable {
                 if local.isEmpty { info.action = nil }
                 menu.addItem(info)
                 menu.addItem(addToPlaylistItem(chosen, app: app))
+                let analyze = item("Analyze Loudness") { app.analyzeLoudness(of: local) }
+                if local.isEmpty || app.library?.loudnessProgress != nil { analyze.action = nil }
+                menu.addItem(analyze)
                 if let playlist = config?.playlist, let library = app.library {
                     menu.addItem(item("Remove from Playlist") { [self] in
                         guard let table = self.table else { return }

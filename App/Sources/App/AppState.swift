@@ -47,7 +47,20 @@ final class AppState {
         self.library = library
         sleepTimer = SleepTimer(player: player)
         systemNowPlaying = SystemNowPlaying(app: self)
-        if let library { playHistory = PlayHistory(player: player, database: library.database) }
+        if let library {
+            playHistory = PlayHistory(player: player, database: library.database)
+            // A primary-key read, on the main actor as each track starts (gapless needs it
+            // before the boundary, with no time to wait).
+            let database = library.database
+            player.replayGainLookup = { url in
+                try? database.writer.read { try ReplayGains.lookup(path: LibraryPaths.normalized(url.path), $0) }
+            }
+            library.onLoudnessMeasured = { [weak player] paths in
+                guard let player, let current = player.queue.current,
+                      paths.contains(LibraryPaths.normalized(current.path)) else { return }
+                player.reloadReplayGain()
+            }
+        }
     }
 
     /// Runs an action and shows any error it throws.
@@ -143,6 +156,13 @@ final class AppState {
             let text = M3U8.export(tracks, name: playlist.name, savedIn: url.deletingLastPathComponent())
             try Data(text.utf8).write(to: url, options: .atomic)
         }
+    }
+
+    // MARK: Loudness
+
+    /// Measures ReplayGain for these tracks and the rest of their albums.
+    func analyzeLoudness(of tracks: [TrackInfo]) {
+        library?.analyzeLoudness(trackIds: tracks.filter { !$0.track.isEvicted }.compactMap(\.track.id))
     }
 
     // MARK: Tags

@@ -2,7 +2,11 @@ import AVFoundation
 import Observation
 import os
 
-/// Bit-perfect queue playback: player node → output node, no mixer.
+/// Queue playback with two signal paths.
+///
+/// - Bit-perfect (the default): player node → output node, no mixer, nothing else attached.
+/// - DSP mode: player node → EQ unit → output node. The one unit does the EQ bands and, as its
+///   global gain, ReplayGain and the preamps. Turning DSP mode off detaches it again.
 ///
 /// Tracks with the same processing format play back to back on one node (gapless). A format
 /// change between tracks stops the engine, reconfigures the device, and starts again.
@@ -68,11 +72,41 @@ public final class Player {
     /// Called when playback stopped because of `stopsAfterCurrentTrack`.
     @ObservationIgnored public var onStoppedAfterTrack: (@MainActor () -> Void)?
 
+    // MARK: DSP settings
+
+    /// DSP mode (EQ and ReplayGain) instead of bit-perfect. Switching restarts playback where it is.
+    public var dspMode = false {
+        didSet { if oldValue != dspMode { Task { await restartInPlace("DSP mode \(dspMode ? "on" : "off")") } } }
+    }
+    /// Applies live, in DSP mode only.
+    public var equalizer = Equalizer() {
+        didSet { if oldValue != equalizer { applyDSP() } }
+    }
+    public var replayGainMode: ReplayGain.Mode = .off {
+        didSet { if oldValue != replayGainMode { applyDSP() } }
+    }
+    /// dB added to ReplayGain's gain (only while ReplayGain is on).
+    public var replayGainPreamp: Double = 0 {
+        didSet { if oldValue != replayGainPreamp { applyDSP() } }
+    }
+    /// Keeps ReplayGain from raising a track past its peak.
+    public var preventsClipping = true {
+        didSet { if oldValue != preventsClipping { applyDSP() } }
+    }
+    /// The ReplayGain for a file, from the library. Called on the main actor as each track starts.
+    @ObservationIgnored public var replayGainLookup: (@MainActor (URL) -> ReplayGain?)?
+
     // Members without `private` are used by the engine setup in Player+Engine.swift.
 
     /// Renders on demand (manual rendering mode): decoding, scheduling, and any resampling.
     @ObservationIgnored let engine = AVAudioEngine()
     @ObservationIgnored let node = AVAudioPlayerNode()
+    /// DSP mode's EQ and gain. Attached to the engine only in DSP mode.
+    @ObservationIgnored let eq = AVAudioUnitEQ(numberOfBands: Equalizer.frequencies.count)
+    /// Whether the graph was last connected through `eq`.
+    @ObservationIgnored var graphHasDSP = false
+    /// The current track's ReplayGain, looked up when it started.
+    @ObservationIgnored var currentReplayGain: ReplayGain?
     /// The hardware output, owned by us and bound to one device. Nil only if Core Audio
     /// can't create an output unit at all.
     @ObservationIgnored let output = try? HALOutput()
@@ -338,6 +372,47 @@ public final class Player {
         }
     }
 
+    // MARK: - DSP
+
+    /// A new track is current: look up its ReplayGain and set the gain for it.
+    func trackChanged(to url: URL) {
+        currentReplayGain = replayGainLookup?(url)
+        applyDSP()
+    }
+
+    /// Asks the library again for the current track's ReplayGain (after an analysis measured it).
+    public func reloadReplayGain() {
+        guard let url = queue.current, state != .stopped else { return }
+        trackChanged(to: url)
+    }
+
+    /// Sets the EQ unit from the settings, and the signal path's description of it. Safe while
+    /// playing: the unit's parameters change without stopping anything.
+    func applyDSP() {
+        equalizer.configure(eq)
+        let gain = dspGain
+        eq.globalGain = min(max(Float(gain), -96), 24)
+        guard var path = signalPath else { return }
+        path.processing = graphHasDSP ? processing(gain: gain) : nil
+        if path != signalPath { signalPath = path }
+    }
+
+    /// ReplayGain and the preamps, dB.
+    private var dspGain: Double {
+        var gain = Double(equalizer.isEnabled ? equalizer.preamp : 0)
+        if replayGainMode != .off {
+            gain += currentReplayGain?.gain(replayGainMode, preamp: replayGainPreamp, preventClipping: preventsClipping)
+                ?? replayGainPreamp
+        }
+        return gain
+    }
+
+    func processing(gain: Double? = nil) -> SignalPath.Processing {
+        SignalPath.Processing(
+            equalizer: equalizer.isShaping ? (equalizer.preset?.name ?? "Custom") : nil,
+            replayGain: replayGainMode, trackHasReplayGain: currentReplayGain != nil, gain: gain ?? dspGain)
+    }
+
     private func restartInPlace(_ reason: String) async {
         guard state == .playing || state == .paused else { return }
         Self.log.debug("\(reason, privacy: .public): restarting at current position")
@@ -440,6 +515,7 @@ public final class Player {
             signalPath = SignalPath(file: segment.file, url: queue.items[segment.token], device: device, engine: engine)
         }
         playID += 1
+        trackChanged(to: queue.items[segment.token])
         Self.log.info("[\(self.playID)] gapless → \(self.queue.items[segment.token].lastPathComponent, privacy: .public)")
     }
 

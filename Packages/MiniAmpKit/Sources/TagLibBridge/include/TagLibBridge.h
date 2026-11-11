@@ -24,6 +24,11 @@ typedef struct {
     char codec[8];        // "FLAC", "MP3", "ALAC", "AAC", "WAV", "AIFF", or "" if unknown
     unsigned char *picture; // embedded cover art (front cover if tagged as such), or NULL
     unsigned long pictureSize;
+    // ReplayGain tags: gains in dB, peaks linear. NAN when the tag is missing or unreadable.
+    double replayGainTrackGain;
+    double replayGainTrackPeak;
+    double replayGainAlbumGain;
+    double replayGainAlbumPeak;
 } MATagInfo;
 
 /// Reads tags and audio properties, plus the embedded picture when withPicture is true.

@@ -36,6 +36,12 @@ struct MiniAmpApp: App {
         .defaultLaunchBehavior(.presented)
         .commands { AppCommands(app: app) }
 
+        Window("Equalizer", id: "equalizer") {
+            EqualizerView(player: app.player)
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
+
         Settings {
             SettingsView(app: app)
         }

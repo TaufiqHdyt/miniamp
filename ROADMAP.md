@@ -20,7 +20,7 @@ A native macOS music player for a local library. It plays FLAC, MP3, ALAC, and A
 
 ## Milestones
 
-M1 to M5 are done, so the app is usable day to day. M6 is next.
+M1 to M6 are done, so the app is usable day to day. M7 is next.
 
 ### M1: Playback proof of concept
 
@@ -82,10 +82,10 @@ This carries most of the technical risk, so it comes first.
 
 ### M6: DSP mode
 
-- [ ] Engine graph switch between bit-perfect and DSP mode
-- [ ] Multiband EQ with `AVAudioUnitEQ` and presets
-- [ ] ReplayGain: read existing tags and apply track or album gain
-- [ ] ReplayGain scanning with libebur128 (EBU R128), results stored in the database
+- [x] Engine graph switch between bit-perfect and DSP mode
+- [x] Multiband EQ with `AVAudioUnitEQ` and presets
+- [x] ReplayGain: read existing tags and apply track or album gain
+- [x] ReplayGain scanning with libebur128 (EBU R128), results stored in the database
 
 **Done when:** turning bit-perfect mode on removes every DSP node from the graph, and the indicator reflects it.
 
