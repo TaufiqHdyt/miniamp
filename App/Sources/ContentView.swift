@@ -2,7 +2,7 @@ import MiniAmpKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// M1 test bench: open a file, play it bit-perfect, and show what the device is doing.
+/// M2 test bench: queue playback, seeking, output device, hog mode, and device volume.
 /// The real interface arrives in M4.
 struct ContentView: View {
     @State private var player = Player()
@@ -10,39 +10,96 @@ struct ContentView: View {
     @State private var error: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Button("Open…") { importing = true }
-                    .keyboardShortcut("o")
-                Button("Stop") { player.stop() }
-                    .disabled(player.state == .stopped)
-                Spacer()
-                Text(stateLabel).foregroundStyle(.secondary)
-            }
+        VStack(alignment: .leading, spacing: 14) {
+            TransportBar(player: player, importing: $importing, error: $error)
+            SeekBar(player: player)
 
             if let path = player.signalPath {
                 SignalPathView(path: path)
             } else {
-                Text("Open a FLAC, MP3, ALAC, or AAC file.").foregroundStyle(.secondary)
+                Text("Open FLAC, MP3, ALAC, or AAC files. Select several to queue them.")
+                    .foregroundStyle(.secondary)
             }
-
             if let warning = player.deviceWarning {
                 Label(warning, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
             }
             if let error {
                 Label(error, systemImage: "xmark.octagon").foregroundStyle(.red)
             }
-            Spacer()
+
+            QueueList(player: player, error: $error)
+            Divider()
+            OutputControls(player: player)
         }
-        .padding(24)
-        .frame(minWidth: 520, minHeight: 260)
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.audio]) { result in
+        .padding(20)
+        .frame(minWidth: 620, minHeight: 520)
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.audio], allowsMultipleSelection: true) { result in
             switch result {
-            case .success(let url): play(url)
+            case .success(let urls): run($error) { try await player.setQueue(urls) }
             case .failure(let e): error = e.localizedDescription
             }
         }
         .task { autoplayIfRequested() }
+    }
+
+    /// Debug hook for automated checks: `miniamp -autoplay /path/in/container/file.flac [-hog YES]`.
+    private func autoplayIfRequested() {
+        #if DEBUG
+        if let path = UserDefaults.standard.string(forKey: "autoplay") {
+            player.hogMode = UserDefaults.standard.bool(forKey: "hog")
+            run($error) { try await player.setQueue([URL(fileURLWithPath: path)]) }
+        }
+        #endif
+    }
+}
+
+/// Runs a player action and shows any error it throws.
+@MainActor
+private func run(_ error: Binding<String?>, _ action: @escaping @MainActor () async throws -> Void) {
+    error.wrappedValue = nil
+    Task {
+        do { try await action() } catch let e { error.wrappedValue = "\(e)" }
+    }
+}
+
+private struct TransportBar: View {
+    let player: Player
+    @Binding var importing: Bool
+    @Binding var error: String?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button("Open…") { importing = true }
+                .keyboardShortcut("o")
+            Divider().frame(height: 18)
+            Button { run($error) { try await player.previous() } } label: { Image(systemName: "backward.fill") }
+                .keyboardShortcut(.leftArrow, modifiers: .command)
+            Button { run($error) { try await player.togglePlayPause() } } label: {
+                Image(systemName: player.state == .playing ? "pause.fill" : "play.fill")
+                    .frame(width: 18)
+            }
+            .keyboardShortcut(.space, modifiers: [])
+            Button { run($error) { try await player.next() } } label: { Image(systemName: "forward.fill") }
+                .keyboardShortcut(.rightArrow, modifiers: .command)
+            Button { player.stop() } label: { Image(systemName: "stop.fill") }
+                .disabled(player.state == .stopped)
+            Divider().frame(height: 18)
+            Toggle(isOn: Binding(get: { player.isShuffled }, set: { player.setShuffle($0) })) {
+                Image(systemName: "shuffle")
+            }
+            .toggleStyle(.button)
+            Picker("Repeat", selection: Binding(get: { player.repeatMode }, set: { player.repeatMode = $0 })) {
+                Image(systemName: "repeat").foregroundStyle(.secondary).tag(PlayQueue<URL>.Repeat.off)
+                Image(systemName: "repeat").tag(PlayQueue<URL>.Repeat.all)
+                Image(systemName: "repeat.1").tag(PlayQueue<URL>.Repeat.one)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 120)
+            .help("Repeat: off, all, one")
+            Spacer()
+            Text(stateLabel).foregroundStyle(.secondary)
+        }
     }
 
     private var stateLabel: String {
@@ -50,24 +107,100 @@ struct ContentView: View {
         case .stopped: "Stopped"
         case .preparing: "Preparing device…"
         case .playing: "Playing"
+        case .paused: "Paused"
         }
     }
+}
 
-    /// Player owns the file's security-scoped access, from opening it until stop.
-    private func play(_ url: URL) {
-        error = nil
-        Task {
-            do { try await player.play(url) } catch { self.error = "\(error)" }
+private struct SeekBar: View {
+    let player: Player
+    /// Slider value while dragging; nil follows the player.
+    @State private var scrub: Double?
+
+    var body: some View {
+        let total = max(player.duration.seconds, 0.001)
+        HStack {
+            Text(format(scrub ?? player.position.seconds)).monospacedDigit()
+            Slider(value: Binding(get: { scrub ?? player.position.seconds }, set: { scrub = $0 }),
+                   in: 0...total) { editing in
+                if !editing, let scrub {
+                    player.seek(to: .seconds(scrub))
+                    self.scrub = nil
+                }
+            }
+            .disabled(player.state != .playing && player.state != .paused)
+            Text(format(player.duration.seconds)).monospacedDigit()
         }
+        .foregroundStyle(.secondary)
     }
 
-    /// Debug hook for automated checks: `miniamp -autoplay /path/in/container/file.flac`.
-    private func autoplayIfRequested() {
-        #if DEBUG
-        if let path = UserDefaults.standard.string(forKey: "autoplay") {
-            play(URL(fileURLWithPath: path))
+    private func format(_ seconds: Double) -> String {
+        let s = Int(seconds.rounded(.down))
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+private struct QueueList: View {
+    let player: Player
+    @Binding var error: String?
+
+    var body: some View {
+        List {
+            ForEach(Array(player.queue.order.enumerated()), id: \.offset) { position, item in
+                let isCurrent = position == player.queue.position
+                HStack {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .opacity(isCurrent ? 1 : 0)
+                        .foregroundStyle(.tint)
+                    Text(player.queue.items[item].deletingPathExtension().lastPathComponent)
+                        .fontWeight(isCurrent ? .semibold : .regular)
+                    Spacer()
+                    Text(player.queue.items[item].pathExtension.uppercased())
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { run($error) { try await player.jump(toItem: item) } }
+            }
         }
-        #endif
+        .listStyle(.bordered)
+        .frame(minHeight: 140)
+    }
+}
+
+private struct OutputControls: View {
+    @Bindable var player: Player
+
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+            GridRow {
+                Text("Output").foregroundStyle(.secondary)
+                Picker("Output", selection: $player.preferredDeviceUID) {
+                    Text("System default").tag(String?.none)
+                    ForEach(player.availableDevices) { device in
+                        Text(device.name).tag(Optional(device.uid))
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 280)
+            }
+            GridRow {
+                Text("Exclusive").foregroundStyle(.secondary)
+                Toggle("Hog mode (other apps can't use the device while playing)", isOn: $player.hogMode)
+            }
+            GridRow {
+                Text("Volume").foregroundStyle(.secondary)
+                if let volume = player.volume {
+                    HStack {
+                        Slider(value: Binding(get: { Double(volume) }, set: { player.setVolume(Float($0)) }), in: 0...1)
+                            .frame(maxWidth: 280)
+                        Text("\(Int((volume * 100).rounded()))%").monospacedDigit().foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("This device has no volume control. Use its own knob.").foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 }
 
@@ -91,7 +224,7 @@ private struct SignalPathView: View {
             GridRow {
                 Text("Path").foregroundStyle(.secondary)
                 if path.isResampled {
-                    Label("Resampled to \(FormatSelection.formatRate(path.deviceSampleRate))",
+                    Label("Resampled \(FormatSelection.formatRate(path.fileSampleRate)) → \(FormatSelection.formatRate(path.deviceSampleRate))",
                           systemImage: "waveform.badge.exclamationmark")
                         .foregroundStyle(.orange)
                 } else {
@@ -100,5 +233,12 @@ private struct SignalPathView: View {
                 }
             }
         }
+    }
+}
+
+private extension Duration {
+    var seconds: Double {
+        let (s, atto) = components
+        return Double(s) + Double(atto) / 1e18
     }
 }

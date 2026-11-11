@@ -21,9 +21,10 @@ Other targets:
 | `make build`   | Builds the app from the command line                 |
 | `make run`     | Builds, launches the app, and streams its trace logs here (`VERBOSE=1` adds system messages) |
 | `make test`    | Runs the `MiniAmpKit` tests (needs Xcode)            |
-| `make fixtures`| Writes 10 s test tones in every format to `Fixtures/` |
+| `make fixtures`| Writes 10 s test tones in every format, plus a mono file, to `Fixtures/` |
 | `make ctl ARGS="devices"` | Shows the output device's rates and physical formats |
-| `make ctl ARGS="play <file>"` | Plays a file outside the sandbox and prints the signal path |
+| `make ctl ARGS="play <file>..."` | Plays files as a queue outside the sandbox and prints the signal path. Options: `--seconds N`, `--seek S`, `--device NAME`, `--hog`, `--repeat off\|all\|one`, `--shuffle` |
+| `make ctl ARGS="volume [0-1]"` | Reads or sets the default output device's own volume |
 
 `MiniAmp.xcodeproj` is generated and not committed. Edit `project.yml` and run `make project` instead of changing build settings in Xcode.
 
@@ -44,6 +45,5 @@ scripts/                Fixture generation
 
 - TagLib is linked from Homebrew, so the app only runs on machines that have it installed. Hardened runtime is off for the same reason. To distribute the app, TagLib will need to be built from source and embedded.
 - The minimum is macOS 27 because Homebrew's TagLib is built for it. Supporting older macOS means building TagLib from source with a lower target.
-- Playback goes to the default output device only, and a device or rate change during playback isn't handled yet (M2).
-- Files whose sample rate the device doesn't support play resampled by Core Audio; picking a better fallback rate is M2.
-- Mono files go to the first output channel only, since the bit-perfect path has no mixer to upmix.
+- Tracks only join gaplessly when they share a format (sample rate and channel count). A rate change between tracks needs a device switch, which takes about half a second.
+- `AVAudioPlayerNode.playAudio()` waits on the main thread for the device's first I/O cycle. Normally that's milliseconds, but a device that never starts can block for up to about 5 seconds.
