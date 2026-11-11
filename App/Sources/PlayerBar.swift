@@ -54,7 +54,7 @@ private struct NowPlayingSummary: View {
     var body: some View {
         HStack(spacing: 10) {
             ArtworkView(key: entry?.artworkKey, artwork: artwork,
-                        fileURL: entry?.inLibrary == false ? entry?.url : nil, cornerRadius: 3)
+                        fileURL: entry?.inLibrary == false ? entry?.url : nil, size: .small, cornerRadius: 3)
                 .frame(width: 42, height: 42)
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry?.title ?? "Not playing")

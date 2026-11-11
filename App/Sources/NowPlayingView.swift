@@ -106,7 +106,7 @@ private struct CurrentTrack: View {
     var body: some View {
         VStack(spacing: 10) {
             ArtworkView(key: entry.artworkKey, artwork: artwork,
-                        fileURL: entry.inLibrary ? nil : entry.url, cornerRadius: 8)
+                        fileURL: entry.inLibrary ? nil : entry.url, size: .large, cornerRadius: 8)
                 .frame(maxWidth: 360)
                 .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
             VStack(spacing: 3) {
