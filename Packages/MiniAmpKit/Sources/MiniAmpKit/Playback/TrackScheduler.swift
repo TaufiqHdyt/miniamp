@@ -69,9 +69,14 @@ final class TrackScheduler {
     /// Frames played since the last reset, from the node's clock. Nil when the engine isn't
     /// rendering, or hasn't rendered since the reset.
     var playedFrames: AVAudioFramePosition? {
-        guard let nodeTime = node.lastRenderTime, nodeTime.isSampleTimeValid,
-              nodeTime.sampleTime != staleRenderTime,
-              let playerTime = node.playerTime(forNodeTime: nodeTime) else { return nil }
+        guard let nodeTime = node.lastRenderTime, nodeTime.isSampleTimeValid else { return nil }
+        if let stale = staleRenderTime {
+            guard nodeTime.sampleTime != stale else { return nil }
+            // It has rendered since the reset. Forget the old time: a clock that restarted at
+            // zero (after an engine reset) would otherwise come back round to it.
+            staleRenderTime = nil
+        }
+        guard let playerTime = node.playerTime(forNodeTime: nodeTime) else { return nil }
         return max(playerTime.sampleTime, 0)
     }
 

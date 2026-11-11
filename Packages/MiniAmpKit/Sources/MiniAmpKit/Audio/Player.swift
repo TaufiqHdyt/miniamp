@@ -727,11 +727,6 @@ public final class Player {
         return AVAudioFramePosition((Double(seconds) + Double(attoseconds) / 1e18) * file.processingFormat.sampleRate)
     }
 
-    /// Connects the player straight to the output node using the file's processing format.
-    ///
-    /// The main mixer is never touched (accessing `mainMixerNode` would insert one), so the only
-    /// conversion left is the output unit's float → device physical format, which is lossless for
-    /// integer sources up to 24 bits. When the device runs at the file's rate, nothing resamples.
     /// Puts the engine's render clock back to zero. Without this it keeps counting across a
     /// stop and start, and a player node reconnected at another sample rate waits for that
     /// clock to catch up: silence that grew with how long the engine had played (seconds,
@@ -740,6 +735,11 @@ public final class Player {
         engine.reset()
     }
 
+    /// Connects the player straight to the output node using the file's processing format.
+    ///
+    /// The main mixer is never touched (accessing `mainMixerNode` would insert one), so the only
+    /// conversion left is the output unit's float → device physical format, which is lossless for
+    /// integer sources up to 24 bits. When the device runs at the file's rate, nothing resamples.
     static func connectBitPerfect(_ node: AVAudioPlayerNode, in engine: AVAudioEngine, format: AVAudioFormat) throws {
         engine.disconnectNodeOutput(node)
         try engine.connectNode(node, to: engine.outputNode, format: format)
