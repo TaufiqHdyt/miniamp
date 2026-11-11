@@ -125,4 +125,20 @@ import Testing
         #expect(playlists.map(\.name) == ["Mix"])
         #expect(playlists.first?.trackCount == 3)
     }
+
+    /// List rows are read by position, so the column list must match the table exactly.
+    @Test func listDecodingMatchesTheTable() throws {
+        let columns = try db.writer.read { try $0.columns(in: "track").map(\.name) }
+        #expect(columns == Track.columnNames, "add new track columns to Track.columnNames and init(row:at:)")
+
+        try db.writer.write { d in
+            try d.execute(sql: """
+                UPDATE track SET genre = 'Jazz', bitsPerSample = 24, artworkKey = 'k', isEvicted = 1, \
+                discNumber = 2, year = 2003 WHERE title = 'Encore'
+                """)
+        }
+        let byName = try db.writer.read { try Track.order(Column("id")).fetchAll($0) }
+        let listed = try db.writer.read { try LibraryQueries.tracks(in: .all, $0) }.map(\.track).sorted { $0.id! < $1.id! }
+        #expect(listed == byName)
+    }
 }

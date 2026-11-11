@@ -270,7 +270,7 @@ public final class LibraryScanner: Sendable {
     }
 
     private static func readLocal(_ file: FileStat, artwork: ArtworkCache?, folderArt: FolderArtMemo) -> Scanned {
-        let url = URL(fileURLWithPath: file.path)
+        let url = URL(fileURLWithPath: file.path, isDirectory: false)
         guard var tags = TagReader.read(url, includeArtwork: artwork != nil) else { return Scanned(stat: file) }
         var key: String?
         if let artwork {
@@ -316,7 +316,7 @@ public final class LibraryScanner: Sendable {
             try db.execute(sql: "UPDATE track SET path = ?, fileSize = ?, modifiedAt = ?, isEvicted = 1 WHERE id = ?",
                            arguments: [file.path, file.size, file.modified, id])
         case .offloaded(nil, let file):
-            let url = URL(fileURLWithPath: file.path)
+            let url = URL(fileURLWithPath: file.path, isDirectory: false)
             var track = Track(folderId: folderId, path: file.path, fileSize: file.size, modifiedAt: file.modified,
                               title: url.deletingPathExtension().lastPathComponent, durationMs: 0, sampleRate: 0,
                               channels: 0, bitrateKbps: 0, codec: url.pathExtension.uppercased(),
@@ -326,7 +326,7 @@ public final class LibraryScanner: Sendable {
     }
 
     private static func makeTrack(_ file: Scanned, _ tags: TrackTags, folderId: Int64, _ db: Database) throws -> Track {
-        let url = URL(fileURLWithPath: file.stat.path)
+        let url = URL(fileURLWithPath: file.stat.path, isDirectory: false)
         let artistId = try artist(named: tags.artist, db)
         let albumArtistId = try tags.albumArtist.nonBlank != nil ? artist(named: tags.albumArtist, db) : artistId
         let albumId = try album(titled: tags.album, artistId: albumArtistId, year: tags.year,
