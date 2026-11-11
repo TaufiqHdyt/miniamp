@@ -16,7 +16,17 @@ public final class Player {
     public private(set) var signalPath: SignalPath?
     /// Set when the device couldn't be configured for the file; playback continues regardless.
     public private(set) var deviceWarning: String?
+    /// The playhead for display: it changes when the whole second does (and on seek, start,
+    /// and stop), not on every tick, since each change re-lays out the views that show it.
+    /// Read `currentTime` for the exact value.
     public private(set) var position: Duration = .zero
+    /// The exact playhead, updated on every tick. Not observable.
+    public var currentTime: Duration { playhead }
+    /// Set false while nothing shows the position (window hidden or covered): `position` then
+    /// stops changing, so nothing re-renders. Setting it true brings `position` up to date.
+    public var updatesPosition = true {
+        didSet { if updatesPosition != oldValue { publishPosition(force: true) } }
+    }
     public private(set) var duration: Duration = .zero
     /// The device playback goes to (or would go to, when stopped).
     public private(set) var outputDevice: AudioDevice?
@@ -66,6 +76,7 @@ public final class Player {
     @ObservationIgnored private var preloadAttempted = false
     /// Last position seen while rendering; used when the engine has already stopped.
     @ObservationIgnored private var lastKnownFrame: AVAudioFramePosition = 0
+    @ObservationIgnored private var playhead: Duration = .zero
     @ObservationIgnored private var scopedURLs: [URL] = []
     @ObservationIgnored private var ticker: Task<Void, Never>?
     @ObservationIgnored private var deviceWatcher: Task<Void, Never>?
@@ -147,7 +158,7 @@ public final class Player {
 
     /// Restarts the current track if it's past the first few seconds, otherwise goes back one.
     public func previous() async throws {
-        if position > Self.restartThreshold || !queue.goBack() {
+        if playhead > Self.restartThreshold || !queue.goBack() {
             seek(to: .zero)
             return
         }
@@ -179,7 +190,8 @@ public final class Player {
         node.pause()
         ticker?.cancel()
         state = .paused
-        Self.log.debug("[\(self.playID)] pause at \(self.position.formatted(), privacy: .public)")
+        if let file = currentFile { setPlayhead(Self.time(lastKnownFrame, file), force: true) }
+        Self.log.debug("[\(self.playID)] pause at \(self.playhead.formatted(), privacy: .public)")
     }
 
     public func resume() throws {
@@ -203,7 +215,7 @@ public final class Player {
         currentFile = nil
         preloadedItem = nil
         lastKnownFrame = 0
-        position = .zero
+        setPlayhead(.zero, force: true)
         state = .stopped
     }
 
@@ -219,11 +231,11 @@ public final class Player {
         preloadedItem = nil
         preloadAttempted = false
         lastKnownFrame = frame
-        position = Self.time(frame, file)
+        setPlayhead(Self.time(frame, file), force: true)
         if state == .playing {
             do { try node.playAudio() } catch { Self.log.error("seek: \(error, privacy: .public)") }
         }
-        Self.log.debug("[\(self.playID)] seek to \(self.position.formatted(), privacy: .public)")
+        Self.log.debug("[\(self.playID)] seek to \(self.playhead.formatted(), privacy: .public)")
     }
 
     // MARK: - Output
@@ -389,7 +401,7 @@ public final class Player {
             deviceWarning = warning
             duration = Self.time(file.length, file)
             lastKnownFrame = frame
-            position = Self.time(frame, file)
+            setPlayhead(Self.time(frame, file), force: true)
             signalPath = SignalPath(file: file, url: url, device: device, engine: engine)
             state = autoplay ? .playing : .paused
             if autoplay { startTicker() }
@@ -477,12 +489,27 @@ public final class Player {
         }
         guard let file = currentFile else { return }
         lastKnownFrame = frame
-        position = Self.time(frame, file)
+        setPlayhead(Self.time(frame, file))
 
-        if !preloadAttempted, duration - position <= Self.preloadLead {
+        if !preloadAttempted, duration - playhead <= Self.preloadLead {
             preloadNext(after: file)
         }
     }
+
+    private func setPlayhead(_ time: Duration, force: Bool = false) {
+        playhead = time
+        publishPosition(force: force)
+    }
+
+    /// Copies the playhead to `position` when the displayed second changes (or when forced).
+    private func publishPosition(force: Bool = false) {
+        guard updatesPosition else { return }
+        if force || Self.wholeSeconds(playhead) != Self.wholeSeconds(position) {
+            position = playhead
+        }
+    }
+
+    static func wholeSeconds(_ time: Duration) -> Int64 { time.components.seconds }
 
     private func preloadNext(after file: AVAudioFile) {
         preloadAttempted = true
@@ -555,7 +582,7 @@ public final class Player {
         let upcoming = queue.upcoming(automatic: true).map { queue.order[$0] }
         if preloadedItem != nil, preloadedItem != upcoming {
             Self.log.debug("[\(self.playID)] queue changed; rescheduling")
-            seek(to: position)
+            seek(to: playhead)
         } else if preloadedItem == nil {
             preloadAttempted = false
         }

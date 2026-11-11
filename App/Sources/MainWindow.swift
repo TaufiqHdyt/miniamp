@@ -83,6 +83,8 @@ struct MainWindow: View {
             Text(app.error ?? "")
         }
         .onChange(of: app.library?.revision) { app.libraryChanged() }
+        // Nobody sees the position while the window is hidden or covered; stop redrawing it.
+        .onWindowVisibilityChange { app.player.updatesPosition = $0 }
         .task { await start() }
     }
 
