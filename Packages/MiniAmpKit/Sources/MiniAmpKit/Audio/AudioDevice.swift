@@ -25,6 +25,30 @@ public struct AudioDevice: Sendable, Hashable, Identifiable {
         (try? HAL.getString(id, .init(kAudioDevicePropertyDeviceUID))) ?? ""
     }
 
+    /// How the device connects, as far as the UI cares.
+    public enum Kind: Sendable {
+        case builtInSpeakers, builtInHeadphones, usb, bluetooth, airPlay, display, virtual, aggregate, other
+    }
+
+    public var kind: Kind {
+        let transport = (try? HAL.get(id, .init(kAudioDevicePropertyTransportType), initial: UInt32(0))) ?? 0
+        switch transport {
+        case kAudioDeviceTransportTypeBuiltIn:
+            // The headphone jack is the same device as the speakers, with a different data source.
+            let source = try? HAL.get(id, .init(kAudioDevicePropertyDataSource, kAudioObjectPropertyScopeOutput),
+                                      initial: UInt32(0))
+            return source == 0x6864_706E /* 'hdpn' */ ? .builtInHeadphones : .builtInSpeakers
+        case kAudioDeviceTransportTypeUSB: return .usb
+        case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE: return .bluetooth
+        case kAudioDeviceTransportTypeAirPlay: return .airPlay
+        case kAudioDeviceTransportTypeHDMI, kAudioDeviceTransportTypeDisplayPort: return .display
+        case kAudioDeviceTransportTypeVirtual: return .virtual
+        // Several devices combined into one, by the user in Audio MIDI Setup or by macOS itself.
+        case kAudioDeviceTransportTypeAggregate, kAudioDeviceTransportTypeAutoAggregate: return .aggregate
+        default: return .other
+        }
+    }
+
     // MARK: Sample rate
 
     public func nominalSampleRate() throws -> Double {

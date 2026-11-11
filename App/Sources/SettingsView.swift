@@ -85,10 +85,8 @@ private struct PlaybackSettings: View {
 
     var body: some View {
         Form {
-            Picker("Output device", selection: Binding(get: { player.preferredDeviceUID }, set: { uid in
-                player.preferredDeviceUID = uid
-                UserDefaults.standard.set(uid, forKey: Preferences.outputDeviceKey)
-            })) {
+            Picker("Output device", selection: Binding(get: { player.preferredDeviceUID },
+                                                       set: { Preferences.setOutputDevice($0, on: player) })) {
                 Text("System default").tag(String?.none)
                 ForEach(player.availableDevices) { device in
                     Text(device.name).tag(Optional(device.uid))

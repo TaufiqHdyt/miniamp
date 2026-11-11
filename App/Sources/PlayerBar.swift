@@ -3,8 +3,8 @@ import MiniAmpKit
 import SwiftUI
 
 /// The strip along the bottom of the window, in three parts: what's playing on the left,
-/// transport and position in the middle (centred on the window), and quality, sleep timer
-/// and volume on the right.
+/// transport and position in the middle (centred on the window), and quality, sleep timer,
+/// volume and output device on the right.
 struct PlayerBar: View {
     let app: AppState
     @State private var current: QueueEntry?
@@ -27,6 +27,7 @@ struct PlayerBar: View {
                 SignalSummary(player: player)
                 SleepTimerButton(timer: app.sleepTimer)
                 VolumeButton(player: player)
+                OutputButton(player: player)
             }
             .frame(minWidth: 180, maxWidth: .infinity, alignment: .trailing)
         }

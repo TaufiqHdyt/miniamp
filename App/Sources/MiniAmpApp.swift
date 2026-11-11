@@ -53,4 +53,11 @@ enum Preferences {
         player.preferredDeviceUID = defaults.string(forKey: outputDeviceKey)
         player.hogMode = defaults.bool(forKey: hogModeKey)
     }
+
+    /// Plays through `uid` (nil follows the system default) and remembers the choice.
+    @MainActor
+    static func setOutputDevice(_ uid: String?, on player: Player) {
+        player.preferredDeviceUID = uid
+        UserDefaults.standard.set(uid, forKey: outputDeviceKey)
+    }
 }
