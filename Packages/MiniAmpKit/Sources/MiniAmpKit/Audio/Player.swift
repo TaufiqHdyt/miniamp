@@ -233,6 +233,9 @@ public final class Player {
 
     private func resolveDevice() throws -> AudioDevice {
         if let uid = preferredDeviceUID, let device = AudioSystem.device(uid: uid) { return device }
+        // Hogging a device makes macOS move the default output elsewhere. That change is ours,
+        // so following it would hop to the other device, hog it, and bounce back forever.
+        if let active = outputDevice, active.hogModeOwner() == getpid(), active.isAlive { return active }
         return try AudioDevice.defaultOutput()
     }
 
