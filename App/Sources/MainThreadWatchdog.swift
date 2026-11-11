@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-/// Debug builds (or any build launched with `-logHangs YES`): logs whenever the main thread goes more than 50 ms without running, which
+/// Debug builds (or any build launched with `-logHangs YES`): logs whenever the main thread is busy for more than 50 ms at a stretch, which
 /// is when scrolling or clicking starts to feel stuck. `log stream --predicate 'category == "hang"'`.
 enum MainThreadWatchdog {
     static let log = Logger(subsystem: "dev.miniamp", category: "hang")
@@ -31,21 +31,31 @@ enum MainThreadWatchdog {
         #endif
     }
 
+    /// Times each pass of the main run loop, from waking to going back to sleep. That is the
+    /// time the main thread was busy, so it reports only real stalls and needs no timer of its
+    /// own. (A sleep-and-check timer reported phantom 100 ms stalls whenever macOS coalesced the
+    /// idle app's timers, and woke it a hundred times a second.)
     @MainActor
     private static func start() {
         isRunning = true
-        Task { @MainActor in
-            let clock = ContinuousClock()
-            var last = clock.now
-            while true {
-                try? await Task.sleep(for: .milliseconds(10))
-                let now = clock.now
-                let stall = now - last - .milliseconds(10)
-                if stall > threshold {
-                    log.notice("main thread stalled \(Int(stall / .milliseconds(1))) ms")
-                }
-                last = now
+        let state = PassStart()
+        let observer = CFRunLoopObserverCreateWithHandler(
+            nil, CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue, true, 0
+        ) { _, activity in
+            let now = ContinuousClock.now
+            if activity == .afterWaiting {
+                state.start = now
+            } else if let start = state.start {
+                state.start = nil
+                let busy = now - start
+                if busy > threshold { log.notice("main thread stalled \(Int(busy / .milliseconds(1))) ms") }
             }
         }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+    }
+
+    /// When the current pass woke up. Touched only on the main thread, by the observer.
+    private final class PassStart: @unchecked Sendable {
+        var start: ContinuousClock.Instant?
     }
 }
