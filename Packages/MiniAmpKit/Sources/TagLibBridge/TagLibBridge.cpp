@@ -1,11 +1,17 @@
 #include "TagLibBridge.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 
+#include <taglib/aifffile.h>
 #include <taglib/aiffproperties.h>
+#include <taglib/id3v2tag.h>
+#include <taglib/mpegfile.h>
+#include <taglib/synchronizedlyricsframe.h>
+#include <taglib/wavfile.h>
 #include <taglib/fileref.h>
 #include <taglib/flacproperties.h>
 #include <taglib/mp4properties.h>
@@ -176,8 +182,76 @@ extern "C" bool ma_taglib_write(const char *path, const MATagEdit *edit) {
     else if (edit->year > 0) map.replace("DATE", TagLib::StringList(TagLib::String::number(edit->year)));
     setNumber(map, "TRACKNUMBER", edit->trackNumber);
     setNumber(map, "DISCNUMBER", edit->discNumber);
+    setText(map, "LYRICS", edit->lyrics);
     ref.setProperties(map);
     return ref.save();
+}
+
+namespace {
+
+TagLib::ID3v2::Tag *id3v2Tag(TagLib::File *file) {
+    if (auto f = dynamic_cast<TagLib::MPEG::File *>(file)) return f->hasID3v2Tag() ? f->ID3v2Tag() : nullptr;
+    if (auto f = dynamic_cast<TagLib::RIFF::WAV::File *>(file)) return f->hasID3v2Tag() ? f->ID3v2Tag() : nullptr;
+    if (auto f = dynamic_cast<TagLib::RIFF::AIFF::File *>(file)) return f->hasID3v2Tag() ? f->tag() : nullptr;
+    return nullptr;
+}
+
+/// The first SYLT frame with millisecond times and some text, as "[mm:ss.xx]line" LRC.
+std::string syncedLyricsAsLRC(TagLib::File *file) {
+    auto tag = id3v2Tag(file);
+    if (!tag) return {};
+    for (auto frame : tag->frameList("SYLT")) {
+        auto sylt = dynamic_cast<TagLib::ID3v2::SynchronizedLyricsFrame *>(frame);
+        if (!sylt || sylt->timestampFormat() != TagLib::ID3v2::SynchronizedLyricsFrame::AbsoluteMilliseconds) continue;
+        std::string lrc;
+        for (const auto &line : sylt->synchedText()) {
+            const unsigned int ms = line.time;
+            char stamp[32];
+            std::snprintf(stamp, sizeof(stamp), "[%02u:%02u.%02u]", ms / 60000, ms / 1000 % 60, ms % 1000 / 10);
+            std::string text = line.text.to8Bit(true);
+            // Some taggers start each line with a newline instead of ending the last one.
+            while (!text.empty() && (text.front() == '\n' || text.front() == '\r')) text.erase(0, 1);
+            lrc += stamp + text + "\n";
+        }
+        if (!lrc.empty()) return lrc;
+    }
+    return {};
+}
+
+std::string joined(const TagLib::StringList &list) {
+    std::string out;
+    for (const auto &s : list) {
+        if (!out.empty()) out += "\n";
+        out += s.to8Bit(true);
+    }
+    return out;
+}
+
+/// The LYRICS property; ID3 USLT frames with a description come as "LYRICS:<description>".
+std::string unsyncedLyrics(const TagLib::PropertyMap &map) {
+    for (const auto &[key, values] : map) {
+        if (key == "LYRICS" && !values.isEmpty()) return joined(values);
+    }
+    for (const auto &[key, values] : map) {
+        if (key.startsWith("LYRICS:") && !values.isEmpty()) return joined(values);
+    }
+    for (const char *key : {"UNSYNCEDLYRICS", "UNSYNCED LYRICS"}) {
+        auto it = map.find(key);
+        if (it != map.end() && !it->second.isEmpty()) return joined(it->second);
+    }
+    return {};
+}
+
+} // namespace
+
+extern "C" char *ma_taglib_lyrics(const char *path) {
+    if (!path) return nullptr;
+    TagLib::FileRef ref(path, false);
+    if (ref.isNull()) return nullptr;
+    std::string text = syncedLyricsAsLRC(ref.file());
+    if (text.empty()) text = unsyncedLyrics(ref.properties());
+    if (text.find_first_not_of(" \t\r\n") == std::string::npos) return nullptr;
+    return strdup(text.c_str());
 }
 
 extern "C" const char *ma_taglib_version(void) {

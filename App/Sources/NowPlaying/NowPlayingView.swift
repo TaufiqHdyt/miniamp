@@ -17,7 +17,7 @@ struct NowPlayingView: View {
         VStack(spacing: 0) {
             if let url = player.queue.current {
                 let entry = entries[url] ?? QueueEntry(fileName: url)
-                CurrentTrack(entry: entry, artwork: app.library?.artwork)
+                CurrentTrack(entry: entry, artwork: app.library?.artwork, compact: app.inspectorPane == .lyrics)
                     .padding([.horizontal, .top], 16)
                 if let path = player.signalPath {
                     QualityBadge(path: path).padding(.vertical, 10)
@@ -31,33 +31,33 @@ struct NowPlayingView: View {
             }
             Divider()
             HStack {
-                Text("Up Next").font(.headline)
+                Picker("Show", selection: Binding(get: { app.inspectorPane }, set: { app.inspectorPane = $0 })) {
+                    Text("Up Next").tag(InspectorPane.upNext)
+                    Text("Lyrics").tag(InspectorPane.lyrics)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
                 Spacer()
-                if player.queue.isShuffled { Image(systemName: "shuffle").foregroundStyle(.secondary).help("Shuffled") }
-                if player.repeatMode != .off {
-                    Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat").foregroundStyle(.secondary)
-                        .help(player.repeatMode == .one ? "Repeating one" : "Repeating all")
+                if app.inspectorPane == .upNext {
+                    if player.queue.isShuffled { Image(systemName: "shuffle").foregroundStyle(.secondary).help("Shuffled") }
+                    if player.repeatMode != .off {
+                        Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat").foregroundStyle(.secondary)
+                            .help(player.repeatMode == .one ? "Repeating one" : "Repeating all")
+                    }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            List {
-                ForEach(upcoming, id: \.position) { row in
-                    let url = player.queue.items[row.item]
-                    UpNextRow(entry: entries[url] ?? QueueEntry(fileName: url))
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2) { app.perform { try await player.jump(toItem: row.item) } }
+            if app.inspectorPane == .lyrics {
+                if let url = player.queue.current {
+                    LyricsView(app: app, url: url).id(url)
+                } else {
+                    Spacer()
                 }
-                let remaining = remainingCount(player.queue, shown: upcoming.count)
-                if remaining > 0 {
-                    Text("and \(remaining) more").foregroundStyle(.secondary).font(.callout)
-                }
-                if upcoming.isEmpty && !player.queue.isEmpty {
-                    Text(player.repeatMode == .off ? "This is the last song." : "The queue starts over.")
-                        .foregroundStyle(.secondary).font(.callout)
-                }
+            } else {
+                upNext(upcoming)
             }
-            .listStyle(.plain)
         }
         // Read the tags of what's shown when the queue moves, or when the library changes (a retag).
         .task(id: Shown(urls: [player.queue.current].compactMap { $0 } + upcoming.map { player.queue.items[$0.item] },
@@ -77,6 +77,27 @@ struct NowPlayingView: View {
                 entries.merge(loaded) { _, new in new }
             }
         }
+    }
+
+    private func upNext(_ upcoming: [Row]) -> some View {
+        let player = app.player
+        return List {
+            ForEach(upcoming, id: \.position) { row in
+                let url = player.queue.items[row.item]
+                UpNextRow(entry: entries[url] ?? QueueEntry(fileName: url))
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) { app.perform { try await player.jump(toItem: row.item) } }
+            }
+            let remaining = remainingCount(player.queue, shown: upcoming.count)
+            if remaining > 0 {
+                Text("and \(remaining) more").foregroundStyle(.secondary).font(.callout)
+            }
+            if upcoming.isEmpty && !player.queue.isEmpty {
+                Text(player.repeatMode == .off ? "This is the last song." : "The queue starts over.")
+                    .foregroundStyle(.secondary).font(.callout)
+            }
+        }
+        .listStyle(.plain)
     }
 
     private struct Row { var position: Int; var item: Int }
@@ -102,12 +123,14 @@ struct NowPlayingView: View {
 private struct CurrentTrack: View {
     let entry: QueueEntry
     let artwork: ArtworkCache?
+    /// Smaller cover art, leaving the room to the lyrics.
+    var compact = false
 
     var body: some View {
         VStack(spacing: 10) {
             ArtworkView(key: entry.artworkKey, artwork: artwork,
                         fileURL: entry.inLibrary ? nil : entry.url, size: .large, cornerRadius: 8)
-                .frame(maxWidth: 360)
+                .frame(maxWidth: compact ? 140 : 360)
                 .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
             VStack(spacing: 3) {
                 Text(entry.title).font(.title3.bold()).multilineTextAlignment(.center)

@@ -67,4 +67,12 @@ public enum TagReader {
             replayGain: replayGain
         )
     }
+
+    /// The file's embedded lyrics as text (synced ID3 SYLT frames come back as LRC), or nil.
+    public static func lyrics(_ url: URL) -> String? {
+        let text = url.withUnsafeFileSystemRepresentation { path in path.flatMap { ma_taglib_lyrics($0) } }
+        guard let text else { return nil }
+        defer { free(text) }
+        return String(cString: text)
+    }
 }

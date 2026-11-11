@@ -52,8 +52,9 @@ final class TestFolder {
 
 /// Just enough ID3v2.3 to tag test files.
 enum ID3 {
-    static func tag(_ frames: [(String, String)], picture: Data? = nil) -> Data {
+    static func tag(_ frames: [(String, String)], picture: Data? = nil, raw: [(String, Data)] = []) -> Data {
         var body = Data()
+        for (id, content) in raw { body += frame(id, content) }
         for (id, text) in frames {
             // Encoding 1: UTF-16 with a byte-order mark.
             var content = Data([1, 0xFF, 0xFE])

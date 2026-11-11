@@ -27,6 +27,19 @@ final class AppState {
         didSet { UserDefaults.standard.set(showsNowPlaying, forKey: "showsNowPlaying") }
     }
 
+    /// What the inspector shows under the cover. Remembered across launches.
+    var inspectorPane = InspectorPane(rawValue: UserDefaults.standard.string(forKey: "inspectorPane") ?? "") ?? .upNext {
+        didSet { UserDefaults.standard.set(inspectorPane.rawValue, forKey: "inspectorPane") }
+    }
+
+    /// Ask LRCLIB for lyrics when a song has none of its own. Off until turned on: it sends
+    /// what's playing (title, artist, album, duration) to lrclib.net.
+    var looksUpLyricsOnline = UserDefaults.standard.bool(forKey: "looksUpLyricsOnline") {
+        didSet { UserDefaults.standard.set(looksUpLyricsOnline, forKey: "looksUpLyricsOnline") }
+    }
+
+    @ObservationIgnored let lyricsFinder: LyricsFinder
+
     var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
     /// An offloaded track that was double-clicked: it plays, with the list it was in, once it's downloaded.
     private(set) var waitingToPlay: (id: TrackInfo.ID, list: [TrackInfo])?
@@ -46,6 +59,8 @@ final class AppState {
         self.player = player
         self.library = library
         sleepTimer = SleepTimer(player: player)
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        lyricsFinder = LyricsFinder(database: library?.database, client: LRCLIB(userAgent: "miniamp/\(version)"))
         systemNowPlaying = SystemNowPlaying(app: self)
         if let library {
             playHistory = PlayHistory(player: player, database: library.database)
@@ -158,6 +173,13 @@ final class AppState {
         }
     }
 
+    // MARK: Lyrics
+
+    func showLyrics() {
+        showsNowPlaying = true
+        inspectorPane = .lyrics
+    }
+
     // MARK: Equalizer
 
     /// The window that was in front when the Equalizer opened (Settings, say). When the
@@ -222,6 +244,10 @@ final class AppState {
         }
         perform { try await library.editTags(of: tracks.map(\.track), changes, openFiles: open) }
     }
+}
+
+enum InspectorPane: String {
+    case upNext, lyrics
 }
 
 /// The tracks a Get Info sheet edits.

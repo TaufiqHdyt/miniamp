@@ -25,6 +25,10 @@ struct AppCommands: Commands {
         CommandGroup(before: .sidebar) {
             Button(app.showsNowPlaying ? "Hide Now Playing" : "Show Now Playing") { app.showsNowPlaying.toggle() }
                 .keyboardShortcut("i", modifiers: [.command, .option])
+            Button("Show Lyrics") { app.showLyrics() }
+                .keyboardShortcut("l", modifiers: [.command, .option])
+            Button("Listening Stats") { app.sidebarRequest = .stats }
+                .disabled(app.library == nil)
             Divider()
         }
         CommandMenu("Controls") {

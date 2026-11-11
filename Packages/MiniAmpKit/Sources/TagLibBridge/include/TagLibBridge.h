@@ -47,10 +47,16 @@ typedef struct {
     int year;
     int trackNumber;
     int discNumber;
+    const char *lyrics; // unsynced lyrics (LRC text is fine): USLT, LYRICS, or ©lyr, by format
 } MATagEdit;
 
 /// Writes the changes into the file, in place. Returns false if the file can't be opened or saved.
 bool ma_taglib_write(const char *path, const MATagEdit *edit);
+/// The embedded lyrics, or NULL if there are none. An ID3v2 SYLT frame (synced lyrics) comes
+/// back as LRC text; otherwise it's the LYRICS tag (ID3 USLT, Vorbis LYRICS, MP4 ©lyr, APE),
+/// falling back to UNSYNCEDLYRICS. Release with free().
+char *ma_taglib_lyrics(const char *path);
+
 const char *ma_taglib_version(void);
 
 #ifdef __cplusplus

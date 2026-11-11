@@ -141,4 +141,20 @@ enum Schema {
             UPDATE track SET modifiedAt = 0;
             """)
     }
+
+    /// Lyrics from LRCLIB, one row per track asked about: what it returned, or that it had
+    /// nothing (`lrclibId` NULL), so the next play doesn't ask again. Lyrics that come with
+    /// the file (a sidecar .lrc or the tags) are read from it each time and never stored.
+    static func v3(_ db: Database) throws {
+        try db.execute(sql: """
+            CREATE TABLE onlineLyrics (
+                trackId INTEGER PRIMARY KEY REFERENCES track(id) ON DELETE CASCADE,
+                lrclibId INTEGER,                   -- NULL when LRCLIB had nothing
+                syncedLyrics TEXT,
+                plainLyrics TEXT,
+                instrumental BOOLEAN NOT NULL DEFAULT 0,
+                fetchedAt DATETIME NOT NULL
+            );
+            """)
+    }
 }

@@ -16,6 +16,9 @@ options:
   --dsp            DSP mode instead of bit-perfect
   --eq PRESET      DSP mode with this EQ preset (Flat, Rock, Bass Boost, …)
   --gain DB        DSP mode, turned up or down by DB (as a preamp)
+  --lyrics         print each line of the track's synced lyrics (.lrc or tags) as it's reached
+       miniampctl lyrics [--online] <file>   show a file's lyrics and where they came from
+                                             (--online asks LRCLIB when the file has none)
        miniampctl library ...        scan, search, and watch a library (miniampctl library for help)
 """
 
@@ -58,6 +61,7 @@ func play(_ args: [String]) async throws {
     var shuffle = false
     var dsp = false
     var preset: Equalizer.Preset?
+    var showsLyrics = false
     var gain: Float = 0
     var it = args.makeIterator()
     while let arg = it.next() {
@@ -69,6 +73,7 @@ func play(_ args: [String]) async throws {
         case "--repeat": repeatMode = it.next().flatMap(PlayQueue<URL>.Repeat.init(rawValue:)) ?? .off
         case "--shuffle": shuffle = true
         case "--dsp": dsp = true
+        case "--lyrics": showsLyrics = true
         case "--eq":
             let name = it.next() ?? ""
             guard let match = Equalizer.Preset.all.first(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) else {
@@ -114,6 +119,28 @@ func play(_ args: [String]) async throws {
         print("\(stamp())   hog owner: \(device.hogModeOwner().map(String.init) ?? "none") (this process: \(getpid()))")
     }
 
+    // Lyrics follow the player the way the app's Lyrics pane does: a line prints when the
+    // follower moves to it, with where the player really is at that moment.
+    let follower = showsLyrics ? LyricsFollower(player: player) : nil
+    var lyricsURL: URL?
+    var lastLine: Int?
+    func followLyrics() async {
+        guard let follower else { return }
+        if player.queue.current != lyricsURL, let url = player.queue.current {
+            lyricsURL = url
+            let found = await LocalLyrics.find(for: url)
+            follower.lyrics = found?.lyrics
+            lastLine = nil
+            print("\(stamp())   lyrics: \(found.map { "\($0.lyrics.lines.count) lines, \($0.lyrics.isSynced ? "synced" : "plain")" } ?? "none")")
+        }
+        if let line = follower.position.line, line != lastLine, let lyrics = follower.lyrics {
+            lastLine = line
+            let due = lyrics.lines[line].time ?? .zero
+            print("\(stamp())   ♪ [\(secondsString(due))] \(lyrics.lines[line].text)  (player at \(secondsString(player.exactTime)))")
+        }
+    }
+    await followLyrics()
+
     if let seek {
         try await Task.sleep(for: .milliseconds(500))
         player.seek(to: .seconds(seek))
@@ -125,6 +152,7 @@ func play(_ args: [String]) async throws {
     while player.state != .stopped {
         if let deadline, Date() >= deadline { break }
         try await Task.sleep(for: .milliseconds(50))
+        await followLyrics()
         if player.signalPath != lastPath || player.state != lastState {
             lastPath = player.signalPath
             lastState = player.state
@@ -134,6 +162,35 @@ func play(_ args: [String]) async throws {
     let device = player.outputDevice
     player.stop()
     print("\(stamp()) ■ stopped; device \(device?.name ?? "?") at \(FormatSelection.formatRate((try? device?.nominalSampleRate()) ?? 0)), hog owner after stop: \(device?.hogModeOwner().map(String.init) ?? "none")")
+}
+
+@MainActor
+func showLyrics(_ args: [String]) async throws {
+    let online = args.contains("--online")
+    guard let path = args.first(where: { $0 != "--online" }) else { print(usage); exit(64) }
+    let finder = LyricsFinder(database: nil, client: online ? LRCLIB(userAgent: "miniampctl") : nil)
+    switch try await finder.find(for: URL(fileURLWithPath: path), online: online ? .refresh : .off) {
+    case .notFound(let searched):
+        print(searched ? "no lyrics (LRCLIB has none either)" : "no lyrics")
+    case .found(let found):
+        let source = switch found.source {
+        case .sidecar(let url): url.lastPathComponent
+        case .embedded: "the file's tags"
+        case .lrclib(let id): "LRCLIB #\(id)"
+        }
+        let lyrics = found.lyrics
+        print("from \(source): \(lyrics.isInstrumental ? "instrumental" : "\(lyrics.lines.count) lines"), "
+              + "\(lyrics.isSynced ? lyrics.hasWordTiming ? "synced by word" : "synced" : "plain")")
+        for (key, value) in lyrics.metadata.sorted(by: { $0.key < $1.key }) { print("  [\(key)] \(value)") }
+        for line in lyrics.lines {
+            print(line.time.map { "  \(secondsString($0).leftPad(7))  " } ?? "  ", terminator: "")
+            print(line.text.isEmpty ? "♪" : line.text)
+        }
+    }
+}
+
+extension String {
+    func leftPad(_ width: Int) -> String { String(repeating: " ", count: max(0, width - count)) + self }
 }
 
 // Line-buffered even into a pipe, so progress shows up as it happens.
@@ -148,6 +205,8 @@ do {
         try await play(Array(args.dropFirst()))
     case "library":
         try await libraryCommand(Array(args.dropFirst()))
+    case "lyrics" where args.count >= 2:
+        try await showLyrics(Array(args.dropFirst()))
     case "leaktest" where args.count >= 2:
         try await leakTest(args[1])
     case "volume":

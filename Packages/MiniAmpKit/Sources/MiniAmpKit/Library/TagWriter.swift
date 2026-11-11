@@ -12,9 +12,12 @@ public struct TagChanges: Sendable, Equatable {
     public var year: Int?
     public var trackNumber: Int?
     public var discNumber: Int?
+    /// Unsynced lyrics; LRC text works too, since it's read back through the LRC parser.
+    public var lyrics: String?
 
     public init(title: String? = nil, artist: String? = nil, album: String? = nil, albumArtist: String? = nil,
-                genre: String? = nil, year: Int? = nil, trackNumber: Int? = nil, discNumber: Int? = nil) {
+                genre: String? = nil, year: Int? = nil, trackNumber: Int? = nil, discNumber: Int? = nil,
+                lyrics: String? = nil) {
         self.title = title
         self.artist = artist
         self.album = album
@@ -23,6 +26,7 @@ public struct TagChanges: Sendable, Equatable {
         self.year = year
         self.trackNumber = trackNumber
         self.discNumber = discNumber
+        self.lyrics = lyrics
     }
 
     public var isEmpty: Bool { self == TagChanges() }
@@ -63,11 +67,13 @@ public enum TagWriter {
                     withText(changes.album) { album in
                         withText(changes.albumArtist) { albumArtist in
                             withText(changes.genre) { genre in
-                                var edit = MATagEdit(
-                                    title: title, artist: artist, album: album, albumArtist: albumArtist, genre: genre,
-                                    year: number(changes.year), trackNumber: number(changes.trackNumber),
-                                    discNumber: number(changes.discNumber))
-                                return ma_taglib_write(path, &edit)
+                                withText(changes.lyrics) { lyrics in
+                                    var edit = MATagEdit(
+                                        title: title, artist: artist, album: album, albumArtist: albumArtist, genre: genre,
+                                        year: number(changes.year), trackNumber: number(changes.trackNumber),
+                                        discNumber: number(changes.discNumber), lyrics: lyrics)
+                                    return ma_taglib_write(path, &edit)
+                                }
                             }
                         }
                     }

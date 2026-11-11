@@ -9,6 +9,7 @@ usage: miniampctl library scan <folder>... [--db PATH] [--no-artwork]
        miniampctl library stats [--db PATH]
        miniampctl library browse [--db PATH]    time the queries the window runs (median of 5)
        miniampctl library history [--db PATH]   the last 50 plays
+       miniampctl library recap [YEAR] [--db PATH]   listening stats for a year, or all time
 The database defaults to $TMPDIR/miniampctl/library.sqlite, with thumbnails in artwork/ beside it.
 """
 
@@ -88,6 +89,11 @@ func libraryCommand(_ args: [String]) async throws {
             print("\(when)  \(listened)  \(info.track.title) · \(info.artistName ?? "?")")
         }
         print("\(plays.count) play\(plays.count == 1 ? "" : "s")")
+    case "recap":
+        let library = try options.open()
+        let year = options.rest.first.flatMap(Int.init)
+        let stats = try await library.database.writer.read { try ListeningStats.compute(year: year, $0) }
+        printRecap(stats)
     default:
         print(libraryUsage)
         exit(64)
@@ -183,6 +189,26 @@ private func printStats(_ database: AppDatabase, path: String) async throws {
     let bytes = ["", "-wal"].compactMap { try? FileManager.default.attributesOfItem(atPath: path + $0)[.size] as? Int }.reduce(0, +)
     print("library: \(counts.0) tracks, \(counts.1) albums, \(counts.2) artists, \(counts.3) cover images, \(counts.4 / 3_600_000) h of audio")
     print(String(format: "database: %.1f MB at %@", Double(bytes) / 1_048_576, path))
+}
+
+private func printRecap(_ stats: ListeningStats) {
+    let period = stats.year.map(String.init) ?? "all time"
+    guard !stats.isEmpty else { print("no plays in \(period)"); return }
+    func time(_ d: Duration) -> String { d.formatted(.units(allowed: [.hours, .minutes], width: .abbreviated)) }
+    print("\(period): \(time(stats.listened)) over \(stats.plays) plays; \(stats.tracks) songs, \(stats.artists) artists, "
+          + "\(stats.albums) albums\(stats.newArtists.map { ", \($0) new artists" } ?? ""); longest streak \(stats.longestStreak) days")
+    if let day = stats.busiestDay { print("busiest day: \(day.start.formatted(date: .abbreviated, time: .omitted)), \(time(day.listened))") }
+    print("top songs:")
+    for r in stats.topTracks { print("  \(r.plays)×  \(r.item.track.title) · \(r.item.artistName ?? "?")") }
+    print("top artists:")
+    for r in stats.topArtists { print("  \(r.plays)×  \(r.item)  (\(time(r.listened)))") }
+    print("top albums:")
+    for r in stats.topAlbums { print("  \(r.plays)×  \(r.item.title) · \(r.item.artist ?? "?")") }
+    print(stats.year == nil ? "by year:" : "by month:")
+    for b in stats.timeline {
+        let label = b.start.formatted(stats.year == nil ? .dateTime.year() : .dateTime.month(.abbreviated))
+        print("  \(label)  \(time(b.listened))")
+    }
 }
 
 private func describe(_ p: ScanProgress) -> String {

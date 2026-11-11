@@ -21,6 +21,8 @@ targets:
         com.apple.security.app-sandbox: true
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.files.bookmarks.app-scope: true
+        # LRCLIB lyrics lookups (off until turned on in Settings, or asked for per song).
+        com.apple.security.network.client: true
     settings:
       base:
         PRODUCT_NAME: miniamp

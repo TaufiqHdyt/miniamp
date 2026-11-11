@@ -20,7 +20,7 @@ A native macOS music player for a local library. It plays FLAC, MP3, ALAC, and A
 
 ## Milestones
 
-M1 to M6 are done, so the app is usable day to day. M7 is next.
+M1 to M7 are done, so the app is usable day to day. What's left is in M8.
 
 ### M1: Playback proof of concept
 
@@ -91,11 +91,11 @@ This carries most of the technical risk, so it comes first.
 
 ### M7: Lyrics and listening stats
 
-- [ ] LRC parser, including word-timed enhanced LRC
-- [ ] Embedded lyrics and sidecar `.lrc` files
-- [ ] Synced lyrics view that follows playback position
-- [ ] Online lookup through LRCLIB for tracks with no lyrics
-- [ ] Listening stats and a yearly recap with Swift Charts
+- [x] LRC parser, including word-timed enhanced LRC
+- [x] Embedded lyrics and sidecar `.lrc` files
+- [x] Synced lyrics view that follows playback position
+- [x] Online lookup through LRCLIB for tracks with no lyrics
+- [x] Listening stats and a yearly recap with Swift Charts
 
 **Done when:** a track with a sidecar `.lrc` scrolls in sync, including after a seek.
 

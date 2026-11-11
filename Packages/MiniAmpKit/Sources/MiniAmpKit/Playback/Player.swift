@@ -26,6 +26,12 @@ public final class Player {
     public private(set) var position: Duration = .zero
     /// The exact playhead, updated on every tick. Not observable.
     public var currentTime: Duration { playhead }
+    /// The playhead now, read from the render clock rather than the last tick (ticks are a
+    /// second apart). For things that follow playback closely, like synced lyrics.
+    public var exactTime: Duration {
+        guard let file = currentFile else { return playhead }
+        return Self.time(currentFrame(), file)
+    }
     /// Set false while nothing shows the position (window hidden or covered): `position` then
     /// stops changing, so nothing re-renders. Setting it true brings `position` up to date.
     public var updatesPosition = true {
