@@ -1,0 +1,45 @@
+name: MiniAmp
+options:
+  bundleIdPrefix: dev.miniamp
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+packages:
+  MiniAmpKit:
+    path: Packages/MiniAmpKit
+targets:
+  miniamp:
+    type: application
+    platform: macOS
+    sources:
+      - App/Sources
+    dependencies:
+      - package: MiniAmpKit
+    entitlements:
+      path: App/miniamp.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.files.bookmarks.app-scope: true
+    settings:
+      base:
+        PRODUCT_NAME: miniamp
+        PRODUCT_BUNDLE_IDENTIFIER: dev.miniamp.app
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: miniamp
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.music
+        # Local development: ad-hoc signing. Hardened runtime is off because
+        # TagLib is linked from Homebrew for now (see README).
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: NO
+schemes:
+  miniamp:
+    build:
+      targets:
+        miniamp: all
+    run:
+      config: Debug
