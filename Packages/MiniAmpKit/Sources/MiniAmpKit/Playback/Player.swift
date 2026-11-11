@@ -11,11 +11,11 @@ import os
 public final class Player {
     public enum State: Sendable { case stopped, preparing, playing, paused }
 
-    public private(set) var state: State = .stopped
-    public private(set) var queue = PlayQueue<URL>()
-    public private(set) var signalPath: SignalPath?
+    public internal(set) var state: State = .stopped
+    public internal(set) var queue = PlayQueue<URL>()
+    public internal(set) var signalPath: SignalPath?
     /// Set when the device couldn't be configured for the file; playback continues regardless.
-    public private(set) var deviceWarning: String?
+    public internal(set) var deviceWarning: String?
     /// The playhead for display: it changes when the whole second does (and on seek, start,
     /// and stop), not on every tick, since each change re-lays out the views that show it.
     /// Read `currentTime` for the exact value.
@@ -27,12 +27,12 @@ public final class Player {
     public var updatesPosition = true {
         didSet { if updatesPosition != oldValue { publishPosition(force: true) } }
     }
-    public private(set) var duration: Duration = .zero
+    public internal(set) var duration: Duration = .zero
     /// Goes up by one on every seek, so observers that only sync the playhead now and then
     /// (Control Center) know when it jumped.
     public private(set) var seekCount = 0
     /// The device playback goes to (or would go to, when stopped).
-    public private(set) var outputDevice: AudioDevice?
+    public internal(set) var outputDevice: AudioDevice?
     public private(set) var availableDevices: [AudioDevice] = []
     /// The output device's own volume, 0...1; nil when it has no volume control.
     public private(set) var volume: Float?
@@ -65,36 +65,38 @@ public final class Player {
     /// Called when playback stopped because of `stopsAfterCurrentTrack`.
     @ObservationIgnored public var onStoppedAfterTrack: (@MainActor () -> Void)?
 
+    // Members without `private` are used by the engine setup in Player+Engine.swift.
+
     /// Renders on demand (manual rendering mode): decoding, scheduling, and any resampling.
-    @ObservationIgnored private let engine = AVAudioEngine()
-    @ObservationIgnored private let node = AVAudioPlayerNode()
+    @ObservationIgnored let engine = AVAudioEngine()
+    @ObservationIgnored let node = AVAudioPlayerNode()
     /// The hardware output, owned by us and bound to one device. Nil only if Core Audio
     /// can't create an output unit at all.
-    @ObservationIgnored private let output = try? HALOutput()
+    @ObservationIgnored let output = try? HALOutput()
     /// The device rate playback was set up for; a different rate means someone else changed it.
-    @ObservationIgnored private var expectedDeviceRate: Double = 0
-    @ObservationIgnored private var activeDeviceWatcher: Task<Void, Never>?
-    @ObservationIgnored private let scheduler: TrackScheduler
+    @ObservationIgnored var expectedDeviceRate: Double = 0
+    @ObservationIgnored var activeDeviceWatcher: Task<Void, Never>?
+    @ObservationIgnored let scheduler: TrackScheduler
     /// Bumped on every start/stop so superseded requests are ignored.
-    @ObservationIgnored private var generation = 0
+    @ObservationIgnored var generation = 0
     /// Counts start requests, for readable traces: "[3] open …" … "[3] stop".
-    @ObservationIgnored private var playID = 0
-    @ObservationIgnored private var currentFile: AVAudioFile?
+    @ObservationIgnored var playID = 0
+    @ObservationIgnored var currentFile: AVAudioFile?
     /// Node start time of the segment that's currently playing.
-    @ObservationIgnored private var currentNodeStart: AVAudioFramePosition = 0
+    @ObservationIgnored var currentNodeStart: AVAudioFramePosition = 0
     /// Item index scheduled after the current one, if any.
-    @ObservationIgnored private var preloadedItem: Int?
-    @ObservationIgnored private var preloadAttempted = false
+    @ObservationIgnored var preloadedItem: Int?
+    @ObservationIgnored var preloadAttempted = false
     /// Last position seen while rendering; used when the engine has already stopped.
-    @ObservationIgnored private var lastKnownFrame: AVAudioFramePosition = 0
+    @ObservationIgnored var lastKnownFrame: AVAudioFramePosition = 0
     @ObservationIgnored private var playhead: Duration = .zero
     @ObservationIgnored private var scopedURLs: [URL] = []
-    @ObservationIgnored private var ticker: Task<Void, Never>?
+    @ObservationIgnored var ticker: Task<Void, Never>?
     @ObservationIgnored private var deviceWatcher: Task<Void, Never>?
     @ObservationIgnored private var volumeWatcher: Task<Void, Never>?
     @ObservationIgnored private var volumeDevice: AudioDevice?
     /// Name of `outputDevice`, kept because it can't be read once the device is unplugged.
-    @ObservationIgnored private var outputDeviceName = ""
+    @ObservationIgnored var outputDeviceName = ""
 
     /// How long before a track ends the next one is opened and scheduled.
     static let preloadLead: Duration = .seconds(5)
@@ -262,7 +264,7 @@ public final class Player {
         volume = device.volume()
     }
 
-    private func resolveDevice() throws -> AudioDevice {
+    func resolveDevice() throws -> AudioDevice {
         if let uid = preferredDeviceUID, let device = AudioSystem.device(uid: uid) { return device }
         // Hogging a device makes macOS move the default output elsewhere. That change is ours,
         // so following it would hop to the other device, hog it, and bounce back forever.
@@ -270,7 +272,7 @@ public final class Player {
         return try AudioDevice.defaultOutput()
     }
 
-    private func watchVolume(_ device: AudioDevice) {
+    func watchVolume(_ device: AudioDevice) {
         volume = device.volume()
         guard device != volumeDevice else { return }
         volumeDevice = device
@@ -284,7 +286,7 @@ public final class Player {
     }
 
     /// Watches the device we're playing to for removal or a rate change made elsewhere.
-    private func watchActiveDevice(_ device: AudioDevice) {
+    func watchActiveDevice(_ device: AudioDevice) {
         activeDeviceWatcher?.cancel()
         activeDeviceWatcher = Task { [weak self] in
             let changes = HAL.changes(device.id, [
@@ -344,217 +346,10 @@ public final class Player {
         try await start(position: position, frame: frame, autoplay: autoplay, keepDeviceRate: keepDeviceRate)
     }
 
-    // MARK: - Engine
-
-    /// Opens the item at `position`, configures the device for it, and starts the graph.
-    /// `keepDeviceRate` leaves the device at whatever rate it has (resampling if needed).
-    private func start(position p: Int, frame: AVAudioFramePosition, autoplay: Bool,
-                       keepDeviceRate: Bool = false) async throws {
-        generation += 1
-        let gen = generation
-        playID += 1
-        let id = playID
-        let item = queue.order[p]
-        let url = queue.items[item]
-        let wasPlaying = state == .playing
-        ticker?.cancel()
-        state = .preparing
-
-        do {
-            let file = try AVAudioFile(forReading: url)
-            let device = try resolveDevice()
-            Self.log.debug("[\(id)] open \(url.lastPathComponent, privacy: .public): \(file.fileFormat, privacy: .public), \(file.length) frames")
-
-            if autoplay, wasPlaying, canSwapInPlace(file: file, device: device, keepDeviceRate: keepDeviceRate) {
-                do {
-                    try swapInPlace(file: file, item: item, frame: frame)
-                    queue.move(toPosition: p)
-                    finishStart(file: file, url: url, device: device, frame: frame, autoplay: true, id: id)
-                    Self.log.debug("[\(id)] swapped in place; output kept running")
-                    return
-                } catch {
-                    Self.log.notice("[\(id)] swap in place failed, setting up from scratch: \(error, privacy: .public)")
-                }
-            }
-
-            // The engine is stopped here, so the device can change rate without
-            // pulling the output unit's format out from under a running graph.
-            activeDeviceWatcher?.cancel()
-            output?.stop()
-            scheduler.reset()
-            engine.stop()
-            if let old = outputDevice, old != device { releaseHogMode(old) }
-
-            var warning: String?
-            do {
-                expectedDeviceRate = try await DeviceConfigurator.configure(
-                    device, sampleRate: file.fileFormat.sampleRate, hogMode: hogMode, keepRate: keepDeviceRate)
-            } catch {
-                warning = "\(error)"
-                Self.log.error("[\(id)] device setup failed: \(warning ?? "", privacy: .public)")
-            }
-            guard gen == generation else {
-                Self.log.debug("[\(id)] superseded during device setup")
-                return
-            }
-
-            queue.move(toPosition: p)
-            currentFile = file
-            preloadedItem = nil
-            preloadAttempted = false
-
-            // Right after hog mode or a format change the device restarts, and the output unit
-            // can briefly report a configuration change or an invalid hardware format. Those
-            // settle within a few hundred milliseconds, so retry them; anything else is real.
-            var attempt = 1
-            while true {
-                do {
-                    try startGraph(file: file, device: device, item: item, frame: frame, autoplay: autoplay, id: id)
-                    break
-                } catch let error as NSError where Self.isTransientStartError(error) && attempt < 4 {
-                    Self.log.notice("[\(id)] device still settling (attempt \(attempt)): \(error.userInfo, privacy: .public)")
-                    attempt += 1
-                    try await Task.sleep(for: .milliseconds(150))
-                    guard gen == generation else { return }
-                }
-            }
-
-            outputDevice = device
-            outputDeviceName = device.name
-            watchVolume(device)
-            watchActiveDevice(device)
-            deviceWarning = warning
-            finishStart(file: file, url: url, device: device, frame: frame, autoplay: autoplay, id: id)
-        } catch {
-            Self.log.error("[\(id)] play failed: \(error, privacy: .public)")
-            if gen == generation { state = .stopped }
-            throw error
-        }
-    }
-
-    private func finishStart(file: AVAudioFile, url: URL, device: AudioDevice, frame: AVAudioFramePosition,
-                             autoplay: Bool, id: Int) {
-        duration = Self.time(file.length, file)
-        lastKnownFrame = frame
-        setPlayhead(Self.time(frame, file), force: true)
-        signalPath = SignalPath(file: file, url: url, device: device, engine: engine)
-        state = autoplay ? .playing : .paused
-        if autoplay { startTicker() }
-        if let signalPath { Self.log.info("[\(id)] \(signalPath.summary, privacy: .public)") }
-    }
-
-    /// Whether `file` can start on the running output without touching the device: same device,
-    /// already at the rate the file needs (its own, or the fallback), same channel count, and
-    /// hog mode as wanted. True for every track on a fixed-rate device such as Bluetooth speakers.
-    private func canSwapInPlace(file: AVAudioFile, device: AudioDevice, keepDeviceRate: Bool) -> Bool {
-        guard let output, output.isRunning, device == outputDevice, currentFile != nil,
-              engine.isInManualRenderingMode, engine.isRunning,
-              engine.manualRenderingFormat.channelCount == file.processingFormat.channelCount,
-              hogMode == (device.hogModeOwner() == getpid()),
-              let rate = try? device.nominalSampleRate(),
-              FormatSelection.sameRate(rate, engine.manualRenderingFormat.sampleRate),
-              FormatSelection.sameRate(rate, expectedDeviceRate)
-        else { return false }
-        if keepDeviceRate { return true }
-        guard let ranges = try? device.availableNominalSampleRates(),
-              let target = FormatSelection.fallbackRate(for: file.fileFormat.sampleRate, supported: ranges)
-        else { return false }
-        return FormatSelection.sameRate(target, rate)
-    }
-
-    /// Starts `file` while the output keeps running. A file in the current format is scheduled
-    /// like a seek. Another format needs the player reconnected, which needs the engine stopped,
-    /// so the output plays silence for those few milliseconds.
-    private func swapInPlace(file: AVAudioFile, item: Int, frame: AVAudioFramePosition) throws {
-        guard let output else { return }
-        currentFile = file
-        preloadedItem = nil
-        preloadAttempted = false
-        if file.processingFormat == node.outputFormat(forBus: 0) {
-            scheduler.reset()
-            currentNodeStart = 0
-            scheduler.append(file, from: frame, token: item)
-            try node.playAudio()
-            return
-        }
-        output.hold()
-        var renderBlock: AVAudioEngineManualRenderingBlock?
-        defer { output.release(render: renderBlock.map { block in { frames, data in block(frames, data, nil) == .success } }) }
-        scheduler.reset()
-        engine.stop()
-        Self.resetTimeline(engine)
-        try? OutputUnit.setMaximumResamplingQuality(on: engine)
-        try Self.connectBitPerfect(node, in: engine, format: file.processingFormat)
-        currentNodeStart = 0
-        scheduler.append(file, from: frame, token: item)
-        engine.prepare()
-        try engine.start()
-        renderBlock = engine.manualRenderingBlock
-        try node.playAudio()
-    }
-
-    /// Sets up the engine in manual rendering mode and binds our output unit to it.
-    /// Safe to call again after a failure.
-    ///
-    /// The engine renders at the device's rate with the file's channel count. If the file's
-    /// rate differs (the fallback case), the engine's output node resamples at mastering
-    /// quality; otherwise nothing converts. The output unit maps channels (mono to both sides)
-    /// and converts float to the device's physical format.
-    private func startGraph(file: AVAudioFile, device: AudioDevice, item: Int, frame: AVAudioFramePosition,
-                            autoplay: Bool, id: Int) throws {
-        guard let output else {
-            throw CoreAudioError(status: kAudioUnitErr_FailedInitialization, operation: "Create output unit")
-        }
-        output.stop()
-        scheduler.reset()
-        engine.stop()
-        Self.resetTimeline(engine)
-
-        let channels = file.processingFormat.channelCount
-        let deviceRate = (try? device.nominalSampleRate()) ?? file.processingFormat.sampleRate
-        guard let renderFormat = AVAudioFormat(standardFormatWithSampleRate: deviceRate, channels: channels) else {
-            throw CoreAudioError(status: kAudioUnitErr_FormatNotSupported, operation: "Render format")
-        }
-        if engine.isInManualRenderingMode, engine.manualRenderingFormat != renderFormat {
-            engine.disableManualRenderingMode()
-        }
-        if !engine.isInManualRenderingMode {
-            try engine.enableManualRenderingMode(.realtime, format: renderFormat, maximumFrameCount: HALOutput.maximumFrames)
-        }
-        do { try OutputUnit.setMaximumResamplingQuality(on: engine) } catch {
-            Self.log.error("[\(id)] \(error, privacy: .public)")
-        }
-        try Self.connectBitPerfect(node, in: engine, format: file.processingFormat)
-        Self.log.debug("[\(id)] connect player → \(device.name, privacy: .public): \(file.processingFormat, privacy: .public), rendering \(renderFormat, privacy: .public)")
-
-        currentNodeStart = 0
-        scheduler.append(file, from: frame, token: item)
-        engine.prepare()
-        try engine.start()
-
-        let renderBlock = engine.manualRenderingBlock
-        let map = OutputUnit.channelMap(sourceChannels: Int(channels), deviceChannels: device.outputChannelCount)
-        try output.configure(device: device, format: renderFormat, channelMap: map) { frames, data in
-            renderBlock(frames, data, nil) == .success
-        }
-        if autoplay {
-            try output.start()
-            try node.playAudio()
-        }
-        Self.log.debug("[\(id)] started; output unit on \(device.name, privacy: .public), \(autoplay ? "playing" : "paused", privacy: .public)")
-    }
-
-    /// AVAudioEngine errors that mean "the device hasn't settled yet", seen right after hog mode.
-    static func isTransientStartError(_ error: NSError) -> Bool {
-        error.domain == "com.apple.coreaudio.avfaudio"
-            && (error.code == -10863 /* kAudioUnitErr_CannotDoInCurrentContext: config changed / no IO cycle */
-                || error.code == -10875 /* kAudioUnitErr_FailedInitialization: invalid hardware format */)
-    }
-
     /// Ticks once a second, just after the playhead reaches each whole second: that's when
     /// the displayed time changes, and a second is plenty for preloading the next track five
     /// seconds ahead. (It ticked every 250 ms, four wakeups a second, for the same display.)
-    private func startTicker() {
+    func startTicker() {
         ticker?.cancel()
         ticker = Task { [weak self] in
             while !Task.isCancelled {
@@ -588,7 +383,7 @@ public final class Player {
         }
     }
 
-    private func setPlayhead(_ time: Duration, force: Bool = false) {
+    func setPlayhead(_ time: Duration, force: Bool = false) {
         playhead = time
         publishPosition(force: force)
     }
@@ -703,7 +498,7 @@ public final class Player {
         return frame
     }
 
-    private func releaseHogMode(_ device: AudioDevice?) {
+    func releaseHogMode(_ device: AudioDevice?) {
         guard let device, device.hogModeOwner() == getpid() else { return }
         do {
             try device.setHogMode(false)
@@ -716,32 +511,5 @@ public final class Player {
     private func releaseAccess() {
         scopedURLs.forEach { $0.stopAccessingSecurityScopedResource() }
         scopedURLs = []
-    }
-
-    static func time(_ frames: AVAudioFramePosition, _ file: AVAudioFile) -> Duration {
-        .seconds(Double(frames) / file.processingFormat.sampleRate)
-    }
-
-    static func frames(_ time: Duration, _ file: AVAudioFile) -> AVAudioFramePosition {
-        let (seconds, attoseconds) = time.components
-        return AVAudioFramePosition((Double(seconds) + Double(attoseconds) / 1e18) * file.processingFormat.sampleRate)
-    }
-
-    /// Puts the engine's render clock back to zero. Without this it keeps counting across a
-    /// stop and start, and a player node reconnected at another sample rate waits for that
-    /// clock to catch up: silence that grew with how long the engine had played (seconds,
-    /// after a few minutes). Call with the engine stopped, before scheduling anything.
-    static func resetTimeline(_ engine: AVAudioEngine) {
-        engine.reset()
-    }
-
-    /// Connects the player straight to the output node using the file's processing format.
-    ///
-    /// The main mixer is never touched (accessing `mainMixerNode` would insert one), so the only
-    /// conversion left is the output unit's float → device physical format, which is lossless for
-    /// integer sources up to 24 bits. When the device runs at the file's rate, nothing resamples.
-    static func connectBitPerfect(_ node: AVAudioPlayerNode, in engine: AVAudioEngine, format: AVAudioFormat) throws {
-        engine.disconnectNodeOutput(node)
-        try engine.connectNode(node, to: engine.outputNode, format: format)
     }
 }

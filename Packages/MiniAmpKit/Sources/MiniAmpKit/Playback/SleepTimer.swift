@@ -38,8 +38,7 @@ public final class SleepTimer {
     /// Pauses after `duration`, replacing any timer already set.
     public func start(_ duration: Duration) {
         cancel()
-        let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
-        mode = .until(Date().addingTimeInterval(seconds))
+        mode = .until(Date().addingTimeInterval(duration.seconds))
         task = Task { [weak self] in
             do { try await Task.sleep(for: duration) } catch { return }
             self?.expire()

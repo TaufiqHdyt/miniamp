@@ -34,19 +34,28 @@ Other targets:
 ## Layout
 
 ```
-App/Sources/            SwiftUI app target (thin; UI only)
-Packages/MiniAmpKit/    Everything testable: playback, library, database
-  Sources/CTagLib       Links Homebrew TagLib through pkg-config
-  Sources/TagLibBridge  C++ shim with a C API over TagLib
-  Sources/MiniAmpKit    Swift code (GRDB, TagReader, ...)
-  Sources/miniampctl    Developer CLI for the device and playback
-project.yml             XcodeGen spec for the app target
-scripts/                Fixture generation
+App/Sources/              SwiftUI app target (thin; UI only)
+  App/                    Entry point, shared state, menus, settings, preferences
+  Library/                Main window, sidebar, browsing, the track table
+  NowPlaying/             The now-playing inspector and its queue entries
+  Player/                 Player bar, seek bar, volume, output picker, Control Center
+  Support/                Artwork, formatting, window visibility, hang logging
+Packages/MiniAmpKit/      Everything testable: playback, library, database
+  Sources/CTagLib         Links Homebrew TagLib through pkg-config
+  Sources/TagLibBridge    C++ shim with a C API over TagLib
+  Sources/MiniAmpKit/
+    Audio/                Core Audio: devices, the hardware output, format selection
+    Playback/             Player, queue, gapless scheduling, sleep timer
+    Library/              Database records, scanning, tags, artwork, folders
+    Support/              Small shared extensions
+  Sources/miniampctl      Developer CLI for the device and playback
+project.yml               XcodeGen spec for the app target
+scripts/                  Fixtures, the test library, benchmarks, and `make run`
 ```
 
 ## Known limitations
 
 - TagLib is linked from Homebrew, so the app only runs on machines that have it installed. Hardened runtime is off for the same reason. To distribute the app, TagLib will need to be built from source and embedded.
 - The minimum is macOS 27 because Homebrew's TagLib is built for it. Supporting older macOS means building TagLib from source with a lower target.
-- Tracks only join gaplessly when they share a format (sample rate and channel count). A rate change between tracks needs a device switch, which takes about half a second.
+- Tracks only join gaplessly when they share a format (sample rate and channel count). Otherwise, if the device stays at the same rate (a fixed-rate device such as a Bluetooth speaker, or a file it resamples), the next track starts on the running output after a few milliseconds of silence. If the device has to change rate, the switch takes about half a second.
 - `AVAudioPlayerNode.playAudio()` waits on the main thread for the device's first I/O cycle. Normally that's milliseconds, but a device that never starts can block for up to about 5 seconds.

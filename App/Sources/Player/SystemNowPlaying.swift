@@ -8,7 +8,7 @@ import MiniAmpKit
 /// The playhead is sent only when it jumps (play, pause, seek, new track). In between, the
 /// system moves it along from the playback rate, so nothing is sent on every tick.
 @MainActor
-final class NowPlaying {
+final class SystemNowPlaying {
     private weak var app: AppState?
     /// Tags of the current track, once loaded.
     private var entry: QueueEntry?

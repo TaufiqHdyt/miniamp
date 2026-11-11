@@ -38,8 +38,7 @@ struct QueueEntry: Equatable {
         album = tags.album
         format = TrackFormat.short(codec: tags.codec.isEmpty ? format : tags.codec, sampleRate: tags.sampleRate,
                                    bits: tags.bitsPerSample, bitrateKbps: tags.bitrateKbps)
-        let (seconds, attoseconds) = tags.duration.components
-        durationMs = Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
+        durationMs = tags.duration.wholeMilliseconds
     }
 
     /// "Artist — Album", or nil when neither is known.

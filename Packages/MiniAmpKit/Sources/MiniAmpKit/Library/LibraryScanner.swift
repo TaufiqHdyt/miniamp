@@ -498,18 +498,3 @@ public final class LibraryScanner: Sendable {
         return path.dropFirst(root.count).split(separator: "/").contains { $0.hasPrefix(".") }
     }
 }
-
-extension Optional where Wrapped == String {
-    /// The trimmed string, or nil if it's missing or blank.
-    var nonBlank: String? {
-        guard let trimmed = self?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
-        return trimmed
-    }
-}
-
-extension Duration {
-    var wholeMilliseconds: Int {
-        let (seconds, attoseconds) = components
-        return Int(seconds * 1000 + attoseconds / 1_000_000_000_000_000)
-    }
-}

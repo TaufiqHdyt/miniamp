@@ -1,6 +1,32 @@
 import MiniAmpKit
 import SwiftUI
 
+/// What the sidebar can show.
+enum SidebarItem: Hashable, RawRepresentable {
+    case songs, artists, albums
+    case playlist(Int64)
+
+    init?(rawValue: String) {
+        switch rawValue {
+        case "songs": self = .songs
+        case "artists": self = .artists
+        case "albums": self = .albums
+        default:
+            guard rawValue.hasPrefix("playlist:"), let id = Int64(rawValue.dropFirst(9)) else { return nil }
+            self = .playlist(id)
+        }
+    }
+
+    var rawValue: String {
+        switch self {
+        case .songs: "songs"
+        case .artists: "artists"
+        case .albums: "albums"
+        case .playlist(let id): "playlist:\(id)"
+        }
+    }
+}
+
 struct Sidebar: View {
     let library: Library?
     @Binding var selection: SidebarItem

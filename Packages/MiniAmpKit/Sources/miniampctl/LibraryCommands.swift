@@ -54,7 +54,7 @@ func libraryCommand(_ args: [String]) async throws {
             let album = info.albumTitle.map { " — \($0)" } ?? ""
             print("\(info.track.title) · \(artist)\(album)  [\(info.track.codec) \(FormatSelection.formatRate(Double(info.track.sampleRate)))]")
         }
-        print("\(results.count) result\(results.count == 1 ? "" : "s") in \(milliseconds(elapsed)) ms")
+        print("\(results.count) result\(results.count == 1 ? "" : "s") in \(elapsed.wholeMilliseconds) ms")
     case "watch":
         let library = try options.open()
         await library.open()
@@ -122,7 +122,7 @@ private func scan(_ options: LibraryOptions) async throws {
 
     if let scan = library.lastScan { print(describe(scan)) }
     if let error = library.lastError { print("error: \(error)") }
-    print(String(format: "scan time: %.2f s; longest main-actor stall: %d ms", seconds(elapsed), milliseconds(maxStall)))
+    print(String(format: "scan time: %.2f s; longest main-actor stall: %d ms", elapsed.seconds, maxStall.wholeMilliseconds))
     try await printStats(library.database, path: options.dbPath)
 }
 
@@ -139,7 +139,7 @@ private func browse(_ library: Library) async throws {
         }
         let median = runs.sorted()[runs.count / 2]
         let padded = label.padding(toLength: 28, withPad: " ", startingAt: 0)
-        print(padded + String(format: "%7.1f ms  (%d rows)", seconds(median) * 1000, n))
+        print(padded + String(format: "%7.1f ms  (%d rows)", median.seconds * 1000, n))
     }
     let artists = try await library.artists()
     let albums = try await library.albums()
@@ -178,13 +178,6 @@ private func printStats(_ database: AppDatabase, path: String) async throws {
 private func describe(_ p: ScanProgress) -> String {
     "\(p.filesFound) files: \(p.added) added, \(p.updated) updated, \(p.moved) moved, \(p.removed) removed, \(p.unreadable) unreadable, \(p.offloaded) offloaded (read \(p.filesRead))"
 }
-
-private func seconds(_ d: Duration) -> Double {
-    let (s, atto) = d.components
-    return Double(s) + Double(atto) / 1e18
-}
-
-private func milliseconds(_ d: Duration) -> Int { Int(seconds(d) * 1000) }
 
 private func timestamp() -> String {
     let f = DateFormatter()

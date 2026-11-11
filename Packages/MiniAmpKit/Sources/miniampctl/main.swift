@@ -17,8 +17,7 @@ options:
 """
 
 func secondsString(_ d: Duration) -> String {
-    let (s, atto) = d.components
-    return String(format: "%.2f", Double(s) + Double(atto) / 1e18)
+    String(format: "%.2f", d.seconds)
 }
 
 func formatRanges(_ ranges: [ClosedRange<Double>]) -> String {

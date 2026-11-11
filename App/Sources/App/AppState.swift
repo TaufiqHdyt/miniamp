@@ -29,13 +29,13 @@ final class AppState {
     /// An offloaded track that was double-clicked: it plays, with the list it was in, once it's downloaded.
     private(set) var waitingToPlay: (id: TrackInfo.ID, list: [TrackInfo])?
     /// Media keys and Control Center.
-    @ObservationIgnored private var nowPlaying: NowPlaying?
+    @ObservationIgnored private var systemNowPlaying: SystemNowPlaying?
 
     init(player: Player, library: Library?) {
         self.player = player
         self.library = library
         sleepTimer = SleepTimer(player: player)
-        nowPlaying = NowPlaying(app: self)
+        systemNowPlaying = SystemNowPlaying(app: self)
     }
 
     /// Runs an action and shows any error it throws.
