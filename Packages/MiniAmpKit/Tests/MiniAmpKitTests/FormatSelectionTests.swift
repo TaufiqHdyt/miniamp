@@ -32,6 +32,29 @@ import Testing
         #expect(!FormatSelection.isFloat(best))
     }
 
+    /// Issue #10: which rate to run the device at when it can't do the file's rate.
+    @Test(arguments: [
+        // (file rate, device rates, expected)
+        (192_000.0, [44_100.0, 48_000, 88_200, 96_000], 96_000.0),   // built-in jack: halve
+        (176_400, [44_100, 48_000, 88_200, 96_000], 88_200),          // halve, stay in 44.1 family
+        (352_800, [44_100, 48_000, 88_200, 96_000], 88_200),          // quarter
+        (384_000, [44_100, 48_000], 48_000),                          // divide by 8
+        (96_000, [44_100, 48_000, 96_000], 96_000),                   // supported: unchanged
+        (22_050, [44_100, 48_000, 88_200], 44_100),                   // double up
+        (88_200, [48_000, 96_000], 96_000),                           // no 44.1 family: highest
+        (192_000, [44_100, 88_200], 88_200),                          // no 48 family: highest
+    ])
+    func fallbackRate(_ c: (Double, [Double], Double)) {
+        let ranges = c.1.map { $0...$0 }
+        #expect(FormatSelection.fallbackRate(for: c.0, supported: ranges) == c.2)
+    }
+
+    @Test func fallbackRateExpandsContinuousRanges() {
+        #expect(FormatSelection.fallbackRate(for: 384_000, supported: [8_000...192_000]) == 192_000)
+        #expect(FormatSelection.fallbackRate(for: 100_000, supported: [8_000...48_000]) == 48_000)
+        #expect(FormatSelection.fallbackRate(for: 48_000, supported: []) == nil)
+    }
+
     @Test func prefersMixableThenMatchingChannels() throws {
         let available = [Self.pcm(48_000, bits: 24, nonMixable: true), Self.pcm(48_000, bits: 24, channels: 8), Self.pcm(48_000, bits: 24)]
         let best = try #require(FormatSelection.bestPhysicalFormat(from: available, sampleRate: 48_000, channels: 2))

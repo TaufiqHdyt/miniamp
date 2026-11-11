@@ -83,4 +83,26 @@ enum TestAudio {
         try file.read(into: buffer)
         return buffer
     }
+
+    /// A stereo float32 WAV containing one sine tone. WAV keeps the samples exact.
+    static func writeTone(frequency: Double, sampleRate: Double, amplitude: Float, seconds: Double,
+                          channels: AVAudioChannelCount = 2) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("miniamp-tone-\(UUID().uuidString).wav")
+        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: channels)!
+        let frames = AVAudioFrameCount(sampleRate * seconds)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
+        buffer.frameLength = frames
+        let step = 2 * Double.pi * frequency / sampleRate
+        for ch in 0..<Int(channels) {
+            for i in 0..<Int(frames) {
+                buffer.floatChannelData![ch][i] = amplitude * Float(sin(step * Double(i)))
+            }
+        }
+        do {
+            let file = try AVAudioFile(forWriting: url, settings: format.settings)
+            try file.write(from: buffer)
+        }
+        return url
+    }
 }
