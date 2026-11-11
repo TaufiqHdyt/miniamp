@@ -24,6 +24,10 @@ final class TrackScheduler {
     private var scheduledEnd: AVAudioFramePosition = 0
     /// Bumped by reset(); completion callbacks from earlier sessions are ignored.
     private var session = 0
+    /// The node's render time when reset() ran. Until the node renders again it keeps reporting
+    /// that time, which measured against the new start reads as a wrong position (the end of
+    /// the previous track, or a jump).
+    private var staleRenderTime: AVAudioFramePosition?
 
     /// Called on the main actor when a segment's last frame has been rendered (not when it's
     /// cancelled by reset). Rendered, not played back: in manual rendering mode the engine
@@ -38,6 +42,7 @@ final class TrackScheduler {
     func reset() {
         session += 1
         node.stop()
+        staleRenderTime = node.lastRenderTime.flatMap { $0.isSampleTimeValid ? $0.sampleTime : nil }
         segments = []
         scheduledEnd = 0
     }
@@ -61,9 +66,11 @@ final class TrackScheduler {
         return segment
     }
 
-    /// Frames played since the last reset, from the node's clock. Nil when the engine isn't rendering.
+    /// Frames played since the last reset, from the node's clock. Nil when the engine isn't
+    /// rendering, or hasn't rendered since the reset.
     var playedFrames: AVAudioFramePosition? {
         guard let nodeTime = node.lastRenderTime, nodeTime.isSampleTimeValid,
+              nodeTime.sampleTime != staleRenderTime,
               let playerTime = node.playerTime(forNodeTime: nodeTime) else { return nil }
         return max(playerTime.sampleTime, 0)
     }

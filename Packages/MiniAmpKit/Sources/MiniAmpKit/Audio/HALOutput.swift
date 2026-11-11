@@ -18,11 +18,16 @@ final class HALOutput: @unchecked Sendable {
     static let maximumFrames: AVAudioFrameCount = 4096
 
     let unit: AudioUnit
-    /// Read on the I/O thread. Only replaced while the unit is uninitialized (not rendering).
+    /// Read on the I/O thread. Only replaced while the unit is uninitialized or held.
     private var render: RenderBlock?
     private(set) var isRunning = false
     /// Set from HAL notification threads when the bound device is gone; read on the I/O thread.
     private let muted = Atomic<Bool>(false)
+    /// Set while the engine behind the render block is rebuilt: the I/O thread outputs silence
+    /// instead of rendering, and the device keeps running. `rendering` lets `hold` wait out a
+    /// render already in progress.
+    private let holding = Atomic<Bool>(false)
+    private let rendering = Atomic<Bool>(false)
     private let boundDevice = Atomic<UInt32>(kAudioObjectUnknown)
     private var deviceWatch: [ListenerRegistration] = []
 
@@ -100,6 +105,22 @@ final class HALOutput: @unchecked Sendable {
         isRunning = true
     }
 
+    /// Outputs silence until `release`, without stopping the device. Returns once no render is
+    /// in progress, so the engine can be stopped and rebuilt safely. Keeping the device running
+    /// matters for Bluetooth: stopping it suspends the stream, and the speaker takes a moment
+    /// to come back, cutting off the start of the next track.
+    func hold() {
+        holding.store(true, ordering: .sequentiallyConsistent)
+        while rendering.load(ordering: .sequentiallyConsistent) { usleep(100) }
+    }
+
+    /// Ends a `hold`, optionally rendering from a new block from now on (the engine's render
+    /// block may not survive the engine being stopped and started).
+    func release(render newRender: RenderBlock? = nil) {
+        if let newRender { render = newRender }
+        holding.store(false, ordering: .sequentiallyConsistent)
+    }
+
     func stop() {
         guard isRunning else { return }
         AudioOutputUnitStop(unit)
@@ -148,13 +169,19 @@ final class HALOutput: @unchecked Sendable {
     fileprivate func renderInto(_ frames: UInt32, _ data: UnsafeMutablePointer<AudioBufferList>,
                                 _ flags: UnsafeMutablePointer<AudioUnitRenderActionFlags>) {
         if !muted.load(ordering: .acquiring) {
-            Self.renderCalls.add(1, ordering: .relaxed)
-            if Self.verifyDeviceOnRender.load(ordering: .relaxed), currentDevice != boundDevice.load(ordering: .relaxed) {
-                Self.misdirectedRenders.add(1, ordering: .relaxed)
+            // Announce the render before checking `holding`; `hold` sets it before checking
+            // `rendering`. Either this sees the hold, or `hold` waits for this render.
+            rendering.store(true, ordering: .sequentiallyConsistent)
+            defer { rendering.store(false, ordering: .sequentiallyConsistent) }
+            if !holding.load(ordering: .sequentiallyConsistent) {
+                Self.renderCalls.add(1, ordering: .relaxed)
+                if Self.verifyDeviceOnRender.load(ordering: .relaxed), currentDevice != boundDevice.load(ordering: .relaxed) {
+                    Self.misdirectedRenders.add(1, ordering: .relaxed)
+                }
+                if let render, render(frames, data) { return }
             }
-            if let render, render(frames, data) { return }
         }
-        // Muted, no data, or a render error: output silence rather than whatever was in the buffers.
+        // Muted, held, no data, or a render error: output silence rather than whatever was in the buffers.
         for buffer in UnsafeMutableAudioBufferListPointer(data) {
             if let bytes = buffer.mData { memset(bytes, 0, Int(buffer.mDataByteSize)) }
         }

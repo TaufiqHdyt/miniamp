@@ -356,6 +356,7 @@ public final class Player {
         let id = playID
         let item = queue.order[p]
         let url = queue.items[item]
+        let wasPlaying = state == .playing
         ticker?.cancel()
         state = .preparing
 
@@ -363,6 +364,18 @@ public final class Player {
             let file = try AVAudioFile(forReading: url)
             let device = try resolveDevice()
             Self.log.debug("[\(id)] open \(url.lastPathComponent, privacy: .public): \(file.fileFormat, privacy: .public), \(file.length) frames")
+
+            if autoplay, wasPlaying, canSwapInPlace(file: file, device: device, keepDeviceRate: keepDeviceRate) {
+                do {
+                    try swapInPlace(file: file, item: item, frame: frame)
+                    queue.move(toPosition: p)
+                    finishStart(file: file, url: url, device: device, frame: frame, autoplay: true, id: id)
+                    Self.log.debug("[\(id)] swapped in place; output kept running")
+                    return
+                } catch {
+                    Self.log.notice("[\(id)] swap in place failed, setting up from scratch: \(error, privacy: .public)")
+                }
+            }
 
             // The engine is stopped here, so the device can change rate without
             // pulling the output unit's format out from under a running graph.
@@ -411,18 +424,73 @@ public final class Player {
             watchVolume(device)
             watchActiveDevice(device)
             deviceWarning = warning
-            duration = Self.time(file.length, file)
-            lastKnownFrame = frame
-            setPlayhead(Self.time(frame, file), force: true)
-            signalPath = SignalPath(file: file, url: url, device: device, engine: engine)
-            state = autoplay ? .playing : .paused
-            if autoplay { startTicker() }
-            if let signalPath { Self.log.info("[\(id)] \(signalPath.summary, privacy: .public)") }
+            finishStart(file: file, url: url, device: device, frame: frame, autoplay: autoplay, id: id)
         } catch {
             Self.log.error("[\(id)] play failed: \(error, privacy: .public)")
             if gen == generation { state = .stopped }
             throw error
         }
+    }
+
+    private func finishStart(file: AVAudioFile, url: URL, device: AudioDevice, frame: AVAudioFramePosition,
+                             autoplay: Bool, id: Int) {
+        duration = Self.time(file.length, file)
+        lastKnownFrame = frame
+        setPlayhead(Self.time(frame, file), force: true)
+        signalPath = SignalPath(file: file, url: url, device: device, engine: engine)
+        state = autoplay ? .playing : .paused
+        if autoplay { startTicker() }
+        if let signalPath { Self.log.info("[\(id)] \(signalPath.summary, privacy: .public)") }
+    }
+
+    /// Whether `file` can start on the running output without touching the device: same device,
+    /// already at the rate the file needs (its own, or the fallback), same channel count, and
+    /// hog mode as wanted. True for every track on a fixed-rate device such as Bluetooth speakers.
+    private func canSwapInPlace(file: AVAudioFile, device: AudioDevice, keepDeviceRate: Bool) -> Bool {
+        guard let output, output.isRunning, device == outputDevice, currentFile != nil,
+              engine.isInManualRenderingMode, engine.isRunning,
+              engine.manualRenderingFormat.channelCount == file.processingFormat.channelCount,
+              hogMode == (device.hogModeOwner() == getpid()),
+              let rate = try? device.nominalSampleRate(),
+              FormatSelection.sameRate(rate, engine.manualRenderingFormat.sampleRate),
+              FormatSelection.sameRate(rate, expectedDeviceRate)
+        else { return false }
+        if keepDeviceRate { return true }
+        guard let ranges = try? device.availableNominalSampleRates(),
+              let target = FormatSelection.fallbackRate(for: file.fileFormat.sampleRate, supported: ranges)
+        else { return false }
+        return FormatSelection.sameRate(target, rate)
+    }
+
+    /// Starts `file` while the output keeps running. A file in the current format is scheduled
+    /// like a seek. Another format needs the player reconnected, which needs the engine stopped,
+    /// so the output plays silence for those few milliseconds.
+    private func swapInPlace(file: AVAudioFile, item: Int, frame: AVAudioFramePosition) throws {
+        guard let output else { return }
+        currentFile = file
+        preloadedItem = nil
+        preloadAttempted = false
+        if file.processingFormat == node.outputFormat(forBus: 0) {
+            scheduler.reset()
+            currentNodeStart = 0
+            scheduler.append(file, from: frame, token: item)
+            try node.playAudio()
+            return
+        }
+        output.hold()
+        var renderBlock: AVAudioEngineManualRenderingBlock?
+        defer { output.release(render: renderBlock.map { block in { frames, data in block(frames, data, nil) == .success } }) }
+        scheduler.reset()
+        engine.stop()
+        Self.resetTimeline(engine)
+        try? OutputUnit.setMaximumResamplingQuality(on: engine)
+        try Self.connectBitPerfect(node, in: engine, format: file.processingFormat)
+        currentNodeStart = 0
+        scheduler.append(file, from: frame, token: item)
+        engine.prepare()
+        try engine.start()
+        renderBlock = engine.manualRenderingBlock
+        try node.playAudio()
     }
 
     /// Sets up the engine in manual rendering mode and binds our output unit to it.
@@ -440,6 +508,7 @@ public final class Player {
         output.stop()
         scheduler.reset()
         engine.stop()
+        Self.resetTimeline(engine)
 
         let channels = file.processingFormat.channelCount
         let deviceRate = (try? device.nominalSampleRate()) ?? file.processingFormat.sampleRate
@@ -543,7 +612,7 @@ public final class Player {
         do {
             let nextFile = try AVAudioFile(forReading: url)
             guard nextFile.processingFormat == file.processingFormat else {
-                Self.log.debug("[\(self.playID)] next is \(nextFile.processingFormat, privacy: .public); device must switch, so not gapless")
+                Self.log.debug("[\(self.playID)] next is \(nextFile.processingFormat, privacy: .public); a different format, so not gapless")
                 return
             }
             scheduler.append(nextFile, token: item)
@@ -663,6 +732,14 @@ public final class Player {
     /// The main mixer is never touched (accessing `mainMixerNode` would insert one), so the only
     /// conversion left is the output unit's float → device physical format, which is lossless for
     /// integer sources up to 24 bits. When the device runs at the file's rate, nothing resamples.
+    /// Puts the engine's render clock back to zero. Without this it keeps counting across a
+    /// stop and start, and a player node reconnected at another sample rate waits for that
+    /// clock to catch up: silence that grew with how long the engine had played (seconds,
+    /// after a few minutes). Call with the engine stopped, before scheduling anything.
+    static func resetTimeline(_ engine: AVAudioEngine) {
+        engine.reset()
+    }
+
     static func connectBitPerfect(_ node: AVAudioPlayerNode, in engine: AVAudioEngine, format: AVAudioFormat) throws {
         engine.disconnectNodeOutput(node)
         try engine.connectNode(node, to: engine.outputNode, format: format)
