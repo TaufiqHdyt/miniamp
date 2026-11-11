@@ -94,14 +94,18 @@ public struct TrackInfo: Sendable, Hashable, Identifiable, FetchableRecord {
     public var artistName: String?
     public var albumTitle: String?
     public var albumArtistName: String?
+    /// Set in playlist listings, where the same track can appear more than once.
+    public var playlistItemId: Int64?
 
-    public var id: Int64 { track.id ?? 0 }
+    /// The playlist item in a playlist listing, otherwise the track. Unique within one list.
+    public var id: Int64 { playlistItemId ?? track.id ?? 0 }
 
     public init(row: Row) throws {
         track = try Track(row: row)
         artistName = row["artistName"]
         albumTitle = row["albumTitle"]
         albumArtistName = row["albumArtistName"]
+        playlistItemId = row["playlistItemId"]
     }
 
     /// Select this from `track` to fetch TrackInfo rows; add WHERE / ORDER BY after it.

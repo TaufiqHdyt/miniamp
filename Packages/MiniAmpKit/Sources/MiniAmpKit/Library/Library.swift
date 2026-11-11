@@ -100,6 +100,22 @@ public final class Library {
         try await database.writer.read { try LibraryQueries.allTracks(limit: limit, $0) }
     }
 
+    public func artists() async throws -> [ArtistSummary] {
+        try await database.writer.read { try LibraryQueries.artists($0) }
+    }
+
+    public func albums(artistId: Int64? = nil) async throws -> [AlbumSummary] {
+        try await database.writer.read { try LibraryQueries.albums(artistId: artistId, $0) }
+    }
+
+    public func playlists() async throws -> [PlaylistSummary] {
+        try await database.writer.read { try LibraryQueries.playlists($0) }
+    }
+
+    public func tracks(in scope: TrackScope, sort: TrackSort = .albumOrder) async throws -> [TrackInfo] {
+        try await database.writer.read { try LibraryQueries.tracks(in: scope, sort: sort, $0) }
+    }
+
     /// Library tracks for these files, by URL (files outside the library are left out).
     public func tracks(at urls: [URL]) async throws -> [URL: TrackInfo] {
         try await database.writer.read { db in
