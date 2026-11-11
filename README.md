@@ -25,6 +25,7 @@ Other targets:
 | `make ctl ARGS="devices"` | Shows the output device's rates and physical formats |
 | `make ctl ARGS="play <file>..."` | Plays files as a queue outside the sandbox and prints the signal path. Options: `--seconds N`, `--seek S`, `--device NAME`, `--hog`, `--repeat off\|all\|one`, `--shuffle` |
 | `make ctl ARGS="volume [0-1]"` | Reads or sets the default output device's own volume |
+| `make bench`   | Measures CPU, energy impact, wakeups, and memory while playing silent files in each format (`SECS=N` per case, default 30). Quit miniamp first |
 
 `MiniAmp.xcodeproj` is generated and not committed. Edit `project.yml` and run `make project` instead of changing build settings in Xcode.
 

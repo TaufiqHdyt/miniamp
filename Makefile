@@ -1,4 +1,4 @@
-.PHONY: bootstrap doctor project open build run test fixtures ctl
+.PHONY: bootstrap doctor project open build run test fixtures ctl bench
 
 bootstrap: doctor
 	brew bundle --file=Brewfile
@@ -36,3 +36,6 @@ ctl:
 # e.g. ARGS="-autoplay ~/Library/Containers/dev.miniamp.app/Data/tmp/tone-96k-24.flac"
 run: build
 	@VERBOSE=$(VERBOSE) scripts/run.sh $(ARGS)
+
+bench:
+	scripts/bench.sh $(or $(SECS),30)
