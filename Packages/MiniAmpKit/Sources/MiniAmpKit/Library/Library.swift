@@ -92,8 +92,8 @@ public final class Library {
         folders.filter { access[$0.id!] != nil }.forEach { enqueue($0, .folder) }
     }
 
-    public func search(_ text: String, limit: Int = 200) async throws -> [TrackInfo] {
-        try await database.writer.read { try LibraryQueries.search(text, limit: limit, $0) }
+    public func search(_ text: String, sort: TrackSort = TrackSort(.relevance), limit: Int = 200) async throws -> [TrackInfo] {
+        try await database.writer.read { try LibraryQueries.search(text, sort: sort, limit: limit, $0) }
     }
 
     public func allTracks(limit: Int = 1000) async throws -> [TrackInfo] {

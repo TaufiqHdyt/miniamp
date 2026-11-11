@@ -12,6 +12,11 @@ struct AppCommands: Commands {
                 .keyboardShortcut("o", modifiers: [.command, .shift])
                 .disabled(app.library == nil)
         }
+        CommandGroup(replacing: .textEditing) {
+            Button("Find") { app.searchFocusRequests += 1 }
+                .keyboardShortcut("f")
+                .disabled(app.library == nil)
+        }
         CommandMenu("Controls") {
             let player = app.player
             // Space also plays and pauses, unless a text field has focus.

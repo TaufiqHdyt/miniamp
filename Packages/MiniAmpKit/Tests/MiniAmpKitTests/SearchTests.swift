@@ -66,4 +66,22 @@ import Testing
         #expect(LibraryQueries.ftsQuery("AC/DC  back\"in") == "\"AC/DC\"* \"backin\"*")
         #expect(LibraryQueries.ftsQuery(" - ") == nil)
     }
+
+    @Test func searchResultsCanBeSortedByAColumn() throws {
+        try db.writer.write { d in
+            _ = try insertTrack("Blue", artist: "Zeta", album: "Other", d)
+            _ = try insertTrack("Another Blue", artist: "Alpha", album: "Blue", d)
+            _ = try insertTrack("Red", artist: "Beta", album: "Red", d)
+        }
+        let byTitle = try db.writer.read { try LibraryQueries.search("blue", sort: TrackSort(.title), $0).map(\.track.title) }
+        #expect(byTitle == ["Another Blue", "Blue"])
+        let byArtistDescending = try db.writer.read {
+            try LibraryQueries.search("blue", sort: TrackSort(.artist, ascending: false), $0).map(\.track.title)
+        }
+        #expect(byArtistDescending == ["Blue", "Another Blue"])
+        // Relevance stays the default: matching in title and album beats title alone.
+        #expect(try search("blue") == ["Another Blue", "Blue"])
+        let byYear = try db.writer.read { try LibraryQueries.search("red", sort: TrackSort(.year), $0).map(\.track.title) }
+        #expect(byYear == ["Red"])
+    }
 }

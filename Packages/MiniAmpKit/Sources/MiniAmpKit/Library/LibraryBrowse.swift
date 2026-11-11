@@ -43,6 +43,8 @@ public struct TrackSort: Sendable, Hashable {
         case albumOrder
         /// A playlist's own order. Same as album order outside a playlist.
         case playlistOrder
+        /// Best search matches first. Same as album order outside a search.
+        case relevance
         case title, artist, album, trackNumber, duration, year, genre, quality, dateAdded
     }
 
@@ -57,11 +59,15 @@ public struct TrackSort: Sendable, Hashable {
     public static let albumOrder = TrackSort(.albumOrder)
 
     /// Nulls sort last whichever way the column goes, so untagged tracks don't crowd the top.
-    func orderBy(inPlaylist: Bool) -> String {
+    /// `relevance` is the ORDER BY term for search rank, when listing search results.
+    func orderBy(inPlaylist: Bool, relevance: String? = nil) -> String {
         let direction = ascending ? "ASC" : "DESC"
         let primary: String
         switch column {
         case .albumOrder: return Self.albumOrder(direction) + ", track.id"
+        case .relevance:
+            guard let relevance else { return Self.albumOrder(direction) + ", track.id" }
+            return "\(relevance) \(direction), track.id"
         case .playlistOrder:
             return inPlaylist ? "playlistItem.position \(direction)" : Self.albumOrder(direction) + ", track.id"
         case .title: primary = "track.title COLLATE NOCASE \(direction)"

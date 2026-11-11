@@ -14,6 +14,12 @@ final class AppState {
     var importingFiles = false
     var addingFolder = false
     var error: String?
+    /// The toolbar search. While it has text, the window shows results instead of the sidebar's choice.
+    var searchText = ""
+    /// Bumped by Edit › Find to move focus to the search field.
+    var searchFocusRequests = 0
+
+    var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
     /// An offloaded track that was double-clicked: it plays, with the list it was in, once it's downloaded.
     private(set) var waitingToPlay: (id: TrackInfo.ID, list: [TrackInfo])?
 

@@ -14,13 +14,15 @@ public enum LibraryQueries {
     }
 
     /// Best matches first: title hits outrank artist and album hits, which outrank genre.
-    public static func search(_ text: String, limit: Int = 200, _ db: Database) throws -> [TrackInfo] {
+    /// With another `sort`, the same matches in that order.
+    public static func search(_ text: String, sort: TrackSort = TrackSort(.relevance), limit: Int = 200,
+                              _ db: Database) throws -> [TrackInfo] {
         guard let query = ftsQuery(text) else { return [] }
         return try TrackInfo.fetchAll(db, sql: TrackInfo.selectSQL + """
 
             JOIN trackSearch ON trackSearch.rowid = track.id
             WHERE trackSearch MATCH ?
-            ORDER BY bm25(trackSearch, 4.0, 3.0, 3.0, 2.0, 1.0)
+            ORDER BY \(sort.orderBy(inPlaylist: false, relevance: "bm25(trackSearch, 4.0, 3.0, 3.0, 2.0, 1.0)"))
             LIMIT ?
             """, arguments: [query, limit])
     }

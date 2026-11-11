@@ -68,6 +68,57 @@ struct TrackListView: View {
     }
 }
 
+/// Library search results: best matches first until a header is clicked.
+struct SearchResultsView: View {
+    let app: AppState
+    let library: Library
+    let query: String
+    @State private var results: [TrackInfo] = []
+    @State private var sort = TrackSort(.relevance)
+    @State private var searched = false
+
+    static let limit = 1000
+
+    var body: some View {
+        TrackTable(app: app, tracks: results, sort: $sort)
+            .overlay {
+                if searched && results.isEmpty {
+                    ContentUnavailableView.search(text: query)
+                }
+            }
+            .navigationTitle("Search")
+            .navigationSubtitle(subtitle)
+            .task(id: SearchQuery(text: query, sort: sort, revision: library.revision)) {
+                // Wait for a pause in typing.
+                try? await Task.sleep(for: .milliseconds(120))
+                guard !Task.isCancelled else { return }
+                do {
+                    let found = try await library.search(query, sort: sort, limit: Self.limit)
+                    guard !Task.isCancelled else { return }
+                    results = found
+                    searched = true
+                } catch {
+                    app.error = "\(error)"
+                }
+            }
+    }
+
+    private var subtitle: String {
+        switch results.count {
+        case 0: ""
+        case 1: "1 song"
+        case Self.limit: "First \(Self.limit) songs"
+        default: "\(results.count) songs"
+        }
+    }
+
+    private struct SearchQuery: Equatable {
+        var text: String
+        var sort: TrackSort
+        var revision: Int
+    }
+}
+
 private struct TrackQuery: Equatable {
     var scope: TrackScope
     var sort: TrackSort

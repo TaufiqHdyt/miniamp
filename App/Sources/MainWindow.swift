@@ -31,6 +31,7 @@ enum SidebarItem: Hashable, RawRepresentable {
 struct MainWindow: View {
     @Bindable var app: AppState
     @SceneStorage("sidebarSelection") private var selection: SidebarItem = .songs
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,6 +41,9 @@ struct MainWindow: View {
             } detail: {
                 detail
             }
+            .searchable(text: $app.searchText, placement: .toolbar, prompt: "Songs, artists, albums, genres")
+            .searchFocused($searchFocused)
+            .onChange(of: app.searchFocusRequests) { searchFocused = true }
             Divider()
             PlayerBar(app: app)
         }
@@ -71,7 +75,9 @@ struct MainWindow: View {
 
     @ViewBuilder
     private var detail: some View {
-        if let library = app.library {
+        if let library = app.library, app.isSearching {
+            SearchResultsView(app: app, library: library, query: app.searchText)
+        } else if let library = app.library {
             switch selection {
             case .songs:
                 TrackListView(app: app, library: library, scope: .all, title: "Songs")
