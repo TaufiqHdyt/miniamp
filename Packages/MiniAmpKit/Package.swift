@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "MiniAmpKit",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS("27.0")], // matches Homebrew TagLib; lower once TagLib is built from source
     products: [
         .library(name: "MiniAmpKit", targets: ["MiniAmpKit"]),
     ],
@@ -29,9 +29,15 @@ let package = Package(
                 "TagLibBridge",
             ]
         ),
+        // Developer tool: inspect the output device and play files outside the sandbox.
+        .executableTarget(
+            name: "miniampctl",
+            dependencies: ["MiniAmpKit"]
+        ),
         .testTarget(
             name: "MiniAmpKitTests",
-            dependencies: ["MiniAmpKit"]
+            dependencies: ["MiniAmpKit"],
+            resources: [.copy("Fixtures")]
         ),
     ],
     cxxLanguageStandard: .cxx17

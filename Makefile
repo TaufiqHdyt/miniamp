@@ -1,8 +1,8 @@
-.PHONY: bootstrap doctor project open build test
+.PHONY: bootstrap doctor project open build run test fixtures ctl
 
 bootstrap: doctor
 	brew bundle --file=Brewfile
-	xcodegen generate
+	xcodegen generate --quiet
 
 doctor:
 	@xcodebuild -version >/dev/null 2>&1 \
@@ -13,13 +13,26 @@ doctor:
 	@command -v xcodegen >/dev/null && echo "XcodeGen: $$(xcodegen --version)" || echo "XcodeGen: missing (make bootstrap)"
 
 project:
-	xcodegen generate
+	xcodegen generate --quiet
 
 open: project
 	open MiniAmp.xcodeproj
 
 build: project
-	xcodebuild -project MiniAmp.xcodeproj -scheme miniamp -configuration Debug -derivedDataPath build build
+	xcodebuild -project MiniAmp.xcodeproj -scheme miniamp -configuration Debug -destination "platform=macOS,arch=$(shell uname -m)" -derivedDataPath build -quiet build
 
 test:
 	swift test --package-path Packages/MiniAmpKit
+
+fixtures:
+	scripts/make-fixtures.sh Fixtures 10
+
+# Usage: make ctl ARGS="devices" | make ctl ARGS="play Fixtures/tone-96k-24.flac"
+ctl:
+	swift run --package-path Packages/MiniAmpKit -q miniampctl $(ARGS)
+
+# Builds Debug, runs the app, and streams its trace logs here until it quits (Ctrl-C quits it).
+# VERBOSE=1 adds system framework messages. Launch arguments go in ARGS,
+# e.g. ARGS="-autoplay ~/Library/Containers/dev.miniamp.app/Data/tmp/tone-96k-24.flac"
+run: build
+	@VERBOSE=$(VERBOSE) scripts/run.sh $(ARGS)

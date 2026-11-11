@@ -2,7 +2,7 @@ name: MiniAmp
 options:
   bundleIdPrefix: dev.miniamp
   deploymentTarget:
-    macOS: "15.0"
+    macOS: "27.0" # matches Homebrew TagLib; lower once TagLib is built from source
   createIntermediateGroups: true
 packages:
   MiniAmpKit:

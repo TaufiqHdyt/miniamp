@@ -35,7 +35,9 @@ unsigned int leadingNumber(const TagLib::PropertyMap &map, const char *key) {
 
 int bitsPerSample(const TagLib::AudioProperties *p) {
     if (auto f = dynamic_cast<const TagLib::FLAC::Properties *>(p)) return f->bitsPerSample();
-    if (auto m = dynamic_cast<const TagLib::MP4::Properties *>(p)) return m->bitsPerSample();
+    // MP4 reports a nominal 16 bits for AAC; only ALAC has a real source bit depth.
+    if (auto m = dynamic_cast<const TagLib::MP4::Properties *>(p))
+        return m->codec() == TagLib::MP4::Properties::ALAC ? m->bitsPerSample() : 0;
     if (auto w = dynamic_cast<const TagLib::RIFF::WAV::Properties *>(p)) return w->bitsPerSample();
     if (auto a = dynamic_cast<const TagLib::RIFF::AIFF::Properties *>(p)) return a->bitsPerSample();
     return 0;
