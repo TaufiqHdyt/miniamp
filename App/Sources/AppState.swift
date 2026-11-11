@@ -19,6 +19,11 @@ final class AppState {
     /// Bumped by Edit › Find to move focus to the search field.
     var searchFocusRequests = 0
 
+    /// The now-playing inspector. Remembered across launches.
+    var showsNowPlaying = UserDefaults.standard.object(forKey: "showsNowPlaying") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showsNowPlaying, forKey: "showsNowPlaying") }
+    }
+
     var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
     /// An offloaded track that was double-clicked: it plays, with the list it was in, once it's downloaded.
     private(set) var waitingToPlay: (id: TrackInfo.ID, list: [TrackInfo])?

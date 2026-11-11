@@ -1,4 +1,5 @@
 import MiniAmpKit
+import os
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -40,6 +41,18 @@ struct MainWindow: View {
                     .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 300)
             } detail: {
                 detail
+                    .inspector(isPresented: $app.showsNowPlaying) {
+                        NowPlayingView(app: app)
+                            .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
+                    }
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            Toggle(isOn: $app.showsNowPlaying) {
+                                Label("Now Playing", systemImage: "music.note.list")
+                            }
+                            .help("Show the cover and what plays next")
+                        }
+                    }
             }
             .searchable(text: $app.searchText, placement: .toolbar, prompt: "Songs, artists, albums, genres")
             .searchFocused($searchFocused)
@@ -95,6 +108,7 @@ struct MainWindow: View {
     }
 
     private func start() async {
+        Logger(subsystem: "dev.miniamp", category: "app").debug("window opened")
         await app.library?.open()
         #if DEBUG
         // Debug hooks for automated checks:

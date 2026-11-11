@@ -5,12 +5,17 @@
 # Ctrl-C quits the app.
 set -euo pipefail
 
-APP="build/Build/Products/Debug/miniamp.app/Contents/MacOS/miniamp"
-[[ -x "$APP" ]] || { echo "Build first: make build" >&2; exit 1; }
+APP="build/Build/Products/Debug/miniamp.app"
+[[ -x "$APP/Contents/MacOS/miniamp" ]] || { echo "Build first: make build" >&2; exit 1; }
 
 pkill -x miniamp 2>/dev/null || true
-"$APP" "$@" >/dev/null 2>&1 &
-PID=$!
+while pgrep -x miniamp >/dev/null; do sleep 0.1; done
+# Through LaunchServices, as Finder and the Dock launch it: started directly, the app
+# doesn't get the launch event and SwiftUI opens no window.
+open -n "$APP" --args "$@"
+PID=""
+for _ in $(seq 50); do PID=$(pgrep -nx miniamp || true); [[ -n "$PID" ]] && break; sleep 0.1; done
+[[ -n "$PID" ]] || { echo "miniamp didn't start" >&2; exit 1; }
 
 if [[ "${VERBOSE:-}" == 1 ]]; then
   PREDICATE="processID == $PID"

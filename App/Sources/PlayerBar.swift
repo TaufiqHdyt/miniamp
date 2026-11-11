@@ -9,8 +9,12 @@ struct PlayerBar: View {
     var body: some View {
         let player = app.player
         HStack(spacing: 16) {
-            NowPlayingSummary(entry: current, artwork: app.library?.artwork)
-                .frame(minWidth: 200, idealWidth: 280, maxWidth: 340, alignment: .leading)
+            Button { app.showsNowPlaying.toggle() } label: {
+                NowPlayingSummary(entry: current, artwork: app.library?.artwork)
+            }
+            .buttonStyle(.plain)
+            .help(app.showsNowPlaying ? "Hide Now Playing" : "Show Now Playing")
+            .frame(minWidth: 200, idealWidth: 280, maxWidth: 340, alignment: .leading)
 
             VStack(spacing: 4) {
                 TransportButtons(app: app)

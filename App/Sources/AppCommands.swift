@@ -17,6 +17,11 @@ struct AppCommands: Commands {
                 .keyboardShortcut("f")
                 .disabled(app.library == nil)
         }
+        CommandGroup(before: .sidebar) {
+            Button(app.showsNowPlaying ? "Hide Now Playing" : "Show Now Playing") { app.showsNowPlaying.toggle() }
+                .keyboardShortcut("i", modifiers: [.command, .option])
+            Divider()
+        }
         CommandMenu("Controls") {
             let player = app.player
             // Space also plays and pauses, unless a text field has focus.

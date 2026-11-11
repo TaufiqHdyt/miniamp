@@ -22,6 +22,8 @@ struct MiniAmpApp: App {
             MainWindow(app: app)
         }
         .defaultSize(width: 1180, height: 760)
+        // Open at launch even if the window was closed when the app last quit.
+        .defaultLaunchBehavior(.presented)
         .commands { AppCommands(app: app) }
 
         Settings {
