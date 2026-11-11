@@ -13,6 +13,7 @@ options:
   --hog            take exclusive access (hog mode) while playing
   --repeat MODE    off | all | one
   --shuffle
+       miniampctl library ...        scan, search, and watch a library (miniampctl library for help)
 """
 
 func secondsString(_ d: Duration) -> String {
@@ -113,6 +114,9 @@ func play(_ args: [String]) async throws {
     print("\(stamp()) ■ stopped; device \(device?.name ?? "?") at \(FormatSelection.formatRate((try? device?.nominalSampleRate()) ?? 0)), hog owner after stop: \(device?.hogModeOwner().map(String.init) ?? "none")")
 }
 
+// Line-buffered even into a pipe, so progress shows up as it happens.
+setvbuf(stdout, nil, _IOLBF, 0)
+
 let args = Array(CommandLine.arguments.dropFirst())
 do {
     switch args.first {
@@ -120,6 +124,8 @@ do {
         try printDevices()
     case "play":
         try await play(Array(args.dropFirst()))
+    case "library":
+        try await libraryCommand(Array(args.dropFirst()))
     case "leaktest" where args.count >= 2:
         try await leakTest(args[1])
     case "volume":

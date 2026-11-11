@@ -32,7 +32,7 @@ let package = Package(
         // Developer tool: inspect the output device and play files outside the sandbox.
         .executableTarget(
             name: "miniampctl",
-            dependencies: ["MiniAmpKit"]
+            dependencies: ["MiniAmpKit", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         .testTarget(
             name: "MiniAmpKitTests",

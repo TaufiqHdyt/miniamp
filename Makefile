@@ -1,4 +1,4 @@
-.PHONY: bootstrap doctor project open build run test fixtures ctl bench
+.PHONY: bootstrap doctor project open build run test fixtures ctl bench library-bench
 
 bootstrap: doctor
 	brew bundle --file=Brewfile
@@ -39,3 +39,11 @@ run: build
 
 bench:
 	scripts/bench.sh $(or $(SECS),30)
+
+# Cold scan of a generated library, then a rescan with nothing changed. TRACKS=N (default 10000).
+library-bench:
+	scripts/make-library.py $(or $(TRACKS),10000) /tmp/miniamp-library
+	swift build --package-path Packages/MiniAmpKit -c release --product miniampctl
+	rm -rf /tmp/miniamp-library-db
+	Packages/MiniAmpKit/.build/release/miniampctl library scan /tmp/miniamp-library --db /tmp/miniamp-library-db/library.sqlite
+	Packages/MiniAmpKit/.build/release/miniampctl library scan /tmp/miniamp-library --db /tmp/miniamp-library-db/library.sqlite
