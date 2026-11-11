@@ -130,7 +130,7 @@ private struct AlbumDetail: View {
                 Spacer()
             }
             .padding(20)
-            TrackTable(app: app, tracks: tracks)
+            TrackListView(app: app, library: library, scope: .album(album.id), title: album.title)
         }
         .navigationTitle(album.title)
         .task(id: library.revision) {
