@@ -48,8 +48,9 @@ struct TrackTable: NSViewRepresentable {
         table.headerView?.menu = headerMenu
         coordinator.headerMenu = headerMenu
 
-        // Column widths, order, and visibility persist under this name.
-        table.autosaveName = "TrackTable"
+        // Column widths, order, and visibility persist under this name. (v2 added the
+        // now-playing column; a layout saved before it would put it anywhere.)
+        table.autosaveName = "TrackTable.v2"
         table.autosaveTableColumns = true
 
         let scroll = NSScrollView()
@@ -180,10 +181,16 @@ struct TrackTable: NSViewRepresentable {
         func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
             guard !settingSort, let config, let first = tableView.sortDescriptors.first,
                   let column = first.key.flatMap(TrackColumn.init(rawValue:)) else { return }
-            var sortColumn = column.sortColumn
+            guard var sortColumn = column.sortColumn else { return }
             if sortColumn == .albumOrder, config.inPlaylist { sortColumn = .playlistOrder }
             let sort = TrackSort(sortColumn, ascending: first.ascending)
             if sort != config.sort { config.sort = sort }
+        }
+
+        /// The now-playing column stays first.
+        func tableView(_ tableView: NSTableView, shouldReorderColumn columnIndex: Int, toColumn newColumnIndex: Int) -> Bool {
+            let playing = NSUserInterfaceItemIdentifier(TrackColumn.playing.rawValue)
+            return tableView.tableColumns[columnIndex].identifier != playing && newColumnIndex != 0
         }
 
         func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
@@ -232,7 +239,7 @@ struct TrackTable: NSViewRepresentable {
         private func fillHeaderMenu(_ menu: NSMenu) {
             guard let table else { return }
             for tableColumn in table.tableColumns {
-                guard let column = TrackColumn(rawValue: tableColumn.identifier.rawValue), column != .title else { continue }
+                guard let column = TrackColumn(rawValue: tableColumn.identifier.rawValue), column.isOptional else { continue }
                 let entry = item(column.menuTitle) { tableColumn.isHidden.toggle() }
                 entry.state = tableColumn.isHidden ? .off : .on
                 menu.addItem(entry)
@@ -248,10 +255,13 @@ struct TrackTable: NSViewRepresentable {
 
 /// The table's columns. The raw value is the column identifier and the sort key.
 enum TrackColumn: String, CaseIterable {
+    /// The now-playing speaker. Always first and always shown; it has no header and doesn't sort.
+    case playing
     case number, title, artist, album, year, genre, time, quality, added
 
     var title: String {
         switch self {
+        case .playing: ""
         case .number: "#"
         case .title: "Title"
         case .artist: "Artist"
@@ -264,11 +274,21 @@ enum TrackColumn: String, CaseIterable {
         }
     }
 
-    var menuTitle: String { self == .number ? "Track Number" : title }
+    var menuTitle: String {
+        switch self {
+        case .playing: "Now Playing"
+        case .number: "Track Number"
+        default: title
+        }
+    }
+
+    /// Columns the header menu can hide.
+    var isOptional: Bool { self != .playing && self != .title }
 
     /// "#" is album order (or playlist order): sorting by track number alone mixes albums together.
-    var sortColumn: TrackSort.Column {
+    var sortColumn: TrackSort.Column? {
         switch self {
+        case .playing: nil
         case .number: .albumOrder
         case .title: .title
         case .artist: .artist
@@ -284,6 +304,7 @@ enum TrackColumn: String, CaseIterable {
     /// (min, ideal, max) widths.
     private var widths: (CGFloat, CGFloat, CGFloat) {
         switch self {
+        case .playing: (20, 20, 20)
         case .number: (24, 32, 50)
         case .title: (120, 280, 2000)
         case .artist, .album: (80, 180, 1000)
@@ -308,10 +329,14 @@ enum TrackColumn: String, CaseIterable {
         column.title = title
         column.headerCell.alignment = alignment
         (column.minWidth, column.width, column.maxWidth) = widths
-        column.sortDescriptorPrototype = NSSortDescriptor(key: rawValue, ascending: true)
+        column.headerToolTip = self == .playing ? "Now playing" : nil
+        if sortColumn != nil { column.sortDescriptorPrototype = NSSortDescriptor(key: rawValue, ascending: true) }
         column.isHidden = [.year, .genre, .added].contains(self)
-        column.resizingMask = self == .title || self == .artist || self == .album || self == .genre
-            ? [.autoresizingMask, .userResizingMask] : .userResizingMask
+        switch self {
+        case .playing: column.resizingMask = []
+        case .title, .artist, .album, .genre: column.resizingMask = [.autoresizingMask, .userResizingMask]
+        default: column.resizingMask = .userResizingMask
+        }
         return column
     }
 
@@ -333,7 +358,10 @@ private final class TrackCell: NSTableCellView {
     private var spinner: NSProgressIndicator?
     private var showsIcon = false
 
+    private let column: TrackColumn
+
     init(column: TrackColumn) {
+        self.column = column
         super.init(frame: .zero)
         identifier = NSUserInterfaceItemIdentifier(column.rawValue)
         label.lineBreakMode = .byTruncatingTail
@@ -363,6 +391,13 @@ private final class TrackCell: NSTableCellView {
 
     override func layout() {
         super.layout()
+        if column == .playing {
+            let side: CGFloat = 14
+            icon.frame = NSRect(x: ((bounds.width - side) / 2).rounded(), y: ((bounds.height - side) / 2).rounded(),
+                                width: side, height: side)
+            label.frame = .zero
+            return
+        }
         let height = label.intrinsicContentSize.height
         let y = ((bounds.height - height) / 2).rounded()
         var x: CGFloat = 2
@@ -382,9 +417,14 @@ private final class TrackCell: NSTableCellView {
         var text: String
         switch column {
         case .number: text = (position ?? info.track.trackNumber).map(String.init) ?? ""
+        case .playing:
+            text = ""
+            if isCurrent {
+                symbol = isPlaying ? "speaker.wave.2.fill" : "speaker.fill"
+                help = isPlaying ? "Now playing" : "Paused"
+            }
         case .title:
             text = info.track.title
-            if isCurrent { symbol = isPlaying ? "speaker.wave.2.fill" : "speaker.fill" }
         case .artist: text = info.artistName ?? ""
         case .album: text = info.albumTitle ?? ""
         case .year: text = info.track.year.map(String.init) ?? ""
@@ -407,7 +447,8 @@ private final class TrackCell: NSTableCellView {
         toolTip = help
         if let symbol {
             icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-            icon.contentTintColor = column == .title ? .controlAccentColor : .secondaryLabelColor
+            icon.contentTintColor = column == .playing ? .controlAccentColor : .secondaryLabelColor
+            icon.setAccessibilityLabel(help)
         }
         let layoutChanged = showsIcon != (symbol != nil) || (spinner != nil) != (column == .quality && isWaiting)
         showsIcon = symbol != nil
