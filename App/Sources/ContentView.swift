@@ -88,15 +88,7 @@ private struct TransportBar: View {
                 Image(systemName: "shuffle")
             }
             .toggleStyle(.button)
-            Picker("Repeat", selection: Binding(get: { player.repeatMode }, set: { player.repeatMode = $0 })) {
-                Image(systemName: "repeat").foregroundStyle(.secondary).tag(PlayQueue<URL>.Repeat.off)
-                Image(systemName: "repeat").tag(PlayQueue<URL>.Repeat.all)
-                Image(systemName: "repeat.1").tag(PlayQueue<URL>.Repeat.one)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 120)
-            .help("Repeat: off, all, one")
+            RepeatButton(player: player)
             Spacer()
             Text(stateLabel).foregroundStyle(.secondary)
         }
@@ -108,6 +100,40 @@ private struct TransportBar: View {
         case .preparing: "Preparing device…"
         case .playing: "Playing"
         case .paused: "Paused"
+        }
+    }
+}
+
+/// One button that cycles off → all → one, lit only while repeat is on (like the shuffle toggle).
+private struct RepeatButton: View {
+    let player: Player
+
+    var body: some View {
+        let mode = player.repeatMode
+        Toggle(isOn: Binding(get: { mode != .off }, set: { _ in player.repeatMode = mode.next })) {
+            Image(systemName: mode == .one ? "repeat.1" : "repeat")
+        }
+        .toggleStyle(.button)
+        .help(help(mode))
+        .accessibilityLabel("Repeat")
+        .accessibilityValue(mode == .off ? "Off" : mode == .all ? "All" : "One")
+    }
+
+    private func help(_ mode: PlayQueue<URL>.Repeat) -> String {
+        switch mode {
+        case .off: "Repeat is off. Click to repeat all."
+        case .all: "Repeating all. Click to repeat one."
+        case .one: "Repeating one. Click to turn repeat off."
+        }
+    }
+}
+
+private extension PlayQueue<URL>.Repeat {
+    var next: Self {
+        switch self {
+        case .off: .all
+        case .all: .one
+        case .one: .off
         }
     }
 }
