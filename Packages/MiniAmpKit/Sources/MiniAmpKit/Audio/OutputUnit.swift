@@ -27,6 +27,16 @@ enum OutputUnit {
         }
     }
 
+    /// One entry per device channel: the source channel it plays, or -1 for silence.
+    /// A mono source goes to the first two device channels (left and right) unchanged;
+    /// other sources map one-to-one.
+    static func channelMap(sourceChannels: Int, deviceChannels: Int) -> [Int32] {
+        (0..<max(deviceChannels, 1)).map { ch in
+            if sourceChannels == 1 { return ch < 2 ? 0 : -1 }
+            return ch < sourceChannels ? Int32(ch) : -1
+        }
+    }
+
     /// Asks the engine output node's converter for its best sample-rate conversion. It only
     /// does work when the file's rate differs from the render (device) rate: the fallback path.
     static func setMaximumResamplingQuality(on engine: AVAudioEngine) throws {

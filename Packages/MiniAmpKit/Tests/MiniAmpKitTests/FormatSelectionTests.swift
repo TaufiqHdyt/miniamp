@@ -55,6 +55,15 @@ import Testing
         #expect(FormatSelection.fallbackRate(for: 48_000, supported: []) == nil)
     }
 
+    /// Issue #47: mono goes to both front channels; other layouts map one-to-one.
+    @Test func channelMaps() {
+        #expect(OutputUnit.channelMap(sourceChannels: 1, deviceChannels: 2) == [0, 0])
+        #expect(OutputUnit.channelMap(sourceChannels: 1, deviceChannels: 4) == [0, 0, -1, -1])
+        #expect(OutputUnit.channelMap(sourceChannels: 2, deviceChannels: 2) == [0, 1])
+        #expect(OutputUnit.channelMap(sourceChannels: 2, deviceChannels: 6) == [0, 1, -1, -1, -1, -1])
+        #expect(OutputUnit.channelMap(sourceChannels: 6, deviceChannels: 2) == [0, 1])
+    }
+
     @Test func prefersMixableThenMatchingChannels() throws {
         let available = [Self.pcm(48_000, bits: 24, nonMixable: true), Self.pcm(48_000, bits: 24, channels: 8), Self.pcm(48_000, bits: 24)]
         let best = try #require(FormatSelection.bestPhysicalFormat(from: available, sampleRate: 48_000, channels: 2))
