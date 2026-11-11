@@ -13,10 +13,16 @@ public struct SignalPath: Sendable, Equatable {
     public var deviceName: String
     public var deviceSampleRate: Double
     public var devicePhysicalFormat: String
+    /// Bits per sample the device takes, and whether they're float. Nil when it couldn't be read.
+    public var devicePhysicalBits: Int?
+    public var devicePhysicalIsFloat: Bool
+    /// Other apps can't play to the device while this holds it.
+    public var isExclusive: Bool
 
     public init(codec: String, fileSampleRate: Double, fileBitDepth: Int?, fileChannels: Int,
                 engineSampleRate: Double, deviceName: String, deviceSampleRate: Double,
-                devicePhysicalFormat: String) {
+                devicePhysicalFormat: String, devicePhysicalBits: Int? = nil, devicePhysicalIsFloat: Bool = false,
+                isExclusive: Bool = false) {
         self.codec = codec
         self.fileSampleRate = fileSampleRate
         self.fileBitDepth = fileBitDepth
@@ -25,6 +31,34 @@ public struct SignalPath: Sendable, Equatable {
         self.deviceName = deviceName
         self.deviceSampleRate = deviceSampleRate
         self.devicePhysicalFormat = devicePhysicalFormat
+        self.devicePhysicalBits = devicePhysicalBits
+        self.devicePhysicalIsFloat = devicePhysicalIsFloat
+        self.isExclusive = isExclusive
+    }
+
+    /// What reaches the device, in one word, for the quality label.
+    public enum Verdict: Sendable, Equatable {
+        /// Lossless samples arrive unchanged: native rate, and the device format holds every bit.
+        case bitPerfect
+        /// A lossy file at its own rate. Nothing resamples, but decoded MP3 or AAC has no
+        /// original samples to preserve.
+        case nativeRate
+        case resampled(from: Double, to: Double)
+        /// Native rate, but the device format has fewer bits than the file, so the low bits are lost.
+        case reducedBitDepth(from: Int, to: Int)
+    }
+
+    public var verdict: Verdict {
+        if isResampled {
+            return .resampled(from: fileSampleRate, to: deviceSampleRate)
+        }
+        guard let fileBits = fileBitDepth else { return .nativeRate }
+        if let deviceBits = devicePhysicalBits {
+            // A 32-bit float sample carries 24 bits exactly; integers carry their width.
+            let carried = devicePhysicalIsFloat ? min(deviceBits, 24) : deviceBits
+            if carried < fileBits { return .reducedBitDepth(from: fileBits, to: carried) }
+        }
+        return .bitPerfect
     }
 
     /// True when any stage runs at a different rate from the file.
@@ -65,7 +99,10 @@ extension SignalPath {
             engineSampleRate: engine.outputNode.inputFormat(forBus: 0).sampleRate,
             deviceName: device.name,
             deviceSampleRate: (try? device.nominalSampleRate()) ?? 0,
-            devicePhysicalFormat: physical.map(FormatSelection.describe) ?? "unknown"
+            devicePhysicalFormat: physical.map(FormatSelection.describe) ?? "unknown",
+            devicePhysicalBits: physical.map { Int($0.mBitsPerChannel) },
+            devicePhysicalIsFloat: physical.map(FormatSelection.isFloat) ?? false,
+            isExclusive: device.hogModeOwner() == getpid()
         )
     }
 }

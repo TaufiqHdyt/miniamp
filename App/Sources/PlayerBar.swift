@@ -177,19 +177,13 @@ private struct TimeLabel: View {
     }
 }
 
-/// The signal path in one line, until the quality label replaces it.
+/// The quality label, and any problem setting up the device.
 private struct SignalSummary: View {
     let player: Player
 
     var body: some View {
         if let path = player.signalPath {
-            Text(path.isResampled
-                 ? "\(path.fileDescription) → \(FormatSelection.formatRate(path.deviceSampleRate))"
-                 : path.fileDescription)
-                .font(.caption.monospaced())
-                .foregroundStyle(path.isResampled ? .orange : .secondary)
-                .lineLimit(1)
-                .help(path.summary)
+            QualityBadge(path: path)
         }
         if let warning = player.deviceWarning {
             Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).help(warning)

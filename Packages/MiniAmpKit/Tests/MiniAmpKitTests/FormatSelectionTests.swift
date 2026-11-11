@@ -121,4 +121,26 @@ import Testing
         #expect(resampled.isResampled)
         #expect(resampled.summary.contains("RESAMPLED (96 kHz → 44.1 kHz)"))
     }
+
+    /// Issue #22: the quality label's verdict.
+    @Test func signalPathVerdict() {
+        func path(codec: String = "FLAC", rate: Double = 96_000, bits: Int? = 24, deviceRate: Double = 96_000,
+                  deviceBits: Int? = 24, float: Bool = false) -> SignalPath {
+            SignalPath(codec: codec, fileSampleRate: rate, fileBitDepth: bits, fileChannels: 2,
+                       engineSampleRate: deviceRate, deviceName: "Test", deviceSampleRate: deviceRate,
+                       devicePhysicalFormat: "", devicePhysicalBits: deviceBits, devicePhysicalIsFloat: float)
+        }
+        #expect(path().verdict == .bitPerfect)
+        #expect(path(bits: 16, deviceBits: 24).verdict == .bitPerfect)
+        // Float32 holds 24 bits exactly (the built-in speakers' format), but not 32.
+        #expect(path(deviceBits: 32, float: true).verdict == .bitPerfect)
+        #expect(path(bits: 32, deviceBits: 32, float: true).verdict == .reducedBitDepth(from: 32, to: 24))
+        #expect(path(bits: 24, deviceBits: 16).verdict == .reducedBitDepth(from: 24, to: 16))
+        #expect(path(rate: 192_000, deviceRate: 96_000).verdict == .resampled(from: 192_000, to: 96_000))
+        // Lossy: nothing resamples, but there are no original samples to be "bit-perfect" to.
+        #expect(path(codec: "MP3", rate: 44_100, bits: nil, deviceRate: 44_100).verdict == .nativeRate)
+        #expect(path(codec: "MP3", rate: 44_100, bits: nil, deviceRate: 48_000).verdict == .resampled(from: 44_100, to: 48_000))
+        // Unknown device format: judged on rate alone.
+        #expect(path(deviceBits: nil).verdict == .bitPerfect)
+    }
 }

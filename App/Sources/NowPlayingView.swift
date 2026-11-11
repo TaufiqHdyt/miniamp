@@ -18,7 +18,12 @@ struct NowPlayingView: View {
             if let url = player.queue.current {
                 let entry = entries[url] ?? QueueEntry(fileName: url)
                 CurrentTrack(entry: entry, artwork: app.library?.artwork)
-                    .padding(16)
+                    .padding([.horizontal, .top], 16)
+                if let path = player.signalPath {
+                    QualityBadge(path: path).padding(.vertical, 10)
+                } else {
+                    Spacer().frame(height: 16)
+                }
             } else {
                 ContentUnavailableView("Nothing playing", systemImage: "music.note",
                                        description: Text("Double-click a song to play it."))
