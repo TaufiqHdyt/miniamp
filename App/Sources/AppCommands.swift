@@ -43,6 +43,8 @@ struct AppCommands: Commands {
                 ForEach(PlayQueue<URL>.Repeat.allCases, id: \.self) { Text($0.label).tag($0) }
             }
             Divider()
+            Menu("Sleep Timer") { SleepTimerChoices(timer: app.sleepTimer) }
+            Divider()
             Button("Volume Up") { if let v = player.volume { player.setVolume(min(v + 0.0625, 1)) } }
                 .keyboardShortcut(.upArrow)
                 .disabled(player.volume == nil)

@@ -10,6 +10,7 @@ final class AppState {
     let player: Player
     /// Nil if the database can't be opened; the player still works without it.
     let library: Library?
+    let sleepTimer: SleepTimer
 
     var importingFiles = false
     var addingFolder = false
@@ -31,6 +32,7 @@ final class AppState {
     init(player: Player, library: Library?) {
         self.player = player
         self.library = library
+        sleepTimer = SleepTimer(player: player)
     }
 
     /// Runs an action and shows any error it throws.

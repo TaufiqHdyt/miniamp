@@ -54,6 +54,14 @@ public final class Player {
 
     public var isShuffled: Bool { queue.isShuffled }
 
+    /// Stop when the current track ends instead of going on (the sleep timer's "end of song").
+    /// The next track is then cued, paused at its start. Resets itself once it has acted.
+    public var stopsAfterCurrentTrack = false {
+        didSet { if oldValue != stopsAfterCurrentTrack { Task { await queueChanged() } } }
+    }
+    /// Called when playback stopped because of `stopsAfterCurrentTrack`.
+    @ObservationIgnored public var onStoppedAfterTrack: (@MainActor () -> Void)?
+
     /// Renders on demand (manual rendering mode): decoding, scheduling, and any resampling.
     @ObservationIgnored private let engine = AVAudioEngine()
     @ObservationIgnored private let node = AVAudioPlayerNode()
@@ -513,6 +521,7 @@ public final class Player {
 
     private func preloadNext(after file: AVAudioFile) {
         preloadAttempted = true
+        guard !stopsAfterCurrentTrack else { return }
         guard let next = queue.upcoming(automatic: true) else { return }
         let item = queue.order[next]
         let url = queue.items[item]
@@ -566,6 +575,17 @@ public final class Player {
     /// Nothing was scheduled after the track that just ended: start the next one from scratch
     /// (it has a different format) or stop at the end of the queue.
     private func trackEnded() async {
+        if stopsAfterCurrentTrack {
+            stopsAfterCurrentTrack = false
+            Self.log.debug("[\(self.playID)] stopping after the track, as asked")
+            if let next = queue.upcoming(automatic: false), next != queue.position {
+                do { try await start(position: next, frame: 0, autoplay: false) } catch { stop() }
+            } else {
+                stop()
+            }
+            onStoppedAfterTrack?()
+            return
+        }
         guard let next = queue.upcoming(automatic: true) else {
             stop()
             return
@@ -579,7 +599,7 @@ public final class Player {
 
     /// Shuffle or repeat changed: if the wrong track is already scheduled next, reschedule.
     private func queueChanged() async {
-        let upcoming = queue.upcoming(automatic: true).map { queue.order[$0] }
+        let upcoming = stopsAfterCurrentTrack ? nil : queue.upcoming(automatic: true).map { queue.order[$0] }
         if preloadedItem != nil, preloadedItem != upcoming {
             Self.log.debug("[\(self.playID)] queue changed; rescheduling")
             seek(to: playhead)

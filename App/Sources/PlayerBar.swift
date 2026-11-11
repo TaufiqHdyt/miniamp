@@ -25,6 +25,7 @@ struct PlayerBar: View {
             HStack(spacing: 10) {
                 SignalSummary(player: player)
                 Spacer(minLength: 0)
+                SleepTimerButton(timer: app.sleepTimer)
                 VolumeControl(player: player)
             }
             .frame(minWidth: 200, idealWidth: 280, maxWidth: 340)
