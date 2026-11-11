@@ -59,6 +59,7 @@ struct TrackTable: NSViewRepresentable {
         scroll.autohidesScrollers = true
         scroll.borderType = .noBorder
         coordinator.table = table
+        coordinator.applyResizingMasks(in: table)
         return scroll
     }
 
@@ -87,6 +88,15 @@ struct TrackTable: NSViewRepresentable {
         private var isPlaying = false
         private var waiting: Set<TrackInfo.ID> = []
         private var settingSort = false
+        /// Columns fit their contents after every change to the list (header menu › Auto-Size Columns).
+        private var autoSizesColumns = UserDefaults.standard.bool(forKey: Coordinator.autoSizeKey) {
+            didSet { UserDefaults.standard.set(autoSizesColumns, forKey: Coordinator.autoSizeKey) }
+        }
+        private var fitting = false
+        /// The songs (in any order) and columns the widths were last fitted to: a re-sort can't
+        /// change them, so it skips the measuring.
+        private var fittedFor: (count: Int, idSum: Int64, columns: [String])?
+        static let autoSizeKey = "autoSizeColumns"
 
         func update(_ config: TrackTable, playing: String?, isPlaying: Bool, waiting: Set<TrackInfo.ID>) {
             self.config = config
@@ -102,6 +112,7 @@ struct TrackTable: NSViewRepresentable {
                 self.isPlaying = isPlaying
                 self.waiting = waiting
                 refillRows(in: table)
+                if autoSizesColumns { fitAllColumns(in: table, unlessUnchanged: true) }
                 let rows = IndexSet(tracks.indices.filter { selected.contains(tracks[$0].id) })
                 if rows != table.selectedRowIndexes { table.selectRowIndexes(rows, byExtendingSelection: false) }
             } else {
@@ -238,12 +249,94 @@ struct TrackTable: NSViewRepresentable {
 
         private func fillHeaderMenu(_ menu: NSMenu) {
             guard let table else { return }
+            // The column under the right-click, if any.
+            var clicked: NSTableColumn?
+            if let header = table.headerView, let event = NSApp.currentEvent {
+                let index = header.column(at: header.convert(event.locationInWindow, from: nil))
+                if index >= 0, table.tableColumns[index].identifier.rawValue != TrackColumn.playing.rawValue {
+                    clicked = table.tableColumns[index]
+                }
+            }
+            if let clicked {
+                menu.addItem(item("Size Column to Fit") { [self] in
+                    fit(clicked, in: table)
+                })
+            }
+            menu.addItem(item("Size All Columns to Fit") { [self] in fitAllColumns(in: table) })
+            let auto = item("Auto-Size Columns") { [self] in
+                autoSizesColumns.toggle()
+                applyResizingMasks(in: table)
+                if autoSizesColumns { fitAllColumns(in: table) }
+            }
+            auto.state = autoSizesColumns ? .on : .off
+            menu.addItem(auto)
+            menu.addItem(.separator())
             for tableColumn in table.tableColumns {
                 guard let column = TrackColumn(rawValue: tableColumn.identifier.rawValue), column.isOptional else { continue }
-                let entry = item(column.menuTitle) { tableColumn.isHidden.toggle() }
+                let entry = item(column.menuTitle) { [self] in
+                    tableColumn.isHidden.toggle()
+                    if autoSizesColumns { fitAllColumns(in: table) }
+                }
                 entry.state = tableColumn.isHidden ? .off : .on
                 menu.addItem(entry)
             }
+        }
+
+        // MARK: Column sizing
+
+        /// Double-clicking a column's divider.
+        func tableView(_ tableView: NSTableView, sizeToFitWidthOfColumn column: Int) -> CGFloat {
+            let tableColumn = tableView.tableColumns[column]
+            guard let kind = TrackColumn(rawValue: tableColumn.identifier.rawValue) else { return tableColumn.width }
+            return ColumnFitter.width(kind, tableColumn, tracks: tracks, positions: positions)
+        }
+
+        /// Dragging a column's edge by hand turns auto-sizing off, so the width sticks.
+        func tableViewColumnDidResize(_ notification: Notification) {
+            guard autoSizesColumns, !fitting, NSApp.currentEvent?.type == .leftMouseDragged, let table else { return }
+            autoSizesColumns = false
+            applyResizingMasks(in: table)
+        }
+
+        func applyResizingMasks(in table: NSTableView) {
+            for tableColumn in table.tableColumns {
+                guard let kind = TrackColumn(rawValue: tableColumn.identifier.rawValue) else { continue }
+                tableColumn.resizingMask = kind.resizingMask(autoSized: autoSizesColumns)
+            }
+        }
+
+        private func fit(_ tableColumn: NSTableColumn, in table: NSTableView) {
+            guard let kind = TrackColumn(rawValue: tableColumn.identifier.rawValue) else { return }
+            fitting = true
+            tableColumn.width = ColumnFitter.width(kind, tableColumn, tracks: tracks, positions: positions)
+            fitting = false
+        }
+
+        /// Every shown column fits its contents, and Title takes whatever width is left.
+        private func fitAllColumns(in table: NSTableView, unlessUnchanged: Bool = false) {
+            let shown = table.tableColumns.filter { !$0.isHidden }.map(\.identifier.rawValue)
+            let key = (count: tracks.count, idSum: tracks.reduce(Int64(0)) { $0 &+ $1.id }, columns: shown)
+            if unlessUnchanged, let fittedFor, fittedFor.count == key.count, fittedFor.idSum == key.idSum,
+               fittedFor.columns == key.columns { return }
+            fittedFor = key
+            fitting = true
+            defer { fitting = false }
+            var title: NSTableColumn?
+            var used: CGFloat = 0
+            for tableColumn in table.tableColumns where !tableColumn.isHidden {
+                guard let kind = TrackColumn(rawValue: tableColumn.identifier.rawValue) else { continue }
+                if kind == .title { title = tableColumn; continue }
+                if kind != .playing {
+                    let width = ColumnFitter.width(kind, tableColumn, tracks: tracks, positions: positions)
+                    if abs(width - tableColumn.width) > 0.5 { tableColumn.width = width }
+                }
+                used += tableColumn.width + table.intercellSpacing.width
+            }
+            guard let title else { return }
+            let available = (table.enclosingScrollView?.contentSize.width ?? table.bounds.width) - table.intercellSpacing.width
+            let fitted = ColumnFitter.width(.title, title, tracks: tracks, positions: positions)
+            let width = min(max(available - used, fitted, title.minWidth), title.maxWidth)
+            if abs(width - title.width) > 0.5 { title.width = width }
         }
 
         private func item(_ title: String, _ action: @escaping @MainActor () -> Void) -> NSMenuItem {
@@ -316,6 +409,52 @@ enum TrackColumn: String, CaseIterable {
         }
     }
 
+    /// What the cell shows (an icon, where there is one, is drawn beside it).
+    func text(_ info: TrackInfo, position: Int?) -> String {
+        switch self {
+        case .playing: ""
+        case .number: (position ?? info.track.trackNumber).map(String.init) ?? ""
+        case .title: info.track.title
+        case .artist: info.artistName ?? ""
+        case .album: info.albumTitle ?? ""
+        case .year: info.track.year.map(String.init) ?? ""
+        case .genre: info.track.genre ?? ""
+        case .time: TimeFormat.minutes(info.track.durationMs / 1000)
+        case .quality: info.track.isEvicted ? "In iCloud" : TrackFormat.short(info.track)
+        case .added: info.track.addedAt.formatted(date: .abbreviated, time: .omitted)
+        }
+    }
+
+    /// Plain text straight from the record, so its length is cheap to compare.
+    var isStoredText: Bool { [.title, .artist, .album, .genre].contains(self) }
+
+    @MainActor var font: NSFont {
+        switch self {
+        case .number, .year, .time: .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        case .quality: .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        default: .systemFont(ofSize: NSFont.systemFontSize)
+        }
+    }
+
+    @MainActor var textColor: NSColor {
+        switch self {
+        case .number, .year, .quality: .secondaryLabelColor
+        default: .labelColor
+        }
+    }
+
+    /// How a column resizes: by the user, and (for the text columns) with the table. When
+    /// columns are auto-sized, only Title follows the table; the others keep their fitted width.
+    @MainActor
+    func resizingMask(autoSized: Bool) -> NSTableColumn.ResizingOptions {
+        switch self {
+        case .playing: []
+        case .title: [.autoresizingMask, .userResizingMask]
+        case .artist, .album, .genre: autoSized ? .userResizingMask : [.autoresizingMask, .userResizingMask]
+        default: .userResizingMask
+        }
+    }
+
     var alignment: NSTextAlignment {
         switch self {
         case .number, .time: .right
@@ -332,11 +471,7 @@ enum TrackColumn: String, CaseIterable {
         column.headerToolTip = self == .playing ? "Now playing" : nil
         if sortColumn != nil { column.sortDescriptorPrototype = NSSortDescriptor(key: rawValue, ascending: true) }
         column.isHidden = [.year, .genre, .added].contains(self)
-        switch self {
-        case .playing: column.resizingMask = []
-        case .title, .artist, .album, .genre: column.resizingMask = [.autoresizingMask, .userResizingMask]
-        default: column.resizingMask = .userResizingMask
-        }
+        column.resizingMask = resizingMask(autoSized: false)
         return column
     }
 
@@ -345,6 +480,57 @@ enum TrackColumn: String, CaseIterable {
         let column: TrackSort.Column = sort.column == .playlistOrder ? .albumOrder : sort.column
         guard let match = allCases.first(where: { $0.sortColumn == column }) else { return [] }
         return [NSSortDescriptor(key: match.rawValue, ascending: sort.ascending)]
+    }
+}
+
+/// Widths that fit a column's contents.
+///
+/// Measuring every row of a 10,000-song list on each change would be slow, so only the likely
+/// widest strings are measured: for plain text, the 40 longest by byte count (cheap to get);
+/// for computed text (times, formats, dates), the longest among an even sample of 300 rows.
+@MainActor
+enum ColumnFitter {
+    static let candidates = 40
+    static let sampleSize = 300
+    /// Cell insets (2 pt each side) plus a little air, so the widest value doesn't truncate.
+    static let padding: CGFloat = 10
+    /// Room for the header's sort arrow.
+    static let headerExtra: CGFloat = 18
+
+    static func width(_ column: TrackColumn, _ tableColumn: NSTableColumn, tracks: [TrackInfo],
+                      positions: [TrackInfo.ID: Int]) -> CGFloat {
+        let header = tableColumn.headerCell.cellSize.width + (tableColumn.sortDescriptorPrototype == nil ? 0 : headerExtra)
+        var strings: [String]
+        if column.isStoredText {
+            strings = longest(tracks.lazy.map { column.text($0, position: nil) }, count: candidates)
+        } else {
+            let step = max(tracks.count / sampleSize, 1)
+            let sample = stride(from: 0, to: tracks.count, by: step).lazy.map { tracks[$0] }
+            strings = longest(sample.map { column.text($0, position: positions[$0.id]) }, count: candidates)
+            if column == .number, !positions.isEmpty { strings.append(String(tracks.count)) }
+        }
+        let attributes: [NSAttributedString.Key: Any] = [.font: column.font]
+        var content = strings.map { ($0 as NSString).size(withAttributes: attributes).width }.max() ?? 0
+        // The cloud beside "In iCloud".
+        if column == .quality, tracks.contains(where: \.track.isEvicted) { content += 18 }
+        let width = (max(header, content + padding)).rounded(.up)
+        return min(max(width, tableColumn.minWidth), tableColumn.maxWidth)
+    }
+
+    private static func longest(_ strings: some Sequence<String>, count: Int) -> [String] {
+        var top: [(Int, String)] = []
+        var floor = 0
+        for string in strings {
+            let length = string.utf8.count
+            guard top.count < count || length > floor else { continue }
+            top.append((length, string))
+            if top.count > count * 2 {
+                top.sort { $0.0 > $1.0 }
+                top.removeLast(top.count - count)
+                floor = top.last?.0 ?? 0
+            }
+        }
+        return top.sorted { $0.0 > $1.0 }.prefix(count).map(\.1)
     }
 }
 
@@ -373,18 +559,8 @@ private final class TrackCell: NSTableCellView {
         imageView = icon
         addSubview(icon)
         addSubview(label)
-        switch column {
-        case .number, .year:
-            label.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-            label.textColor = .secondaryLabelColor
-        case .time:
-            label.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-        case .quality:
-            label.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
-            label.textColor = .secondaryLabelColor
-        default:
-            label.font = .systemFont(ofSize: NSFont.systemFontSize)
-        }
+        label.font = column.font
+        label.textColor = column.textColor
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -414,34 +590,23 @@ private final class TrackCell: NSTableCellView {
     func show(_ info: TrackInfo, column: TrackColumn, position: Int?, isCurrent: Bool, isPlaying: Bool, isWaiting: Bool) {
         var symbol: String?
         var help: String?
-        var text: String
+        var text = column.text(info, position: position)
         switch column {
-        case .number: text = (position ?? info.track.trackNumber).map(String.init) ?? ""
         case .playing:
-            text = ""
             if isCurrent {
                 symbol = isPlaying ? "speaker.wave.2.fill" : "speaker.fill"
                 help = isPlaying ? "Now playing" : "Paused"
             }
-        case .title:
-            text = info.track.title
-        case .artist: text = info.artistName ?? ""
-        case .album: text = info.albumTitle ?? ""
-        case .year: text = info.track.year.map(String.init) ?? ""
-        case .genre: text = info.track.genre ?? ""
-        case .time: text = TimeFormat.minutes(info.track.durationMs / 1000)
         case .quality:
             if isWaiting {
                 text = "Downloading…"
                 help = "Downloading from iCloud; plays when it's ready"
             } else if info.track.isEvicted {
-                text = "In iCloud"
                 symbol = "icloud"
                 help = "Not downloaded. Double-click to download and play."
-            } else {
-                text = TrackFormat.short(info.track)
             }
-        case .added: text = info.track.addedAt.formatted(date: .abbreviated, time: .omitted)
+        default:
+            break
         }
         if label.stringValue != text { label.stringValue = text }
         toolTip = help
