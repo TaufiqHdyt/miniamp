@@ -31,6 +31,9 @@ public final class Player {
     /// Goes up by one on every seek, so observers that only sync the playhead now and then
     /// (Control Center) know when it jumped.
     public private(set) var seekCount = 0
+    /// Goes up by one each time a track begins from its start (a new track, gapless or not, or
+    /// the same one again on repeat). Restarting mid-track after a device change doesn't count.
+    public internal(set) var trackStarts = 0
     /// The device playback goes to (or would go to, when stopped).
     public internal(set) var outputDevice: AudioDevice?
     public private(set) var availableDevices: [AudioDevice] = []
@@ -432,6 +435,7 @@ public final class Player {
         // gets that. A tick that got here first sets the exact frame right after.
         lastKnownFrame = 0
         setPlayhead(.zero, force: true)
+        trackStarts += 1
         if let device = outputDevice {
             signalPath = SignalPath(file: segment.file, url: queue.items[segment.token], device: device, engine: engine)
         }

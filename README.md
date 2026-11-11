@@ -25,7 +25,7 @@ Other targets:
 | `make ctl ARGS="devices"` | Shows the output device's rates and physical formats |
 | `make ctl ARGS="play <file>..."` | Plays files as a queue outside the sandbox and prints the signal path. Options: `--seconds N`, `--seek S`, `--device NAME`, `--hog`, `--repeat off\|all\|one`, `--shuffle` |
 | `make ctl ARGS="volume [0-1]"` | Reads or sets the default output device's own volume |
-| `make ctl ARGS="library scan <folder>"` | Scans a folder into a scratch library (`$TMPDIR/miniampctl`, or `--db PATH`) and reports scan time and the longest main-actor stall. Also `library search <words>`, `library watch` (follows file changes live), and `library stats` |
+| `make ctl ARGS="library scan <folder>"` | Scans a folder into a scratch library (`$TMPDIR/miniampctl`, or `--db PATH`) and reports scan time and the longest main-actor stall. Also `library search <words>`, `library watch` (follows file changes live), `library stats`, and `library history` (the last 50 plays) |
 | `make library-bench` | Generates a 10,000-track fake library in `/tmp/miniamp-library` (`TRACKS=N`), then scans it cold and again with nothing changed |
 | `make bench`   | Measures CPU, energy impact, wakeups, and memory while playing silent files in each format (`SECS=N` per case, default 30). Quit miniamp first |
 
@@ -36,7 +36,7 @@ Other targets:
 ```
 App/Sources/              SwiftUI app target (thin; UI only)
   App/                    Entry point, shared state, menus, settings, preferences
-  Library/                Main window, sidebar, browsing, the track table
+  Library/                Main window, sidebar, browsing, the track table, Get Info
   NowPlaying/             The now-playing inspector and its queue entries
   Player/                 Player bar, seek bar, volume, output picker, Control Center
   Support/                Artwork, formatting, window visibility, hang logging
@@ -45,8 +45,8 @@ Packages/MiniAmpKit/      Everything testable: playback, library, database
   Sources/TagLibBridge    C++ shim with a C API over TagLib
   Sources/MiniAmpKit/
     Audio/                Core Audio: devices, the hardware output, format selection
-    Playback/             Player, queue, gapless scheduling, sleep timer
-    Library/              Database records, scanning, tags, artwork, folders
+    Playback/             Player, queue, gapless scheduling, sleep timer, play history
+    Library/              Database records, scanning, tag reading and writing, playlists, M3U8, artwork, folders
     Support/              Small shared extensions
   Sources/miniampctl      Developer CLI for the device and playback
 project.yml               XcodeGen spec for the app target

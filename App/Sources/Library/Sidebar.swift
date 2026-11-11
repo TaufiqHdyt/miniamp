@@ -28,9 +28,10 @@ enum SidebarItem: Hashable, RawRepresentable {
 }
 
 struct Sidebar: View {
-    let library: Library?
+    let app: AppState
     @Binding var selection: SidebarItem
-    @State private var playlists: [PlaylistSummary] = []
+    @State private var deleting: PlaylistSummary?
+    private var library: Library? { app.library }
 
     var body: some View {
         List(selection: Binding(get: { selection }, set: { if let new = $0 { selection = new } })) {
@@ -39,15 +40,29 @@ struct Sidebar: View {
                 Label("Artists", systemImage: "music.microphone").tag(SidebarItem.artists)
                 Label("Albums", systemImage: "square.stack").tag(SidebarItem.albums)
             }
-            Section("Playlists") {
-                ForEach(playlists) { playlist in
-                    Label(playlist.name, systemImage: "music.note.list")
-                        .badge(playlist.trackCount)
+            Section {
+                ForEach(app.playlists) { playlist in
+                    PlaylistRow(app: app, playlist: playlist)
                         .tag(SidebarItem.playlist(playlist.id))
+                        .contextMenu {
+                            Button("Rename") { app.renamingPlaylist = playlist.id }
+                            Button("Export as M3U8…") { app.exportPlaylist(playlist) }
+                            Divider()
+                            Button("Delete Playlist…", role: .destructive) { deleting = playlist }
+                        }
                 }
-                if playlists.isEmpty {
+                if app.playlists.isEmpty {
                     Text("No playlists yet").foregroundStyle(.secondary)
                         .selectionDisabled()
+                }
+            } header: {
+                HStack {
+                    Text("Playlists")
+                    Spacer()
+                    Button { app.newPlaylist() } label: { Image(systemName: "plus") }
+                        .buttonStyle(.borderless)
+                        .help("New playlist")
+                        .disabled(library == nil)
                 }
             }
         }
@@ -55,12 +70,53 @@ struct Sidebar: View {
         .safeAreaInset(edge: .bottom) {
             if let library { LibraryStatus(library: library) }
         }
-        .task(id: library?.revision) {
-            guard let library else { return }
-            playlists = (try? await library.playlists()) ?? []
-            // A deleted playlist can't stay selected.
-            if case .playlist(let id) = selection, !playlists.contains(where: { $0.id == id }) { selection = .songs }
+        .confirmationDialog("Delete the playlist “\(deleting?.name ?? "")”?",
+                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Delete", role: .destructive) {
+                guard let playlist = deleting, let library else { return }
+                app.perform { try await library.deletePlaylist(playlist.id) }
+            }
+        } message: {
+            Text("The songs stay in the library.")
         }
+        .task(id: library?.revision) {
+            await app.reloadPlaylists()
+            // A deleted playlist can't stay selected.
+            if case .playlist(let id) = selection, !app.playlists.contains(where: { $0.id == id }) { selection = .songs }
+        }
+    }
+}
+
+/// A playlist in the sidebar, or a field for its name while it's being renamed.
+private struct PlaylistRow: View {
+    let app: AppState
+    let playlist: PlaylistSummary
+    @State private var name = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        if app.renamingPlaylist == playlist.id {
+            TextField("Name", text: $name)
+                .focused($focused)
+                .onAppear {
+                    name = playlist.name
+                    focused = true
+                }
+                .onSubmit(commit)
+                .onExitCommand { app.renamingPlaylist = nil }
+                .onChange(of: focused) { if !focused { commit() } }
+        } else {
+            Label(playlist.name, systemImage: "music.note.list")
+                .badge(playlist.trackCount)
+        }
+    }
+
+    private func commit() {
+        guard app.renamingPlaylist == playlist.id else { return }
+        app.renamingPlaylist = nil
+        let new = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !new.isEmpty, new != playlist.name, let library = app.library else { return }
+        app.perform { try await library.renamePlaylist(playlist.id, to: new) }
     }
 }
 

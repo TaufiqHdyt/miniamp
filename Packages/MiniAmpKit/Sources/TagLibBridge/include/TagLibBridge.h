@@ -30,6 +30,22 @@ typedef struct {
 /// Returns false if the file can't be opened. On success, release with ma_taglib_free.
 bool ma_taglib_read(const char *path, bool withPicture, MATagInfo *out);
 void ma_taglib_free(MATagInfo *info);
+
+/// Tag changes. A NULL string or a negative number leaves that tag alone; an empty string or
+/// zero removes it.
+typedef struct {
+    const char *title;
+    const char *artist;
+    const char *album;
+    const char *albumArtist;
+    const char *genre;
+    int year;
+    int trackNumber;
+    int discNumber;
+} MATagEdit;
+
+/// Writes the changes into the file, in place. Returns false if the file can't be opened or saved.
+bool ma_taglib_write(const char *path, const MATagEdit *edit);
 const char *ma_taglib_version(void);
 
 #ifdef __cplusplus

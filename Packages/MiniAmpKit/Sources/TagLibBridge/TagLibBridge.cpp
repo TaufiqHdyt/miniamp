@@ -117,6 +117,52 @@ extern "C" void ma_taglib_free(MATagInfo *info) {
     std::memset(info, 0, sizeof(*info));
 }
 
+namespace {
+
+void setText(TagLib::PropertyMap &map, const char *key, const char *value) {
+    if (!value) return;
+    if (*value == 0) map.erase(key);
+    else map.replace(key, TagLib::StringList(TagLib::String(value, TagLib::String::UTF8)));
+}
+
+/// Sets "n", keeping a total that was there ("3/12" edited to 5 becomes "5/12").
+void setNumber(TagLib::PropertyMap &map, const char *key, int value) {
+    if (value < 0) return;
+    if (value == 0) {
+        map.erase(key);
+        return;
+    }
+    TagLib::String text = TagLib::String::number(value);
+    auto it = map.find(key);
+    if (it != map.end() && !it->second.isEmpty()) {
+        const TagLib::String old = it->second.front();
+        const int slash = old.find("/");
+        if (slash >= 0) text += old.substr(slash);
+    }
+    map.replace(key, TagLib::StringList(text));
+}
+
+} // namespace
+
+extern "C" bool ma_taglib_write(const char *path, const MATagEdit *edit) {
+    if (!path || !edit) return false;
+    TagLib::FileRef ref(path, false);
+    if (ref.isNull()) return false;
+
+    auto map = ref.properties();
+    setText(map, "TITLE", edit->title);
+    setText(map, "ARTIST", edit->artist);
+    setText(map, "ALBUM", edit->album);
+    setText(map, "ALBUMARTIST", edit->albumArtist);
+    setText(map, "GENRE", edit->genre);
+    if (edit->year == 0) map.erase("DATE");
+    else if (edit->year > 0) map.replace("DATE", TagLib::StringList(TagLib::String::number(edit->year)));
+    setNumber(map, "TRACKNUMBER", edit->trackNumber);
+    setNumber(map, "DISCNUMBER", edit->discNumber);
+    ref.setProperties(map);
+    return ref.save();
+}
+
 extern "C" const char *ma_taglib_version(void) {
     static const std::string v = std::to_string(TAGLIB_MAJOR_VERSION) + "." +
                                  std::to_string(TAGLIB_MINOR_VERSION) + "." +

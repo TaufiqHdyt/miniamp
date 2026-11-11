@@ -1,6 +1,8 @@
+import AppKit
 import MiniAmpKit
 import Observation
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// What the window, the menus, and the settings share: the player, the library, and the
 /// actions that start playback from a list.
@@ -28,14 +30,24 @@ final class AppState {
     var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
     /// An offloaded track that was double-clicked: it plays, with the list it was in, once it's downloaded.
     private(set) var waitingToPlay: (id: TrackInfo.ID, list: [TrackInfo])?
+    /// The library's playlists, by name; kept current by the window (see `reloadPlaylists`).
+    private(set) var playlists: [PlaylistSummary] = []
+    /// A sidebar item to show, asked for by something outside the sidebar (a new playlist).
+    var sidebarRequest: SidebarItem?
+    /// The playlist whose name is being edited in the sidebar.
+    var renamingPlaylist: Int64?
+    /// The tracks in the Get Info sheet.
+    var editingTags: TagEditTarget?
     /// Media keys and Control Center.
     @ObservationIgnored private var systemNowPlaying: SystemNowPlaying?
+    @ObservationIgnored private var playHistory: PlayHistory?
 
     init(player: Player, library: Library?) {
         self.player = player
         self.library = library
         sleepTimer = SleepTimer(player: player)
         systemNowPlaying = SystemNowPlaying(app: self)
+        if let library { playHistory = PlayHistory(player: player, database: library.database) }
     }
 
     /// Runs an action and shows any error it throws.
@@ -91,4 +103,71 @@ final class AppState {
 
     /// The URL of what's playing (or paused, or next to play).
     var currentURL: URL? { player.queue.current }
+
+    // MARK: Playlists
+
+    func reloadPlaylists() async {
+        guard let library else { return }
+        do { playlists = try await library.playlists() } catch { self.error = "\(error)" }
+    }
+
+    /// Creates a playlist (holding `tracks`, if any), shows it, and starts editing its name.
+    func newPlaylist(with tracks: [TrackInfo] = []) {
+        guard let library else { return }
+        let taken = Set(playlists.map(\.name))
+        let name = (1...).lazy.map { $0 == 1 ? "Untitled Playlist" : "Untitled Playlist \($0)" }.first { !taken.contains($0) }!
+        perform { [self] in
+            let id = try await library.createPlaylist(named: name, trackIds: tracks.compactMap(\.track.id))
+            await reloadPlaylists()
+            sidebarRequest = .playlist(id)
+            renamingPlaylist = id
+        }
+    }
+
+    func add(_ tracks: [TrackInfo], toPlaylist id: Int64) {
+        guard let library else { return }
+        perform { try await library.addToPlaylist(id, trackIds: tracks.compactMap(\.track.id)) }
+    }
+
+    /// Asks where to save, then writes the playlist there as M3U8.
+    func exportPlaylist(_ playlist: PlaylistSummary) {
+        guard let library else { return }
+        let panel = NSSavePanel()
+        panel.title = "Export Playlist"
+        panel.nameFieldStringValue = playlist.name.replacingOccurrences(of: "/", with: "-") + ".m3u8"
+        panel.allowedContentTypes = [UTType(filenameExtension: "m3u8") ?? .m3uPlaylist]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        perform {
+            let tracks = try await library.tracks(in: .playlist(playlist.id), sort: TrackSort(.playlistOrder))
+            let text = M3U8.export(tracks, name: playlist.name, savedIn: url.deletingLastPathComponent())
+            try Data(text.utf8).write(to: url, options: .atomic)
+        }
+    }
+
+    // MARK: Tags
+
+    func editTags(of tracks: [TrackInfo]) {
+        let local = tracks.filter { !$0.track.isEvicted }
+        guard !local.isEmpty else { return }
+        editingTags = TagEditTarget(tracks: local)
+    }
+
+    /// Saves the Get Info sheet's changes. The file playing now, and the one queued after it
+    /// (opened early for gapless playback), are replaced rather than edited in place.
+    func saveTags(_ changes: TagChanges, of tracks: [TrackInfo]) {
+        guard let library else { return }
+        var open: Set<String> = []
+        if let current = currentURL { open.insert(LibraryPaths.normalized(current.path)) }
+        if let next = player.queue.upcoming(automatic: true) {
+            open.insert(LibraryPaths.normalized(player.queue.item(atPosition: next).path))
+        }
+        perform { try await library.editTags(of: tracks.map(\.track), changes, openFiles: open) }
+    }
+}
+
+/// The tracks a Get Info sheet edits.
+struct TagEditTarget: Identifiable {
+    let id = UUID()
+    let tracks: [TrackInfo]
 }

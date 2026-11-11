@@ -8,6 +8,7 @@ usage: miniampctl library scan <folder>... [--db PATH] [--no-artwork]
        miniampctl library watch [--db PATH]     rescan the saved folders, then follow changes (Ctrl-C to quit)
        miniampctl library stats [--db PATH]
        miniampctl library browse [--db PATH]    time the queries the window runs (median of 5)
+       miniampctl library history [--db PATH]   the last 50 plays
 The database defaults to $TMPDIR/miniampctl/library.sqlite, with thumbnails in artwork/ beside it.
 """
 
@@ -78,6 +79,15 @@ func libraryCommand(_ args: [String]) async throws {
         try await printStats(library.database, path: options.dbPath)
     case "browse":
         try await browse(options.open())
+    case "history":
+        let library = try options.open()
+        let plays = try await library.database.writer.read { try Plays.recent(limit: 50, $0) }
+        for (play, info) in plays {
+            let when = play.playedAt.formatted(date: .abbreviated, time: .shortened)
+            let listened = Duration.milliseconds(play.listenedMs).formatted(.time(pattern: .minuteSecond))
+            print("\(when)  \(listened)  \(info.track.title) · \(info.artistName ?? "?")")
+        }
+        print("\(plays.count) play\(plays.count == 1 ? "" : "s")")
     default:
         print(libraryUsage)
         exit(64)

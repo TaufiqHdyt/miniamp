@@ -14,7 +14,7 @@ public final class Library {
     public let database: AppDatabase
     public private(set) var folders: [LibraryFolder] = []
     public private(set) var trackCount = 0
-    /// Bumped on every committed change to the tracks, so views can refresh what they show.
+    /// Bumped on every committed change to the tracks or playlists, so views can refresh what they show.
     public private(set) var revision = 0
     /// The scan in progress, or nil when idle.
     public private(set) var progress: ScanProgress?
@@ -112,6 +112,33 @@ public final class Library {
         try await database.writer.read { try LibraryQueries.playlists($0) }
     }
 
+    // Playlist edits (see Playlists). Each one bumps `revision` once it's committed.
+
+    @discardableResult
+    public func createPlaylist(named name: String, trackIds: [Int64] = []) async throws -> Int64 {
+        try await database.writer.write { try Playlists.create(named: name, trackIds: trackIds, $0) }
+    }
+
+    public func renamePlaylist(_ id: Int64, to name: String) async throws {
+        try await database.writer.write { try Playlists.rename(id, to: name, $0) }
+    }
+
+    public func deletePlaylist(_ id: Int64) async throws {
+        try await database.writer.write { try Playlists.delete(id, $0) }
+    }
+
+    public func addToPlaylist(_ id: Int64, trackIds: [Int64], at index: Int? = nil) async throws {
+        try await database.writer.write { try Playlists.add(trackIds, to: id, at: index, $0) }
+    }
+
+    public func removeFromPlaylist(_ id: Int64, itemIds: [Int64]) async throws {
+        try await database.writer.write { try Playlists.remove(itemIds, from: id, $0) }
+    }
+
+    public func movePlaylistItems(_ itemIds: [Int64], in id: Int64, to index: Int) async throws {
+        try await database.writer.write { try Playlists.move(itemIds, in: id, to: index, $0) }
+    }
+
     public func tracks(in scope: TrackScope, sort: TrackSort = .albumOrder) async throws -> [TrackInfo] {
         try await database.writer.read { try LibraryQueries.tracks(in: scope, sort: sort, $0) }
     }
@@ -132,6 +159,32 @@ public final class Library {
             }
             return found
         }
+    }
+
+    /// Writes `changes` into each track's file, then rescans those files so the library shows
+    /// the new tags. Files in `openFiles` (paths, as the library spells them) are being read
+    /// for playback and get a replaced copy instead of an in-place edit (see TagWriter).
+    /// Offloaded tracks are skipped: their data isn't on this Mac.
+    public func editTags(of tracks: [Track], _ changes: TagChanges, openFiles: Set<String> = []) async throws {
+        let local = tracks.filter { !$0.isEvicted }
+        guard !changes.isEmpty, !local.isEmpty else { return }
+        var written: [Track] = []
+        defer {
+            for (folderId, edited) in Dictionary(grouping: written, by: \.folderId) {
+                if let folder = folders.first(where: { $0.id == folderId }), access[folderId] != nil {
+                    enqueue(folder, .paths(Set(edited.map(\.path))))
+                }
+            }
+        }
+        for track in local {
+            try await Self.write(changes, to: track.url, replacingFile: openFiles.contains(track.path))
+            written.append(track)
+        }
+    }
+
+    @concurrent
+    private nonisolated static func write(_ changes: TagChanges, to url: URL, replacingFile: Bool) async throws {
+        try TagWriter.write(changes, to: url, replacingFile: replacingFile)
     }
 
     /// Starts downloading offloaded tracks. Once a file is local, the watcher sees it and its tags are read.
@@ -211,8 +264,14 @@ public final class Library {
         }
     }
 
+    /// Any committed change to the tracks or the playlists bumps `revision`. (Reading the
+    /// playlist tables puts them in the observed region; their counts aren't used.)
     private func observeTracks() {
-        let counts = ValueObservation.tracking { try Track.fetchCount($0) }.values(in: database.writer)
+        let counts = ValueObservation.tracking { db in
+            let tracks = try Track.fetchCount(db)
+            _ = try Playlist.fetchCount(db) + PlaylistItem.fetchCount(db)
+            return tracks
+        }.values(in: database.writer)
         observer = Task { [weak self] in
             do {
                 for try await count in counts {

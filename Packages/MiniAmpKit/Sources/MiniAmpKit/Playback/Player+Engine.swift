@@ -96,6 +96,7 @@ extension Player {
         setPlayhead(Self.time(frame, file), force: true)
         signalPath = SignalPath(file: file, url: url, device: device, engine: engine)
         state = autoplay ? .playing : .paused
+        if frame == 0 { trackStarts += 1 }
         if autoplay { startTicker() }
         if let signalPath { Self.log.info("[\(id)] \(signalPath.summary, privacy: .public)") }
     }

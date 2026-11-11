@@ -8,14 +8,20 @@ import SwiftUI
 /// tracks, every time the list reloads (including after each batch of a scan). NSTableView asks
 /// its data source only for the rows on screen, so a reload costs the same at any size.
 ///
-/// Double-click or Return plays the list from that row; Space plays or pauses. Clicking a header
-/// sorts by it (the rows arrive sorted from the database). The header's menu shows and hides
-/// columns, and the layout is saved.
+/// Double-click or Return plays the list from that row; Space plays or pauses; ⌘I opens Get
+/// Info. Clicking a header sorts by it (the rows arrive sorted from the database). The header's
+/// menu shows and hides columns, and the layout is saved.
+///
+/// In a playlist, rows can be dragged into a new order (while it's sorted by its own order),
+/// and Delete removes them from the playlist.
 struct TrackTable: NSViewRepresentable {
     let app: AppState
     let rows: TrackRows
-    var inPlaylist = false
+    /// The playlist the rows are, if they are one.
+    var playlist: Int64?
     @Binding var sort: TrackSort
+
+    var inPlaylist: Bool { playlist != nil }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -39,6 +45,10 @@ struct TrackTable: NSViewRepresentable {
         table.doubleAction = #selector(Coordinator.doubleClicked(_:))
         table.onReturn = { [weak coordinator] in coordinator?.playSelection() }
         table.onSpace = { [weak coordinator] in coordinator?.togglePlayPause() }
+        table.onDelete = { [weak coordinator] in coordinator?.removeSelectionFromPlaylist() }
+        table.onGetInfo = { [weak coordinator] in coordinator?.getInfoForSelection() }
+        table.registerForDraggedTypes([Coordinator.rowType])
+        table.setDraggingSourceOperationMask(.move, forLocal: true)
 
         let rowMenu = NSMenu()
         rowMenu.delegate = coordinator
@@ -97,6 +107,8 @@ struct TrackTable: NSViewRepresentable {
         /// change them, so it skips the measuring.
         private var fittedFor: (count: Int, idSum: Int64, columns: [String])?
         static let autoSizeKey = "autoSizeColumns"
+        /// Playlist rows being dragged within the table: their playlist item ids.
+        static let rowType = NSPasteboard.PasteboardType("dev.miniamp.playlist-items")
 
         func update(_ config: TrackTable, playing: String?, isPlaying: Bool, waiting: Set<TrackInfo.ID>) {
             self.config = config
@@ -210,6 +222,75 @@ struct TrackTable: NSViewRepresentable {
 
         // MARK: Actions
 
+        // MARK: Playlist order
+
+        /// Rows can be dragged only where the drop means something: in a playlist shown in its own order.
+        private var canReorder: Bool {
+            guard let config, config.inPlaylist else { return false }
+            return config.sort == TrackSort(.playlistOrder)
+        }
+
+        func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
+            guard canReorder, let item = tracks[row].playlistItemId else { return nil }
+            let entry = NSPasteboardItem()
+            entry.setString(String(item), forType: Self.rowType)
+            return entry
+        }
+
+        func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo, proposedRow row: Int,
+                       proposedDropOperation operation: NSTableView.DropOperation) -> NSDragOperation {
+            guard canReorder, info.draggingSource as? NSTableView === tableView else { return [] }
+            if operation == .on { tableView.setDropRow(row, dropOperation: .above) }
+            return .move
+        }
+
+        func tableView(_ tableView: NSTableView, acceptDrop info: any NSDraggingInfo, row: Int,
+                       dropOperation: NSTableView.DropOperation) -> Bool {
+            guard canReorder, let playlist = config?.playlist, let library = config?.app.library else { return false }
+            let items = (info.draggingPasteboard.pasteboardItems ?? []).compactMap { $0.string(forType: Self.rowType).flatMap(Int64.init) }
+            guard !items.isEmpty else { return false }
+            // Shown at once; the reload after the write brings the same order.
+            let moving = Set(items)
+            let moved = tracks.filter { $0.playlistItemId.map(moving.contains) ?? false }
+            var rest = tracks.filter { !($0.playlistItemId.map(moving.contains) ?? false) }
+            let at = row - tracks[..<min(row, tracks.count)].filter { $0.playlistItemId.map(moving.contains) ?? false }.count
+            rest.insert(contentsOf: moved, at: at)
+            showLocally(rest, in: tableView)
+            tableView.selectRowIndexes(IndexSet(at..<(at + moved.count)), byExtendingSelection: false)
+            config?.app.perform { try await library.movePlaylistItems(items, in: playlist, to: row) }
+            return true
+        }
+
+        func removeSelectionFromPlaylist() {
+            guard let table, let config, let playlist = config.playlist, let library = config.app.library else { return }
+            let rows = table.selectedRowIndexes
+            remove(rows.map { tracks[$0] }, from: playlist, library: library, in: table)
+        }
+
+        private func remove(_ chosen: [TrackInfo], from playlist: Int64, library: Library, in table: NSTableView) {
+            let items = chosen.compactMap(\.playlistItemId)
+            guard !items.isEmpty else { return }
+            let gone = Set(items)
+            let first = tracks.firstIndex { $0.playlistItemId.map(gone.contains) ?? false } ?? 0
+            showLocally(tracks.filter { !($0.playlistItemId.map(gone.contains) ?? false) }, in: table)
+            if !tracks.isEmpty { table.selectRowIndexes([min(first, tracks.count - 1)], byExtendingSelection: false) }
+            config?.app.perform { try await library.removeFromPlaylist(playlist, itemIds: items) }
+        }
+
+        /// Shows an edit before the database has it. Positions follow the new order.
+        private func showLocally(_ new: [TrackInfo], in table: NSTableView) {
+            tracks = new
+            positions = Dictionary(tracks.enumerated().map { ($1.id, $0 + 1) }, uniquingKeysWith: { a, _ in a })
+            table.deselectAll(nil)
+            table.reloadData()
+        }
+
+        func getInfoForSelection() {
+            guard let table else { return }
+            let chosen = table.selectedRowIndexes.map { tracks[$0] }
+            config?.app.editTags(of: chosen)
+        }
+
         @objc func doubleClicked(_ sender: NSTableView) {
             guard sender.clickedRow >= 0 else { return }
             config?.app.play(tracks, from: tracks[sender.clickedRow].id)
@@ -239,12 +320,41 @@ struct TrackTable: NSViewRepresentable {
             menu.addItem(item("Play") { [self] in config?.app.play(chosen.count > 1 ? chosen : tracks, from: chosen.first?.id) })
             menu.addItem(item("Shuffle") { [self] in config?.app.play(chosen.count > 1 ? chosen : tracks, from: nil, shuffled: true) })
             menu.addItem(.separator())
+            if let app = config?.app, app.library != nil {
+                let local = chosen.filter { !$0.track.isEvicted }
+                let info = item("Get Info…") { app.editTags(of: local) }
+                info.keyEquivalent = "i"
+                info.isEnabled = !local.isEmpty
+                if local.isEmpty { info.action = nil }
+                menu.addItem(info)
+                menu.addItem(addToPlaylistItem(chosen, app: app))
+                if let playlist = config?.playlist, let library = app.library {
+                    menu.addItem(item("Remove from Playlist") { [self] in
+                        guard let table = self.table else { return }
+                        remove(chosen, from: playlist, library: library, in: table)
+                    })
+                }
+                menu.addItem(.separator())
+            }
             if chosen.contains(where: \.track.isEvicted) {
                 menu.addItem(item("Download from iCloud") { [self] in config?.app.library?.download(chosen.map(\.track)) })
             }
             menu.addItem(item("Show in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting(chosen.map(\.track.url))
             })
+        }
+
+        private func addToPlaylistItem(_ chosen: [TrackInfo], app: AppState) -> NSMenuItem {
+            let submenu = NSMenu()
+            submenu.addItem(item("New Playlist from Selection") { app.newPlaylist(with: chosen) })
+            let others = app.playlists.filter { $0.id != config?.playlist }
+            if !others.isEmpty { submenu.addItem(.separator()) }
+            for playlist in others {
+                submenu.addItem(item(playlist.name) { app.add(chosen, toPlaylist: playlist.id) })
+            }
+            let entry = NSMenuItem(title: "Add to Playlist", action: nil, keyEquivalent: "")
+            entry.submenu = submenu
+            return entry
         }
 
         private func fillHeaderMenu(_ menu: NSMenu) {
@@ -449,18 +559,34 @@ private final class TrackCell: NSTableCellView {
     }
 }
 
-/// Return plays the selection and Space plays or pauses, as in the rest of the window.
+/// Return plays the selection and Space plays or pauses, as in the rest of the window. Delete
+/// (in a playlist) removes the selection from it; ⌘I opens Get Info.
 private final class KeyHandlingTableView: NSTableView {
     var onReturn: (() -> Void)?
     var onSpace: (() -> Void)?
+    var onDelete: (() -> Void)?
+    var onGetInfo: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
-        let plain = event.modifierFlags.intersection([.command, .option, .control]).isEmpty
+        let modifiers = event.modifierFlags.intersection([.command, .option, .control])
+        let plain = modifiers.isEmpty
         switch event.charactersIgnoringModifiers {
         case "\r" where plain, "\u{3}" where plain: onReturn?()
         case " " where plain: onSpace?()
+        case "\u{7F}" where plain, "\u{F728}" where plain: onDelete?()
+        case "i" where modifiers == .command: onGetInfo?()
         default: super.keyDown(with: event)
         }
+    }
+
+    /// ⌘I reaches the table as a key equivalent before it's a key press.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.intersection([.command, .option, .control, .shift]) == .command,
+           event.charactersIgnoringModifiers == "i", window?.firstResponder === self {
+            onGetInfo?()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }
 

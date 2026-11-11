@@ -20,7 +20,7 @@ A native macOS music player for a local library. It plays FLAC, MP3, ALAC, and A
 
 ## Milestones
 
-M1 to M4 are done, so the app is usable day to day. M5 is next.
+M1 to M5 are done, so the app is usable day to day. M6 is next.
 
 ### M1: Playback proof of concept
 
@@ -73,10 +73,10 @@ This carries most of the technical risk, so it comes first.
 ### M5: System integration and library tools
 
 - [x] Media keys and Control Center through `MPRemoteCommandCenter` and `MPNowPlayingInfoCenter`
-- [ ] Playlist create, edit, and reorder
-- [ ] M3U8 export
-- [ ] Metadata editing with TagLib, followed by a rescan of the edited file
-- [ ] Play history recording with the 30-second rule
+- [x] Playlist create, edit, and reorder
+- [x] M3U8 export
+- [x] Metadata editing with TagLib, followed by a rescan of the edited file
+- [x] Play history recording with the 30-second rule
 
 **Done when:** media keys work with the app in the background, and a tag edit survives a full rescan.
 

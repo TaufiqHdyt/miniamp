@@ -11,7 +11,7 @@ struct MainWindow: View {
     var body: some View {
         VStack(spacing: 0) {
             NavigationSplitView {
-                Sidebar(library: app.library, selection: $selection)
+                Sidebar(app: app, selection: $selection)
                     .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 300)
             } detail: {
                 detail
@@ -57,6 +57,15 @@ struct MainWindow: View {
             Text(app.error ?? "")
         }
         .onChange(of: app.library?.revision) { app.libraryChanged() }
+        .onChange(of: app.sidebarRequest) {
+            guard let item = app.sidebarRequest else { return }
+            app.searchText = ""
+            selection = item
+            app.sidebarRequest = nil
+        }
+        .sheet(item: $app.editingTags) { target in
+            TagEditor(app: app, tracks: target.tracks)
+        }
         // Nobody sees the position while the window is hidden or covered; stop redrawing it.
         .onWindowVisibilityChange { app.player.updatesPosition = $0 }
         .task { await start() }
@@ -75,7 +84,8 @@ struct MainWindow: View {
             case .albums:
                 AlbumsView(app: app, library: library)
             case .playlist(let id):
-                TrackListView(app: app, library: library, scope: .playlist(id), title: "Playlist")
+                TrackListView(app: app, library: library, scope: .playlist(id),
+                              title: app.playlists.first { $0.id == id }?.name ?? "Playlist")
             }
         } else {
             ContentUnavailableView("The library couldn't be opened", systemImage: "externaldrive.badge.exclamationmark",

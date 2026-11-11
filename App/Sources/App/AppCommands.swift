@@ -6,6 +6,10 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
+            Button("New Playlist") { app.newPlaylist() }
+                .keyboardShortcut("n")
+                .disabled(app.library == nil)
+            Divider()
             Button("Open…") { app.importingFiles = true }
                 .keyboardShortcut("o")
             Button("Add Music Folder…") { app.addingFolder = true }

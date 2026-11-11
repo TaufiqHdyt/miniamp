@@ -17,7 +17,8 @@ struct TrackListView: View {
     /// Sort per kind of list ("songs", "artist", …), so an album keeps album order while Songs is by title.
     @SceneStorage("trackSorts") private var savedSorts = ""
 
-    private var inPlaylist: Bool { if case .playlist = scope { true } else { false } }
+    private var playlist: Int64? { if case .playlist(let id) = scope { id } else { nil } }
+    private var inPlaylist: Bool { playlist != nil }
 
     private var sortKey: String {
         switch scope {
@@ -38,7 +39,7 @@ struct TrackListView: View {
     }
 
     var body: some View {
-        TrackTable(app: app, rows: rows, inPlaylist: inPlaylist,
+        TrackTable(app: app, rows: rows, playlist: playlist,
                    sort: Binding(get: { sort }, set: { sort = $0 }))
             .overlay {
                 if loaded && tracks.isEmpty {
