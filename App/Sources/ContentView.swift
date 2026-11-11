@@ -2,14 +2,35 @@ import MiniAmpKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// M2 test bench: queue playback, seeking, output device, hog mode, and device volume.
-/// The real interface arrives in M4.
+/// Test bench: the library (M3) beside queue playback, seeking, output device, hog mode, and
+/// device volume (M2). The real interface arrives in M4.
 struct ContentView: View {
+    let library: Library?
     @State private var player = Player()
     @State private var importing = false
     @State private var error: String?
 
     var body: some View {
+        HSplitView {
+            if let library {
+                LibraryPanel(library: library, player: player, error: $error)
+                    .padding(20)
+            }
+            playerPanel
+        }
+        .frame(minWidth: library == nil ? 620 : 1040, minHeight: 560)
+        .task {
+            await library?.open()
+            #if DEBUG
+            // Debug hook for automated checks: `miniamp -libraryFolder /path/in/container`.
+            if let path = UserDefaults.standard.string(forKey: "libraryFolder") {
+                do { try await library?.addFolder(URL(fileURLWithPath: path, isDirectory: true)) } catch let e { error = "\(e)" }
+            }
+            #endif
+        }
+    }
+
+    private var playerPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
             TransportBar(player: player, importing: $importing, error: $error)
             SeekBar(player: player)
@@ -32,7 +53,7 @@ struct ContentView: View {
             OutputControls(player: player)
         }
         .padding(20)
-        .frame(minWidth: 620, minHeight: 520)
+        .frame(minWidth: 600)
         .fileImporter(isPresented: $importing, allowedContentTypes: [.audio], allowsMultipleSelection: true) { result in
             switch result {
             case .success(let urls): run($error) { try await player.setQueue(urls) }
