@@ -160,36 +160,40 @@ final class AppState {
 
     // MARK: Equalizer
 
-    /// The window that was in front when the Equalizer opened (Settings, say). Closing the
-    /// Equalizer brings it back; left to itself, AppKit raises the main window over it.
+    /// The window that was in front when the Equalizer opened (Settings, say). When the
+    /// Equalizer closes it gets the focus back; left to itself, AppKit raises the main window.
     @ObservationIgnored private weak var windowBeforeEqualizer: NSWindow?
     @ObservationIgnored private var closeObserver: (any NSObjectProtocol)?
 
     func showEqualizer(_ openWindow: OpenWindowAction) {
-        if let front = NSApp.keyWindow, front.identifier?.rawValue.hasPrefix("equalizer") != true {
-            windowBeforeEqualizer = front
-            // Closed meanwhile: then it stays closed.
-            closeObserver.map(NotificationCenter.default.removeObserver)
+        if let front = NSApp.keyWindow, !Self.isEqualizer(front) { windowBeforeEqualizer = front }
+        if closeObserver == nil {
             closeObserver = NotificationCenter.default.addObserver(
-                forName: NSWindow.willCloseNotification, object: front, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.forgetWindowBeforeEqualizer() }
+                forName: NSWindow.willCloseNotification, object: nil, queue: nil
+            ) { [weak self] note in
+                guard let window = note.object as? NSWindow else { return }
+                MainActor.assumeIsolated { self?.windowWillClose(window) }
             }
         }
         openWindow(id: "equalizer")
     }
 
-    func equalizerClosed() {
-        guard let window = windowBeforeEqualizer else { return }
-        forgetWindowBeforeEqualizer()
-        // After AppKit has raised its own choice of window, so this one ends up in front.
-        DispatchQueue.main.async { window.makeKeyAndOrderFront(nil) }
+    /// SwiftUI names the window after the scene's id ("equalizer-…"); the title is a fallback.
+    private static func isEqualizer(_ window: NSWindow) -> Bool {
+        window.identifier?.rawValue.hasPrefix("equalizer") == true || window.title == "Equalizer"
     }
 
-    private func forgetWindowBeforeEqualizer() {
+    /// Runs before the window goes: the earlier window, put just under the Equalizer and made
+    /// key, is in front once it's gone, so AppKit has nothing to choose and nothing flickers.
+    private func windowWillClose(_ window: NSWindow) {
+        if window === windowBeforeEqualizer {
+            windowBeforeEqualizer = nil // closed meanwhile: it stays closed
+            return
+        }
+        guard Self.isEqualizer(window), let previous = windowBeforeEqualizer, previous.isVisible else { return }
         windowBeforeEqualizer = nil
-        closeObserver.map(NotificationCenter.default.removeObserver)
-        closeObserver = nil
+        previous.order(.below, relativeTo: window.windowNumber)
+        previous.makeKey()
     }
 
     // MARK: Loudness
