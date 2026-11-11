@@ -112,4 +112,54 @@ enum HAL {
             group.cancelAll()
         }
     }
+
+    static func isSettable(_ object: AudioObjectID, _ address: AudioObjectPropertyAddress) -> Bool {
+        var address = address
+        guard AudioObjectHasProperty(object, &address) else { return false }
+        var settable: DarwinBoolean = false
+        return AudioObjectIsPropertySettable(object, &address, &settable) == noErr && settable.boolValue
+    }
+
+    static func has(_ object: AudioObjectID, _ address: AudioObjectPropertyAddress) -> Bool {
+        var address = address
+        return AudioObjectHasProperty(object, &address)
+    }
+
+    /// Yields whenever any of `addresses` changes on `object`. The listeners are removed when
+    /// the consuming task stops iterating.
+    static func changes(_ object: AudioObjectID, _ addresses: [AudioObjectPropertyAddress]) -> AsyncStream<Void> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let registration = ListenerRegistration(object: object, addresses: addresses) {
+                continuation.yield()
+            }
+            continuation.onTermination = { _ in registration.remove() }
+        }
+    }
+}
+
+/// Owns a set of HAL property listeners so they can be removed from any thread.
+/// Immutable after init; the HAL calls are thread-safe.
+private final class ListenerRegistration: @unchecked Sendable {
+    private let object: AudioObjectID
+    private let queue = DispatchQueue(label: "miniamp.hal-observer")
+    private let block: AudioObjectPropertyListenerBlock
+    private let registered: [AudioObjectPropertyAddress]
+
+    init(object: AudioObjectID, addresses: [AudioObjectPropertyAddress], onChange: @escaping @Sendable () -> Void) {
+        self.object = object
+        let block: AudioObjectPropertyListenerBlock = { _, _ in onChange() }
+        self.block = block
+        let queue = self.queue
+        registered = addresses.filter { address in
+            var address = address
+            return AudioObjectAddPropertyListenerBlock(object, &address, queue, block) == noErr
+        }
+    }
+
+    func remove() {
+        for address in registered {
+            var address = address
+            AudioObjectRemovePropertyListenerBlock(object, &address, queue, block)
+        }
+    }
 }
