@@ -25,7 +25,7 @@ public enum AudioSystem {
     }
 }
 
-// MARK: - Liveness, hog mode
+// MARK: - Liveness, hog mode, volume
 
 extension AudioDevice {
     /// False once the device has been unplugged or removed.
@@ -68,5 +68,48 @@ extension AudioDevice {
             return
         }
         try HAL.set(id, .init(kAudioDevicePropertyHogMode), on ? mine : pid_t(-1))
+    }
+
+    // Volume: the device's own control, so samples are never scaled in software.
+
+    /// The elements that carry a settable volume: the main element if it has one, otherwise
+    /// each output channel.
+    private func volumeElements() -> [AudioObjectPropertyElement] {
+        let main = AudioObjectPropertyAddress(kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeOutput,
+                                              kAudioObjectPropertyElementMain)
+        if HAL.isSettable(id, main) { return [kAudioObjectPropertyElementMain] }
+        let channels = max(outputChannelCount, 2)
+        return (1...UInt32(channels)).filter {
+            HAL.isSettable(id, .init(kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeOutput, $0))
+        }
+    }
+
+    public var hasVolumeControl: Bool { !volumeElements().isEmpty }
+
+    /// 0...1, or nil when the device has no volume control (common on DACs: use the DAC's knob).
+    public func volume() -> Float? {
+        let values = volumeElements().compactMap {
+            try? HAL.get(id, .init(kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeOutput, $0),
+                         initial: Float32(0))
+        }
+        return values.isEmpty ? nil : values.reduce(0, +) / Float(values.count)
+    }
+
+    public func setVolume(_ value: Float) throws {
+        let clamped = min(max(value, 0), 1)
+        for element in volumeElements() {
+            try HAL.set(id, .init(kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeOutput, element),
+                        Float32(clamped))
+        }
+    }
+
+    /// Yields when the device's volume or mute changes, from us or from anywhere else (volume keys).
+    public func volumeChanges() -> AsyncStream<Void> {
+        var addresses = [AudioObjectPropertyAddress(kAudioDevicePropertyMute, kAudioObjectPropertyScopeOutput,
+                                                    kAudioObjectPropertyElementMain)]
+        for element in [kAudioObjectPropertyElementMain] + (1...UInt32(max(outputChannelCount, 2))).map({ $0 }) {
+            addresses.append(.init(kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeOutput, element))
+        }
+        return HAL.changes(id, addresses.filter { HAL.has(id, $0) })
     }
 }
