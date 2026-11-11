@@ -158,6 +158,40 @@ final class AppState {
         }
     }
 
+    // MARK: Equalizer
+
+    /// The window that was in front when the Equalizer opened (Settings, say). Closing the
+    /// Equalizer brings it back; left to itself, AppKit raises the main window over it.
+    @ObservationIgnored private weak var windowBeforeEqualizer: NSWindow?
+    @ObservationIgnored private var closeObserver: (any NSObjectProtocol)?
+
+    func showEqualizer(_ openWindow: OpenWindowAction) {
+        if let front = NSApp.keyWindow, front.identifier?.rawValue.hasPrefix("equalizer") != true {
+            windowBeforeEqualizer = front
+            // Closed meanwhile: then it stays closed.
+            closeObserver.map(NotificationCenter.default.removeObserver)
+            closeObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification, object: front, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.forgetWindowBeforeEqualizer() }
+            }
+        }
+        openWindow(id: "equalizer")
+    }
+
+    func equalizerClosed() {
+        guard let window = windowBeforeEqualizer else { return }
+        forgetWindowBeforeEqualizer()
+        // After AppKit has raised its own choice of window, so this one ends up in front.
+        DispatchQueue.main.async { window.makeKeyAndOrderFront(nil) }
+    }
+
+    private func forgetWindowBeforeEqualizer() {
+        windowBeforeEqualizer = nil
+        closeObserver.map(NotificationCenter.default.removeObserver)
+        closeObserver = nil
+    }
+
     // MARK: Loudness
 
     /// Measures ReplayGain for these tracks and the rest of their albums.

@@ -38,6 +38,7 @@ struct MiniAmpApp: App {
 
         Window("Equalizer", id: "equalizer") {
             EqualizerView(player: app.player)
+                .onDisappear { app.equalizerClosed() }
         }
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)

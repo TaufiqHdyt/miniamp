@@ -108,7 +108,7 @@ private struct SoundSettings: View {
                     HStack {
                         Text(player.equalizer.isEnabled ? player.equalizer.preset?.name ?? "Custom" : "Off")
                             .foregroundStyle(.secondary)
-                        Button("Open Equalizer…") { openWindow(id: "equalizer") }
+                        Button("Open Equalizer…") { app.showEqualizer(openWindow) }
                     }
                 }
             }

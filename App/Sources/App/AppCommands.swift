@@ -51,7 +51,7 @@ struct AppCommands: Commands {
             Menu("Sleep Timer") { SleepTimerChoices(timer: app.sleepTimer) }
             Divider()
             Toggle("DSP Mode", isOn: Binding(get: { player.dspMode }, set: { player.dspMode = $0 }))
-            Button("Equalizer…") { openWindow(id: "equalizer") }
+            Button("Equalizer…") { app.showEqualizer(openWindow) }
                 .keyboardShortcut("e", modifiers: [.command, .option])
             Picker("ReplayGain", selection: Binding(get: { player.replayGainMode }, set: { player.replayGainMode = $0 })) {
                 ForEach(ReplayGain.Mode.allCases, id: \.self) { Text($0.label).tag($0) }
