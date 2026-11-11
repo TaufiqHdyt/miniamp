@@ -11,16 +11,19 @@ public enum FormatSelection {
 
     /// The highest-bit-depth linear PCM format the stream offers at `sampleRate`.
     ///
-    /// Ties on bit depth prefer integer over float (what a DAC actually takes), then mixable
-    /// formats (non-mixable ones need hog mode), then the stream's current channel count.
+    /// Non-mixable formats are only considered when `allowNonMixable` (hog mode is held), since
+    /// setting one without exclusive access fails. Ties on bit depth prefer integer over float
+    /// (what a DAC actually takes), then mixable formats, then the stream's current channel count.
     public static func bestPhysicalFormat(
         from available: [AudioStreamRangedDescription],
         sampleRate: Double,
-        channels: UInt32
+        channels: UInt32,
+        allowNonMixable: Bool = false
     ) -> AudioStreamBasicDescription? {
         let candidates = available.compactMap { ranged -> AudioStreamBasicDescription? in
             var f = ranged.mFormat
             guard f.mFormatID == kAudioFormatLinearPCM else { return nil }
+            if !allowNonMixable && f.mFormatFlags & kAudioFormatFlagIsNonMixable != 0 { return nil }
             let range = ranged.mSampleRateRange
             if f.mSampleRate == 0 {
                 // A rate of 0 means "any rate in mSampleRateRange".

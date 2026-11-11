@@ -25,7 +25,7 @@ public enum AudioSystem {
     }
 }
 
-// MARK: - Liveness
+// MARK: - Liveness, hog mode
 
 extension AudioDevice {
     /// False once the device has been unplugged or removed.
@@ -39,5 +39,34 @@ extension AudioDevice {
         return streams.reduce(0) { sum, stream in
             sum + Int((try? AudioDevice.physicalFormat(of: stream).mChannelsPerFrame) ?? 0)
         }
+    }
+
+    // Hog mode: exclusive access. Other apps (and system sounds) can't use the device.
+
+    /// The process holding hog mode, or nil when the device is shared.
+    public func hogModeOwner() -> pid_t? {
+        let pid = (try? HAL.get(id, .init(kAudioDevicePropertyHogMode), initial: pid_t(-1))) ?? -1
+        return pid == -1 ? nil : pid
+    }
+
+    public var supportsHogMode: Bool {
+        HAL.isSettable(id, .init(kAudioDevicePropertyHogMode))
+    }
+
+    /// Takes or releases exclusive access for this process. The HAL toggles ownership on each set,
+    /// so this only writes when the current state differs.
+    public func setHogMode(_ on: Bool) throws {
+        let mine = getpid()
+        let owner = hogModeOwner()
+        if on {
+            if owner == mine { return }
+            if let owner {
+                throw CoreAudioError(status: kAudioDevicePermissionsError,
+                                     operation: "Hog \(name) (held by pid \(owner))")
+            }
+        } else if owner != mine {
+            return
+        }
+        try HAL.set(id, .init(kAudioDevicePropertyHogMode), on ? mine : pid_t(-1))
     }
 }

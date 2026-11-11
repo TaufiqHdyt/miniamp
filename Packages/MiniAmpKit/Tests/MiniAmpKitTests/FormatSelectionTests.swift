@@ -32,6 +32,16 @@ import Testing
         #expect(!FormatSelection.isFloat(best))
     }
 
+    @Test func nonMixableOnlyWithHogMode() throws {
+        // A DAC offering 32-bit integer only as non-mixable, 24-bit mixable.
+        let available = [Self.pcm(96_000, bits: 32, nonMixable: true), Self.pcm(96_000, bits: 24)]
+        let shared = try #require(FormatSelection.bestPhysicalFormat(from: available, sampleRate: 96_000, channels: 2))
+        #expect(shared.mBitsPerChannel == 24)
+        let hogged = try #require(FormatSelection.bestPhysicalFormat(from: available, sampleRate: 96_000, channels: 2,
+                                                                     allowNonMixable: true))
+        #expect(hogged.mBitsPerChannel == 32)
+    }
+
     /// Issue #10: which rate to run the device at when it can't do the file's rate.
     @Test(arguments: [
         // (file rate, device rates, expected)
