@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// Owns the SQLite connection. The real schema lands in M3 (issue: database schema).
+/// Owns the SQLite connection and the schema (see Library/Schema.swift).
 public final class AppDatabase: Sendable {
     public let writer: any DatabaseWriter
 
@@ -14,13 +14,18 @@ public final class AppDatabase: Sendable {
         try AppDatabase(DatabaseQueue())
     }
 
+    /// Opens (creating if needed) a database at `path`. WAL mode, so reads never wait on the scanner.
+    public static func at(_ path: String) throws -> AppDatabase {
+        try AppDatabase(DatabasePool(path: path))
+    }
+
     /// Opens (creating if needed) the database in Application Support.
     public static func onDisk(fileManager: FileManager = .default) throws -> AppDatabase {
         let dir = try fileManager
             .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appendingPathComponent("miniamp", isDirectory: true)
         try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        return try AppDatabase(DatabasePool(path: dir.appendingPathComponent("library.sqlite").path))
+        return try at(dir.appendingPathComponent("library.sqlite").path)
     }
 
     static var migrator: DatabaseMigrator {
@@ -28,7 +33,7 @@ public final class AppDatabase: Sendable {
         #if DEBUG
         m.eraseDatabaseOnSchemaChange = true
         #endif
-        // Migrations are registered here starting in M3.
+        m.registerMigration("v1", migrate: Schema.v1)
         return m
     }
 
