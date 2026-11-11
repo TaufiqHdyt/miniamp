@@ -65,7 +65,7 @@ final class AppState {
         }
     }
 
-    func isWaitingToPlay(_ id: TrackInfo.ID) -> Bool { waitingToPlay?.id == id }
+    var waitingToPlayID: TrackInfo.ID? { waitingToPlay?.id }
 
     /// Called when the library changes: plays the track being waited on if it's now downloaded.
     func libraryChanged() {

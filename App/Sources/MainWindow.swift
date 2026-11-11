@@ -111,16 +111,26 @@ struct MainWindow: View {
 
     private func start() async {
         Logger(subsystem: "dev.miniamp", category: "app").debug("window opened")
-        await app.library?.open()
-        #if DEBUG
-        // Debug hooks for automated checks:
-        //   miniamp -libraryFolder /path/in/container
-        //   miniamp -autoplay /path/in/container/file.flac [-hog YES]
-        //   miniamp -autoplay '(/path/a.flac, /path/b.flac)' [-sleepAtEndOfTrack YES]
         let defaults = UserDefaults.standard
-        if let path = defaults.string(forKey: "libraryFolder") {
+        // Hooks for automated checks: in Debug builds, or in any build when a test database
+        // is in use (-libraryDatabase), so a Release check never touches the real library.
+        //   miniamp -sidebar albums            (songs, artists, albums, or playlist:<id>)
+        //   miniamp -libraryFolder /path/in/container
+        var addsFolders = defaults.string(forKey: "libraryDatabase") != nil
+        #if DEBUG
+        addsFolders = true
+        #endif
+        if addsFolders, let item = defaults.string(forKey: "sidebar").flatMap(SidebarItem.init(rawValue:)) {
+            selection = item
+        }
+        await app.library?.open()
+        if addsFolders, let path = defaults.string(forKey: "libraryFolder") {
             app.perform { try await app.library?.addFolder(URL(fileURLWithPath: path, isDirectory: true)) }
         }
+        #if DEBUG
+        // Debug hooks for automated checks:
+        //   miniamp -autoplay /path/in/container/file.flac [-hog YES]
+        //   miniamp -autoplay '(/path/a.flac, /path/b.flac)' [-sleepAtEndOfTrack YES]
         if let paths = defaults.stringArray(forKey: "autoplay") ?? defaults.string(forKey: "autoplay").map({ [$0] }) {
             if defaults.object(forKey: "hog") != nil { app.player.hogMode = defaults.bool(forKey: "hog") }
             app.perform {

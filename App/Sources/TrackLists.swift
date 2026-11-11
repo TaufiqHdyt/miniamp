@@ -8,8 +8,12 @@ struct TrackListView: View {
     let library: Library
     let scope: TrackScope
     let title: String
-    @State private var tracks: [TrackInfo] = []
+    @State private var rows = TrackRows()
+    private var tracks: [TrackInfo] { rows.tracks }
     @State private var loaded = false
+    /// What `rows` shows, and when it was read: library changes reload at most once a second.
+    @State private var shown: (scope: TrackScope, sort: TrackSort)?
+    @State private var lastLoad: ContinuousClock.Instant?
     /// Sort per kind of list ("songs", "artist", …), so an album keeps album order while Songs is by title.
     @SceneStorage("trackSorts") private var savedSorts = ""
 
@@ -34,7 +38,7 @@ struct TrackListView: View {
     }
 
     var body: some View {
-        TrackTable(app: app, tracks: tracks, inPlaylist: inPlaylist,
+        TrackTable(app: app, rows: rows, inPlaylist: inPlaylist,
                    sort: Binding(get: { sort }, set: { sort = $0 }))
             .overlay {
                 if loaded && tracks.isEmpty {
@@ -50,18 +54,40 @@ struct TrackListView: View {
             .task(id: TrackQuery(scope: scope, sort: sort, revision: library.revision)) {
                 await load()
             }
+            .task { await cycleSortsIfAsked() }
+    }
+
+    /// For performance checks (`-perfCycleSort YES -logHangs YES`): re-sorts Songs a few
+    /// times, so each reload of an on-screen list gets measured.
+    private func cycleSortsIfAsked() async {
+        guard UserDefaults.standard.bool(forKey: "perfCycleSort"), case .all = scope else { return }
+        try? await Task.sleep(for: .seconds(3))
+        for column in [TrackSort.Column.title, .artist, .duration, .quality, .year, .albumOrder] {
+            sort = TrackSort(column, ascending: column != .duration)
+            try? await Task.sleep(for: .seconds(1.5))
+        }
     }
 
     private func load() async {
-        let sort = sort
-        // A scan commits in batches; let a burst of changes settle before reloading.
-        if loaded { try? await Task.sleep(for: .milliseconds(150)) }
-        guard !Task.isCancelled else { return }
+        let scope = scope, sort = sort
+        // A scan commits a batch every fraction of a second. Waiting for a pause would leave
+        // the list empty until the scan ends, so reload at most once a second instead. A new
+        // scope or sort loads at once.
+        if let shown, shown.scope == scope, shown.sort == sort, let lastLoad {
+            try? await Task.sleep(until: lastLoad + .seconds(1))
+            guard !Task.isCancelled else { return }
+        }
+        lastLoad = .now
         do {
             let found = try await library.tracks(in: scope, sort: sort)
-            guard !Task.isCancelled else { return }
-            tracks = found
+            // Keep the result even if another change came in meanwhile (it's fresh, and
+            // dropping it could starve the list during a scan), unless the question changed.
+            guard scope == self.scope, sort == self.sort else { return }
+            let measured = MainThreadWatchdog.measure("show \(found.count) songs")
+            if found != rows.tracks { rows = TrackRows(found) }
+            shown = (scope, sort)
             loaded = true
+            measured()
         } catch {
             app.error = "\(error)"
         }
@@ -73,14 +99,15 @@ struct SearchResultsView: View {
     let app: AppState
     let library: Library
     let query: String
-    @State private var results: [TrackInfo] = []
+    @State private var rows = TrackRows()
+    private var results: [TrackInfo] { rows.tracks }
     @State private var sort = TrackSort(.relevance)
     @State private var searched = false
 
     static let limit = 1000
 
     var body: some View {
-        TrackTable(app: app, tracks: results, sort: $sort)
+        TrackTable(app: app, rows: rows, sort: $sort)
             .overlay {
                 if searched && results.isEmpty {
                     ContentUnavailableView.search(text: query)
@@ -95,7 +122,7 @@ struct SearchResultsView: View {
                 do {
                     let found = try await library.search(query, sort: sort, limit: Self.limit)
                     guard !Task.isCancelled else { return }
-                    results = found
+                    if found != rows.tracks { rows = TrackRows(found) }
                     searched = true
                 } catch {
                     app.error = "\(error)"
@@ -117,6 +144,15 @@ struct SearchResultsView: View {
         var sort: TrackSort
         var revision: Int
     }
+}
+
+/// A list's rows, held by reference.
+///
+/// As a plain array in @State, every reload had SwiftUI compare the old and new arrays field by
+/// field: about 110 ms of main thread for 10,000 tracks. A reference compares by identity.
+final class TrackRows {
+    let tracks: [TrackInfo]
+    init(_ tracks: [TrackInfo] = []) { self.tracks = tracks }
 }
 
 private struct TrackQuery: Equatable {
@@ -143,166 +179,6 @@ private enum SortStorage {
         sorts.sorted { $0.key < $1.key }
             .map { "\($0.key)=\($0.value.column.rawValue):\($0.value.ascending ? 1 : 0)" }
             .joined(separator: ";")
-    }
-}
-
-/// A table of tracks. Double-click (or Return) plays the list from that row. Clicking a
-/// header sorts by it; the rows arrive already sorted from the database.
-struct TrackTable: View {
-    let app: AppState
-    let tracks: [TrackInfo]
-    var inPlaylist = false
-    @Binding var sort: TrackSort
-    @State private var selection: Set<TrackInfo.ID> = []
-    @SceneStorage("trackColumns") private var columns = TableColumnCustomization<TrackInfo>()
-
-    var body: some View {
-        let positions = inPlaylist
-            ? Dictionary(tracks.enumerated().map { ($1.id, $0 + 1) }, uniquingKeysWith: { a, _ in a }) : [:]
-        Table(tracks, selection: $selection, sortOrder: sortOrder, columnCustomization: $columns) {
-            TableColumn("#", value: \.sortTrackNumber) { info in
-                Text(inPlaylist ? positions[info.id].map(String.init) ?? "" : info.track.trackNumber.map(String.init) ?? "")
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            .width(min: 24, ideal: 30, max: 50)
-            .customizationID("number")
-            TableColumn("Title", value: \.track.title) { info in
-                TitleCell(app: app, info: info)
-            }
-            .width(min: 120, ideal: 260)
-            .customizationID("title")
-            .disabledCustomizationBehavior(.visibility)
-            TableColumn("Artist", value: \.sortArtist) { info in Text(info.artistName ?? "") }
-                .width(min: 80, ideal: 160)
-                .customizationID("artist")
-            TableColumn("Album", value: \.sortAlbum) { info in Text(info.albumTitle ?? "") }
-                .width(min: 80, ideal: 180)
-                .customizationID("album")
-            TableColumn("Year", value: \.sortYear) { info in
-                Text(info.track.year.map(String.init) ?? "").monospacedDigit()
-            }
-            .width(min: 36, ideal: 44, max: 60)
-            .customizationID("year")
-            .defaultVisibility(.hidden)
-            TableColumn("Genre", value: \.sortGenre) { info in Text(info.track.genre ?? "") }
-                .width(min: 60, ideal: 110)
-                .customizationID("genre")
-                .defaultVisibility(.hidden)
-            TableColumn("Time", value: \.track.durationMs) { info in
-                Text(TimeFormat.minutes(info.track.durationMs / 1000))
-                    .monospacedDigit()
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            .width(min: 40, ideal: 50, max: 70)
-            .customizationID("time")
-            TableColumn("Quality", value: \.track.sampleRate) { info in
-                QualityCell(info: info, isDownloading: app.isWaitingToPlay(info.id))
-            }
-            .width(min: 70, ideal: 110, max: 160)
-            .customizationID("quality")
-            TableColumn("Date Added", value: \.track.addedAt) { info in
-                Text(info.track.addedAt, format: .dateTime.year().month().day())
-            }
-            .width(min: 70, ideal: 90, max: 130)
-            .customizationID("added")
-            .defaultVisibility(.hidden)
-        }
-        .contextMenu(forSelectionType: TrackInfo.ID.self) { ids in
-            menu(for: ids)
-        } primaryAction: { ids in
-            app.play(tracks, from: ids.first)
-        }
-    }
-
-    /// The header state for `sort`, and back: Table reports a click as a new first comparator.
-    private var sortOrder: Binding<[KeyPathComparator<TrackInfo>]> {
-        Binding {
-            let column: TrackSort.Column = sort.column == .playlistOrder ? .albumOrder : sort.column
-            guard var comparator = Self.headers.first(where: { $0.column == column })?.comparator else { return [] }
-            comparator.order = sort.ascending ? .forward : .reverse
-            return [comparator]
-        } set: { comparators in
-            guard let first = comparators.first else { return }
-            let column = Self.headers.first { $0.comparator.keyPath == first.keyPath }?.column ?? .albumOrder
-            let resolved: TrackSort.Column = column == .albumOrder && inPlaylist ? .playlistOrder : column
-            sort = TrackSort(resolved, ascending: first.order == .forward)
-        }
-    }
-
-    /// "#" is album order (or playlist order): sorting by track number alone mixes albums together.
-    private static let headers: [(comparator: KeyPathComparator<TrackInfo>, column: TrackSort.Column)] = [
-        (KeyPathComparator(\.sortTrackNumber), .albumOrder),
-        (KeyPathComparator(\.track.title), .title),
-        (KeyPathComparator(\.sortArtist), .artist),
-        (KeyPathComparator(\.sortAlbum), .album),
-        (KeyPathComparator(\.sortYear), .year),
-        (KeyPathComparator(\.sortGenre), .genre),
-        (KeyPathComparator(\.track.durationMs), .duration),
-        (KeyPathComparator(\.track.sampleRate), .quality),
-        (KeyPathComparator(\.track.addedAt), .dateAdded),
-    ]
-
-    @ViewBuilder
-    private func menu(for ids: Set<TrackInfo.ID>) -> some View {
-        let chosen = tracks.filter { ids.contains($0.id) }
-        if !chosen.isEmpty {
-            Button("Play") { app.play(chosen.count > 1 ? chosen : tracks, from: chosen.first?.id) }
-            Button("Shuffle") { app.play(chosen.count > 1 ? chosen : tracks, from: nil, shuffled: true) }
-            Divider()
-            if chosen.contains(where: \.track.isEvicted) {
-                Button("Download from iCloud") { app.library?.download(chosen.map(\.track)) }
-            }
-            Button("Show in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting(chosen.map(\.track.url))
-            }
-        }
-    }
-}
-
-/// Comparable stand-ins for the header key paths. The database does the actual sorting.
-extension TrackInfo {
-    var sortTrackNumber: Int { track.trackNumber ?? 0 }
-    var sortArtist: String { artistName ?? "" }
-    var sortAlbum: String { albumTitle ?? "" }
-    var sortYear: Int { track.year ?? 0 }
-    var sortGenre: String { track.genre ?? "" }
-}
-
-/// The title, with a speaker on the track that's playing.
-private struct TitleCell: View {
-    let app: AppState
-    let info: TrackInfo
-
-    var body: some View {
-        HStack(spacing: 4) {
-            if app.currentURL == info.track.url {
-                Image(systemName: app.player.state == .playing ? "speaker.wave.2.fill" : "speaker.fill")
-                    .foregroundStyle(.tint)
-                    .imageScale(.small)
-            }
-            Text(info.track.title)
-        }
-    }
-}
-
-private struct QualityCell: View {
-    let info: TrackInfo
-    let isDownloading: Bool
-
-    var body: some View {
-        if isDownloading {
-            ProgressView().controlSize(.mini).help("Downloading from iCloud; plays when it's ready")
-        } else if info.track.isEvicted {
-            Label("In iCloud", systemImage: "icloud")
-                .foregroundStyle(.secondary)
-                .help("Not downloaded. Double-click to download and play.")
-        } else {
-            Text(TrackFormat.short(info.track))
-                .font(.callout.monospaced())
-                .foregroundStyle(.secondary)
-        }
     }
 }
 
