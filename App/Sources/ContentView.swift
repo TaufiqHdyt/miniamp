@@ -48,7 +48,7 @@ struct ContentView: View {
                 Label(error, systemImage: "xmark.octagon").foregroundStyle(.red)
             }
 
-            QueueList(player: player, error: $error)
+            QueueList(player: player, library: library, error: $error)
             Divider()
             OutputControls(player: player)
         }
@@ -189,22 +189,33 @@ private struct SeekBar: View {
 
 private struct QueueList: View {
     let player: Player
+    let library: Library?
     @Binding var error: String?
+    @State private var entries: [URL: QueueEntry] = [:]
 
     var body: some View {
         List {
             ForEach(Array(player.queue.order.enumerated()), id: \.offset) { position, item in
                 let isCurrent = position == player.queue.position
+                let url = player.queue.items[item]
+                let entry = entries[url] ?? QueueEntry(fileName: url)
                 HStack {
                     Image(systemName: "speaker.wave.2.fill")
                         .opacity(isCurrent ? 1 : 0)
                         .foregroundStyle(.tint)
-                    Text(player.queue.items[item].deletingPathExtension().lastPathComponent)
-                        .fontWeight(isCurrent ? .semibold : .regular)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(entry.title)
+                            .fontWeight(isCurrent ? .semibold : .regular)
+                            .lineLimit(1)
+                        if let subtitle = entry.subtitle {
+                            Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
                     Spacer()
-                    Text(player.queue.items[item].pathExtension.uppercased())
+                    Text(entry.format)
                         .foregroundStyle(.secondary)
                         .font(.caption)
+                        .monospaced()
                 }
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { run($error) { try await player.jump(toItem: item) } }
@@ -212,6 +223,66 @@ private struct QueueList: View {
         }
         .listStyle(.bordered)
         .frame(minHeight: 140)
+        // Re-read when the queue changes, or when the library does (a retagged file).
+        .task(id: QueueKey(items: player.queue.items, revision: library?.revision ?? 0)) {
+            entries = await QueueEntry.load(player.queue.items, from: library)
+        }
+    }
+
+    private struct QueueKey: Equatable {
+        var items: [URL]
+        var revision: Int
+    }
+}
+
+/// What the queue shows for a file: its tags from the library, or read from the file itself
+/// when it isn't in the library (opened with Open…), or its name until either is known.
+private struct QueueEntry {
+    var title: String
+    var subtitle: String?
+    var format: String
+
+    init(fileName url: URL) {
+        title = url.deletingPathExtension().lastPathComponent
+        format = url.pathExtension.uppercased()
+    }
+
+    init(_ info: TrackInfo) {
+        title = info.track.title
+        subtitle = Self.subtitle(artist: info.artistName, album: info.albumTitle)
+        format = Self.format(codec: info.track.codec, sampleRate: info.track.sampleRate, bits: info.track.bitsPerSample)
+    }
+
+    init(_ tags: TrackTags, url: URL) {
+        self.init(fileName: url)
+        if let title = tags.title, !title.isEmpty { self.title = title }
+        subtitle = Self.subtitle(artist: tags.artist, album: tags.album)
+        format = Self.format(codec: tags.codec.isEmpty ? format : tags.codec, sampleRate: tags.sampleRate, bits: tags.bitsPerSample)
+    }
+
+    static func subtitle(artist: String?, album: String?) -> String? {
+        let parts = [artist, album].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " — ")
+    }
+
+    static func format(codec: String, sampleRate: Int, bits: Int?) -> String {
+        guard sampleRate > 0 else { return codec }
+        return "\(codec) \(FormatSelection.formatRate(Double(sampleRate)))\(bits.map { "/\($0)" } ?? "")"
+    }
+
+    static func load(_ urls: [URL], from library: Library?) async -> [URL: QueueEntry] {
+        var entries: [URL: QueueEntry] = [:]
+        if let library, let found = try? await library.tracks(at: urls) {
+            for (url, info) in found { entries[url] = QueueEntry(info) }
+        }
+        let rest = urls.filter { entries[$0] == nil }
+        guard !rest.isEmpty, !Task.isCancelled else { return entries }
+        // Not in the library: read the tags off the main actor.
+        let read = await Task.detached(priority: .userInitiated) {
+            rest.compactMap { url in TagReader.read(url).map { (url, $0) } }
+        }.value
+        for (url, tags) in read { entries[url] = QueueEntry(tags, url: url) }
+        return entries
     }
 }
 
