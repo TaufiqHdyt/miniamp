@@ -21,11 +21,14 @@ typedef struct {
     int bitsPerSample; // 0 for lossy formats with no fixed bit depth
     int channels;
     int bitrateKbps;
+    char codec[8];        // "FLAC", "MP3", "ALAC", "AAC", "WAV", "AIFF", or "" if unknown
+    unsigned char *picture; // embedded cover art (front cover if tagged as such), or NULL
+    unsigned long pictureSize;
 } MATagInfo;
 
-/// Reads tags and audio properties. Returns false if the file can't be opened.
-/// On success, release the strings with ma_taglib_free.
-bool ma_taglib_read(const char *path, MATagInfo *out);
+/// Reads tags and audio properties, plus the embedded picture when withPicture is true.
+/// Returns false if the file can't be opened. On success, release with ma_taglib_free.
+bool ma_taglib_read(const char *path, bool withPicture, MATagInfo *out);
 void ma_taglib_free(MATagInfo *info);
 const char *ma_taglib_version(void);
 

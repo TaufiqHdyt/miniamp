@@ -34,6 +34,7 @@ import Testing
 
         let tags = try #require(TagReader.read(url))
         #expect(tags.sampleRate == Int(c.spec.sampleRate))
+        #expect(tags.codec == c.codec)
         #expect(tags.bitsPerSample == c.bits, "TagLib bits \(String(describing: tags.bitsPerSample)), ASBD flags \(file.fileFormat.streamDescription.pointee.mFormatFlags)")
     }
 
@@ -44,5 +45,6 @@ import Testing
         #expect(file.processingFormat.sampleRate == 44_100)
         #expect(try TestAudio.decodeAll(url).frameLength > 0)
         #expect(TagReader.read(url)?.bitsPerSample == nil)
+        #expect(TagReader.read(url)?.codec == "MP3")
     }
 }

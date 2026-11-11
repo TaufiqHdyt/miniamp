@@ -16,16 +16,20 @@ public struct TrackTags: Sendable, Equatable {
     public var bitsPerSample: Int?
     public var channels: Int
     public var bitrateKbps: Int
+    /// "FLAC", "MP3", "ALAC", "AAC", "WAV", "AIFF", or "" when TagLib can't tell.
+    public var codec: String
+    /// The embedded cover image's bytes, when read with `includeArtwork`.
+    public var artwork: Data?
 }
 
 public enum TagReader {
     public static var tagLibVersion: String { String(cString: ma_taglib_version()) }
 
     /// Returns nil if TagLib can't open the file.
-    public static func read(_ url: URL) -> TrackTags? {
+    public static func read(_ url: URL, includeArtwork: Bool = false) -> TrackTags? {
         var info = MATagInfo()
         let ok = url.withUnsafeFileSystemRepresentation { path in
-            path.map { ma_taglib_read($0, &info) } ?? false
+            path.map { ma_taglib_read($0, includeArtwork, &info) } ?? false
         }
         guard ok else { return nil }
         defer { ma_taglib_free(&info) }
@@ -46,7 +50,9 @@ public enum TagReader {
             sampleRate: Int(info.sampleRate),
             bitsPerSample: info.bitsPerSample == 0 ? nil : Int(info.bitsPerSample),
             channels: Int(info.channels),
-            bitrateKbps: Int(info.bitrateKbps)
+            bitrateKbps: Int(info.bitrateKbps),
+            codec: withUnsafeBytes(of: info.codec) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) },
+            artwork: info.picture.map { Data(bytes: $0, count: Int(info.pictureSize)) }
         )
     }
 }

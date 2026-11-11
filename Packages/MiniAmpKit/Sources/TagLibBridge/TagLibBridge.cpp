@@ -11,6 +11,8 @@
 #include <taglib/tag.h>
 #include <taglib/taglib.h>
 #include <taglib/tpropertymap.h>
+#include <taglib/tvariant.h>
+#include <taglib/mpegproperties.h>
 #include <taglib/wavproperties.h>
 
 namespace {
@@ -43,9 +45,37 @@ int bitsPerSample(const TagLib::AudioProperties *p) {
     return 0;
 }
 
+const char *codec(const TagLib::AudioProperties *p) {
+    if (dynamic_cast<const TagLib::FLAC::Properties *>(p)) return "FLAC";
+    if (dynamic_cast<const TagLib::MPEG::Properties *>(p)) return "MP3";
+    if (auto m = dynamic_cast<const TagLib::MP4::Properties *>(p))
+        return m->codec() == TagLib::MP4::Properties::ALAC ? "ALAC" : m->codec() == TagLib::MP4::Properties::AAC ? "AAC" : "";
+    if (dynamic_cast<const TagLib::RIFF::WAV::Properties *>(p)) return "WAV";
+    if (dynamic_cast<const TagLib::RIFF::AIFF::Properties *>(p)) return "AIFF";
+    return "";
+}
+
+/// The front cover if one is tagged as such, otherwise the first picture.
+void copyPicture(const TagLib::FileRef &ref, MATagInfo *out) {
+    const auto pictures = ref.complexProperties("PICTURE");
+    TagLib::ByteVector data;
+    for (const auto &picture : pictures) {
+        auto bytes = picture.value("data").toByteVector();
+        if (bytes.isEmpty()) continue;
+        bool front = picture.value("pictureType").toString() == "Front Cover";
+        if (data.isEmpty() || front) data = bytes;
+        if (front) break;
+    }
+    if (data.isEmpty()) return;
+    out->picture = static_cast<unsigned char *>(std::malloc(data.size()));
+    if (!out->picture) return;
+    std::memcpy(out->picture, data.data(), data.size());
+    out->pictureSize = data.size();
+}
+
 } // namespace
 
-extern "C" bool ma_taglib_read(const char *path, MATagInfo *out) {
+extern "C" bool ma_taglib_read(const char *path, bool withPicture, MATagInfo *out) {
     if (!path || !out) return false;
     std::memset(out, 0, sizeof(*out));
 
@@ -70,7 +100,9 @@ extern "C" bool ma_taglib_read(const char *path, MATagInfo *out) {
         out->channels = ap->channels();
         out->bitrateKbps = ap->bitrate();
         out->bitsPerSample = bitsPerSample(ap);
+        std::strncpy(out->codec, codec(ap), sizeof(out->codec) - 1);
     }
+    if (withPicture) copyPicture(ref, out);
     return true;
 }
 
@@ -81,6 +113,7 @@ extern "C" void ma_taglib_free(MATagInfo *info) {
     std::free(info->album);
     std::free(info->albumArtist);
     std::free(info->genre);
+    std::free(info->picture);
     std::memset(info, 0, sizeof(*info));
 }
 
