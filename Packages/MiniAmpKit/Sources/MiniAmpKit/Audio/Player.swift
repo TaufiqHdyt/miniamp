@@ -106,6 +106,13 @@ public final class Player {
 
     /// Output render callbacks served so far. Diagnostics only.
     public nonisolated static var renderCallCount: Int { HALOutput.renderCalls.load(ordering: .relaxed) }
+    /// Diagnostics (miniampctl leaktest): count renders that delivered audio to a device other
+    /// than the one playback is bound to. Costs a property read per render, so it's off by default.
+    public nonisolated static var verifiesOutputDevice: Bool {
+        get { HALOutput.verifyDeviceOnRender.load(ordering: .relaxed) }
+        set { HALOutput.verifyDeviceOnRender.store(newValue, ordering: .relaxed) }
+    }
+    public nonisolated static var misdirectedRenderCount: Int { HALOutput.misdirectedRenders.load(ordering: .relaxed) }
 
     public func play(_ url: URL) async throws {
         try await setQueue([url])

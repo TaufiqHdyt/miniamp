@@ -139,7 +139,7 @@ enum HAL {
 
 /// Owns a set of HAL property listeners so they can be removed from any thread.
 /// Immutable after init; the HAL calls are thread-safe.
-private final class ListenerRegistration: @unchecked Sendable {
+final class ListenerRegistration: @unchecked Sendable {
     private let object: AudioObjectID
     private let queue = DispatchQueue(label: "miniamp.hal-observer")
     private let block: AudioObjectPropertyListenerBlock

@@ -29,6 +29,7 @@ func leakTest(_ path: String) async throws {
     defer { if !destroyed { AudioHardwareDestroyAggregateDevice(aggregateID) } }
     try await Task.sleep(for: .milliseconds(500)) // let the HAL publish it
 
+    Player.verifiesOutputDevice = true
     let player = Player()
     player.preferredDeviceUID = aggregateUID
     try await player.setQueue([URL(fileURLWithPath: path)])
@@ -41,6 +42,7 @@ func leakTest(_ path: String) async throws {
     // Sample the real device from a background thread while the main actor handles the unplug.
     let sampler = RunningSampler(device: real.id)
     sampler.start()
+    let misdirectedBefore = Player.misdirectedRenderCount
     let t0 = DispatchTime.now().uptimeNanoseconds
     status = AudioHardwareDestroyAggregateDevice(aggregateID)
     destroyed = true
@@ -66,11 +68,13 @@ func leakTest(_ path: String) async throws {
     let rendersWhilePlaying = (samples.last(where: { $0.ms < stoppedAt })?.renders ?? rendersAtUnplug) - rendersAtUnplug
     let rendersAfterPause = (samples.last?.renders ?? 0) - (samples.last(where: { $0.ms < stoppedAt })?.renders ?? rendersAtUnplug)
     print("output render callbacks after unplug: \(rendersWhilePlaying) while still playing, \(rendersAfterPause) after pausing")
+    let misdirected = Player.misdirectedRenderCount - misdirectedBefore
+    print("renders that delivered audio to a device other than the bound one: \(misdirected)")
     print("player is now on: \(player.outputDevice?.name ?? "?"), position \(player.position)")
-    // Audio can only reach a device if our output unit is rendering. Render calls after the
-    // device is gone mean the unit found another device; running-state alone can be the
-    // aggregate's teardown.
-    let leaked = rendersWhilePlaying > 1 || rendersAfterPause > 0
+    // Audio reaches another device only if the output unit renders while it's on that device.
+    // A render or two can still go to the dying aggregate, and the real device can briefly run
+    // (the unit rebinding, muted, or the aggregate's teardown); neither is audible.
+    let leaked = misdirected > 0 || rendersAfterPause > 0
     print(leaked ? "RESULT: LEAK (output kept rendering after its device was removed)" : "RESULT: no leak")
     player.stop()
 }
