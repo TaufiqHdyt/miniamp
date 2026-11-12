@@ -1,12 +1,14 @@
 import MiniAmpKit
 import SwiftUI
 
-/// The current song's lyrics in the inspector. Synced lyrics follow playback, the line being
-/// sung kept in view (and, in word-timed lyrics, its words lit as they're sung); clicking a
-/// line plays from there. Plain lyrics are just text.
-struct LyricsView: View {
+/// The Lyrics pane: laid out like Up Next, the song playing first, then its lyrics where the
+/// queue would be. Synced lyrics follow playback, the line being sung kept in view (and, in
+/// word-timed lyrics, its words lit as they're sung); clicking a line plays from there.
+struct LyricsView<NowPlaying: View>: View {
     let app: AppState
     let url: URL
+    /// The Now Playing row, as Up Next shows it.
+    @ViewBuilder let nowPlaying: NowPlaying
 
     @State private var state: LoadState = .loading
     @State private var follower: LyricsFollower?
@@ -25,69 +27,91 @@ struct LyricsView: View {
     }
 
     var body: some View {
-        content
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .task(id: LoadKey(url: url, online: app.looksUpLyricsOnline)) {
-                if follower == nil { follower = LyricsFollower(player: app.player) }
-                await app.loadLyricsOffset(for: url)
-                follower?.offset = app.totalLyricsOffset(for: url)
-                await load(app.looksUpLyricsOnline ? .automatic : .cachedOnly)
+        ScrollViewReader { proxy in
+            List {
+                Section("Now Playing") { nowPlaying }
+                Section {
+                    rows
+                } header: {
+                    HStack {
+                        Text("Lyrics")
+                        Spacer()
+                        if case .found(let found) = state, found.lyrics.isSynced { TimingControl(app: app, url: url) }
+                    }
+                } footer: {
+                    if case .found(let found) = state, !found.lyrics.isInstrumental {
+                        Text(sourceLabel(found.source)).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
             }
-            .onChange(of: app.totalLyricsOffset(for: url)) { follower?.offset = app.totalLyricsOffset(for: url) }
+            .listStyle(.inset)
+            .onChange(of: follower?.position.line) { scroll(proxy, animated: true) }
+            .onChange(of: state) { scroll(proxy, animated: false) }
+        }
+        .task(id: LoadKey(url: url, online: app.looksUpLyricsOnline)) {
+            if follower == nil { follower = LyricsFollower(player: app.player) }
+            await app.loadLyricsOffset(for: url)
+            follower?.offset = app.totalLyricsOffset(for: url)
+            await load(app.looksUpLyricsOnline ? .automatic : .cachedOnly)
+        }
+        .onChange(of: app.totalLyricsOffset(for: url)) { follower?.offset = app.totalLyricsOffset(for: url) }
     }
 
     @ViewBuilder
-    private var content: some View {
+    private var rows: some View {
         switch state {
         case .loading:
-            Color.clear
+            EmptyView()
         case .searching:
-            ProgressView("Searching LRCLIB…").controlSize(.small)
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Searching LRCLIB…").foregroundStyle(.secondary)
+            }
         case .found(let found) where found.lyrics.isInstrumental:
-            ContentUnavailableView("Instrumental", systemImage: "pianokeys",
-                                   description: Text("LRCLIB says this song has no words."))
+            Label("Instrumental: LRCLIB says this song has no words.", systemImage: "pianokeys")
+                .foregroundStyle(.secondary)
         case .found(let found):
-            VStack(spacing: 0) {
-                if found.lyrics.isSynced, let follower {
-                    SyncedLyrics(lyrics: found.lyrics, follower: follower) { app.player.seek(to: follower.playbackTime(for: $0)) }
-                } else {
-                    ScrollView {
-                        Text(found.lyrics.lines.map(\.text).joined(separator: "\n"))
-                            .font(.body)
-                            .lineSpacing(4)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(16)
-                    }
+            if found.lyrics.isSynced, let follower {
+                ForEach(found.lyrics.lines) { line in
+                    LyricLine(line: line, position: follower.position)
+                        .contentShape(Rectangle())
+                        .onTapGesture { if let time = line.time { app.player.seek(to: follower.playbackTime(for: time)) } }
+                        .listRowSeparator(.hidden)
                 }
-                Divider()
-                HStack {
-                    Text(sourceLabel(found.source)).foregroundStyle(.secondary).lineLimit(1)
-                    Spacer()
-                    if found.lyrics.isSynced { TimingControl(app: app, url: url) }
-                }
-                .font(.caption)
-                .padding(.horizontal, 16).padding(.vertical, 6)
+            } else {
+                Text(found.lyrics.lines.map(\.text).joined(separator: "\n"))
+                    .lineSpacing(4)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .listRowSeparator(.hidden)
             }
         case .none(let searched):
-            ContentUnavailableView {
-                Label("No Lyrics", systemImage: "quote.bubble")
-            } description: {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(searched
-                     ? "Not in the file, beside it, or on LRCLIB."
-                     : "Not in the file or in a .lrc file beside it.")
-            } actions: {
+                     ? "No lyrics in the file, beside it, or on LRCLIB."
+                     : "No lyrics in the file or in a .lrc file beside it.")
+                    .foregroundStyle(.secondary)
                 Button(searched ? "Search LRCLIB Again" : "Search LRCLIB") { Task { await load(.refresh) } }
                     .help("Sends this song's title, artist, album, and duration to lrclib.net")
             }
+            .padding(.vertical, 4)
         case .failed(let message):
-            ContentUnavailableView {
-                Label("Couldn't Get Lyrics", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(message)
-            } actions: {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Couldn't get lyrics: \(message)", systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.secondary)
                 Button("Try Again") { Task { await load(.refresh) } }
             }
+            .padding(.vertical, 4)
+        }
+    }
+
+    /// Keeps the line being sung a third of the way down.
+    private func scroll(_ proxy: ScrollViewProxy, animated: Bool) {
+        guard case .found(let found) = state, found.lyrics.isSynced, let line = follower?.position.line else { return }
+        if animated {
+            withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(line, anchor: UnitPoint(x: 0.5, y: 0.35)) }
+        } else {
+            proxy.scrollTo(line, anchor: UnitPoint(x: 0.5, y: 0.35))
         }
     }
 
@@ -143,7 +167,7 @@ private struct TimingControl: View {
                 .help("Show the lyrics later (⌥⌘])")
             Button(Self.label(offset)) { app.adjustLyricsTiming(by: nil) }
                 .monospacedDigit()
-                .frame(minWidth: 70)
+                .frame(minWidth: 64)
                 .disabled(offset == .zero)
                 .help(offset == .zero ? "Use − and + if the lyrics are out of step with this song"
                                       : "Click to put this song's lyrics back as they were")
@@ -160,41 +184,6 @@ private struct TimingControl: View {
         guard offset != .zero else { return "In step" }
         let seconds = String(format: "%.1f s", abs(Double(offset.wholeMilliseconds)) / 1000)
         return offset > .zero ? "\(seconds) sooner" : "\(seconds) later"
-    }
-}
-
-private struct SyncedLyrics: View {
-    let lyrics: Lyrics
-    let follower: LyricsFollower
-    let seek: (Duration) -> Void
-
-    var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(lyrics.lines) { line in
-                        LyricLine(line: line, position: follower.position)
-                            .id(line.id)
-                            .contentShape(Rectangle())
-                            .onTapGesture { if let time = line.time { seek(time) } }
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 40)
-            }
-            .onAppear { scroll(proxy, animated: false) }
-            .onChange(of: follower.position.line) { scroll(proxy, animated: true) }
-            .onChange(of: lyrics) { scroll(proxy, animated: false) }
-        }
-    }
-
-    private func scroll(_ proxy: ScrollViewProxy, animated: Bool) {
-        let target = follower.position.line ?? 0
-        if animated {
-            withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(target, anchor: UnitPoint(x: 0.5, y: 0.35)) }
-        } else {
-            proxy.scrollTo(target, anchor: UnitPoint(x: 0.5, y: 0.35))
-        }
     }
 }
 

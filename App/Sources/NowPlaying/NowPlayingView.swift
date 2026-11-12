@@ -23,12 +23,10 @@ struct NowPlayingView: View {
                 case .upNext:
                     upNext(current: entry, upcoming: upcoming)
                 case .lyrics:
-                    VStack(spacing: 0) {
+                    LyricsView(app: app, url: url) {
                         QueueRow(entry: entry, artwork: app.library?.artwork, isCurrent: true, state: player.state)
-                            .padding(.horizontal, 12).padding(.vertical, 8)
-                        Divider()
-                        LyricsView(app: app, url: url).id(url)
                     }
+                    .id(url)
                 }
             } else {
                 ContentUnavailableView("Nothing Playing", systemImage: "music.note",
