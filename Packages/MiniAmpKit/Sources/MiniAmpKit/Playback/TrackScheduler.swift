@@ -11,15 +11,20 @@ final class TrackScheduler {
     struct Segment {
         /// Caller's identifier for the segment (the queue position it belongs to).
         let token: Int
-        let file: AVAudioFile
+        let file: TrackFile
         /// First frame of the file that this segment plays.
         let startFrame: AVAudioFramePosition
         let frameCount: AVAudioFramePosition
         /// Node sample time at which this segment starts playing.
         let nodeStart: AVAudioFramePosition
+        /// Carries on the track of the segment before it (the rest of a file split in two),
+        /// rather than starting it again.
+        var continues = false
     }
 
     let node: AVAudioPlayerNode
+    /// Streams DSD tracks, which the node can't read itself.
+    let pump: BufferPump
     private(set) var segments: [Segment] = []
     private var scheduledEnd: AVAudioFramePosition = 0
     /// Bumped by reset(); completion callbacks from earlier sessions are ignored.
@@ -36,29 +41,62 @@ final class TrackScheduler {
 
     init(node: AVAudioPlayerNode) {
         self.node = node
+        pump = BufferPump(node: node)
     }
 
     /// Stops the node and drops everything scheduled. The node's sample clock restarts at zero.
     func reset() {
         session += 1
+        pump.reset()
         node.stop()
         staleRenderTime = node.lastRenderTime.flatMap { $0.isSampleTimeValid ? $0.sampleTime : nil }
         segments = []
         scheduledEnd = 0
     }
 
-    /// Schedules `file` from `startFrame` to its end, after everything already scheduled.
+    /// Schedules `file` from `startFrame` up to `endFrame` (its end by default), after
+    /// everything already scheduled. A DSD file streams through the pump, which must then have
+    /// the node to itself: only DSD may follow it until it's done (see TrackFile.canFollow).
     @discardableResult
-    func append(_ file: AVAudioFile, from startFrame: AVAudioFramePosition = 0, token: Int) -> Segment? {
+    func append(_ file: TrackFile, from startFrame: AVAudioFramePosition = 0, to endFrame: AVAudioFramePosition? = nil,
+                token: Int, continues: Bool = false) -> Segment? {
         let start = min(max(startFrame, 0), file.length)
-        let frames = file.length - start
+        let end = min(max(endFrame ?? file.length, start), file.length)
+        let frames = end - start
         guard frames > 0 else { return nil }
 
-        let segment = Segment(token: token, file: file, startFrame: start, frameCount: frames, nodeStart: scheduledEnd)
+        let segment = Segment(token: token, file: file, startFrame: start, frameCount: frames, nodeStart: scheduledEnd,
+                              continues: continues)
         let session = self.session
         let nodeStart = segment.nodeStart
-        node.scheduleSegment(file, startingFrame: start, frameCount: AVAudioFrameCount(frames), at: nil,
-                             completionCallbackType: .dataRendered) { [weak self] _ in
+        let finished: @Sendable () -> Void = { [weak self] in
+            Task { @MainActor in self?.finished(nodeStart: nodeStart, session: session) }
+        }
+        if let audioFile = file.audioFile {
+            node.scheduleSegment(audioFile, startingFrame: start, frameCount: AVAudioFrameCount(frames), at: nil,
+                                 completionCallbackType: .dataRendered) { _ in finished() }
+        } else if let decoder = try? file.makeDSDDecoder() {
+            pump.append(BufferPump.Job(decoder: decoder, start: start, end: end, onFinished: finished))
+        } else {
+            return nil
+        }
+        segments.append(segment)
+        scheduledEnd += frames
+        return segment
+    }
+
+    /// Schedules a buffer after everything already scheduled, standing for `file`'s frames
+    /// from `startFrame` (the crossfade between two tracks, mixed ahead of time).
+    @discardableResult
+    func append(_ buffer: AVAudioPCMBuffer, standingFor file: TrackFile, from startFrame: AVAudioFramePosition,
+                token: Int, continues: Bool = false) -> Segment? {
+        let frames = AVAudioFramePosition(buffer.frameLength)
+        guard frames > 0 else { return nil }
+        let segment = Segment(token: token, file: file, startFrame: startFrame, frameCount: frames, nodeStart: scheduledEnd,
+                              continues: continues)
+        let session = self.session
+        let nodeStart = segment.nodeStart
+        node.scheduleBuffer(buffer, at: nil, options: [], completionCallbackType: .dataRendered) { [weak self] _ in
             Task { @MainActor in self?.finished(nodeStart: nodeStart, session: session) }
         }
         segments.append(segment)

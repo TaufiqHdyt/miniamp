@@ -11,6 +11,7 @@ enum Preferences {
     static let replayGainPreampKey = "replayGainPreamp"
     static let preventsClippingKey = "preventsClipping"
     static let appVolumeKey = "appVolume"
+    static let sendsDSDAsDoPKey = "sendsDSDAsDoP"
 
     @MainActor
     static func apply(to player: Player) {
@@ -25,6 +26,7 @@ enum Preferences {
         player.replayGainPreamp = defaults.double(forKey: replayGainPreampKey)
         player.preventsClipping = defaults.object(forKey: preventsClippingKey) as? Bool ?? true
         player.appVolume = (defaults.object(forKey: appVolumeKey) as? NSNumber)?.floatValue ?? 1
+        player.sendsDSDAsDoP = defaults.bool(forKey: sendsDSDAsDoPKey)
         saveDSPSettings(of: player)
     }
 
@@ -46,6 +48,7 @@ enum Preferences {
             defaults.set(player.replayGainPreamp, forKey: replayGainPreampKey)
             defaults.set(player.preventsClipping, forKey: preventsClippingKey)
             defaults.set(player.appVolume, forKey: appVolumeKey)
+            defaults.set(player.sendsDSDAsDoP, forKey: sendsDSDAsDoPKey)
         } onChange: {
             Task { @MainActor in saveDSPSettings(of: player) }
         }

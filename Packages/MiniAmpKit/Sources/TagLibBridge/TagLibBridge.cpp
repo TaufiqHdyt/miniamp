@@ -8,6 +8,8 @@
 #include <string>
 
 #include "aifffile.h"
+#include "dsdiffproperties.h"
+#include "dsfproperties.h"
 #include "aiffproperties.h"
 #include "id3v2tag.h"
 #include "mpegfile.h"
@@ -50,6 +52,7 @@ int bitsPerSample(const TagLib::AudioProperties *p) {
         return m->codec() == TagLib::MP4::Properties::ALAC ? m->bitsPerSample() : 0;
     if (auto w = dynamic_cast<const TagLib::RIFF::WAV::Properties *>(p)) return w->bitsPerSample();
     if (auto a = dynamic_cast<const TagLib::RIFF::AIFF::Properties *>(p)) return a->bitsPerSample();
+    if (dynamic_cast<const TagLib::DSF::Properties *>(p) || dynamic_cast<const TagLib::DSDIFF::Properties *>(p)) return 1;
     return 0;
 }
 
@@ -60,6 +63,14 @@ const char *codec(const TagLib::AudioProperties *p) {
         return m->codec() == TagLib::MP4::Properties::ALAC ? "ALAC" : m->codec() == TagLib::MP4::Properties::AAC ? "AAC" : "";
     if (dynamic_cast<const TagLib::RIFF::WAV::Properties *>(p)) return "WAV";
     if (dynamic_cast<const TagLib::RIFF::AIFF::Properties *>(p)) return "AIFF";
+    if (dynamic_cast<const TagLib::DSF::Properties *>(p) || dynamic_cast<const TagLib::DSDIFF::Properties *>(p)) {
+        // "DSD64", "DSD128"… from the rate's multiple of 44.1 or 48 kHz.
+        static thread_local char name[16];
+        const int rate = p->sampleRate();
+        const int base = rate % 44100 == 0 ? 44100 : 48000;
+        std::snprintf(name, sizeof(name), "DSD%d", rate / base);
+        return name;
+    }
     return "";
 }
 

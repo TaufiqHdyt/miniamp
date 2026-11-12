@@ -1,11 +1,11 @@
 # miniamp roadmap
 
-A native macOS music player for a local library. It plays FLAC, MP3, ALAC, and AAC (M4A) at each file's original sample rate, with no resampling whenever the output device supports that rate.
+A native macOS music player for a local library. It plays FLAC, MP3, ALAC, and AAC (M4A) at each file's original sample rate, with no resampling whenever the output device supports that rate, and DSD (DSF and DFF) as DoP or converted to PCM.
 
 ## Stack
 
 - **Language and UI:** Swift, SwiftUI, with AppKit (`NSTableView`) for the track lists, which stay smooth at 10,000+ tracks
-- **Decoding:** `AVAudioFile`, which handles all four formats natively
+- **Decoding:** `AVAudioFile`, which handles all four formats natively; DSD is read by miniamp itself
 - **Playback:** `AVAudioEngine` with `AVAudioPlayerNode`
 - **Output control:** Core Audio HAL properties for sample rate, physical format, and hog mode
 - **Metadata:** TagLib (read and write)
@@ -107,7 +107,7 @@ Unordered. Pick these up as interest dictates.
 - [x] Duplicate review by Chromaprint fingerprints
 - [x] Menu bar mini player and a WidgetKit widget
 - [ ] Crossfade with beat detection (DSP mode only)
-- [ ] DSD playback over DoP to compatible DACs
+- [x] DSD playback (DSF, DFF) over DoP to compatible DACs, converted to PCM for everything else
 - [x] Backup and restore of the database and settings
 - [x] Lyric translation and romanization
 - [x] Lyrics editing and timing, saved in the song's tags, with duet voices (`v1:`, `v2:`)

@@ -21,7 +21,22 @@ public struct SignalPath: Sendable, Equatable {
     /// What DSP mode does to the samples; nil in bit-perfect mode, where nothing is in the way.
     public var processing: Processing?
     /// The app volume, 0...1 (see `Player.appVolume`); below 1 the samples are scaled.
+    /// DoP ignores it.
     public var appVolume: Float = 1
+    /// Set for a DSD file: how it's sent.
+    public var dsd: DSD?
+
+    public struct DSD: Sendable, Equatable {
+        /// "DSD64", "DSD128"…
+        public var name: String
+        /// Sent to the DAC as DoP, bit for bit, rather than converted to PCM.
+        public var isDoP: Bool
+
+        public init(name: String, isDoP: Bool) {
+            self.name = name
+            self.isDoP = isDoP
+        }
+    }
 
     /// DSP mode's stage between the player and the output.
     public struct Processing: Sendable, Equatable {
@@ -86,11 +101,17 @@ public struct SignalPath: Sendable, Equatable {
         case processed
         /// The app volume is below 100%, so the samples are scaled down on the way.
         case volumeScaled(percent: Int)
+        /// DSD sent to the DAC as DoP: its bits arrive unchanged (the app volume doesn't apply).
+        case dsdOverPCM
+        /// DSD filtered down to PCM at `rate` (the device's rate, if it resampled that further).
+        case dsdConverted(to: Double)
     }
 
     public var verdict: Verdict {
         if processing != nil { return .processed }
+        if dsd?.isDoP == true { return .dsdOverPCM }
         if appVolume < 1 { return .volumeScaled(percent: Int((appVolume * 100).rounded())) }
+        if dsd != nil { return .dsdConverted(to: deviceSampleRate) }
         if isResampled {
             return .resampled(from: fileSampleRate, to: deviceSampleRate)
         }
@@ -105,11 +126,14 @@ public struct SignalPath: Sendable, Equatable {
 
     /// True when any stage runs at a different rate from the file.
     public var isResampled: Bool {
-        !FormatSelection.sameRate(fileSampleRate, deviceSampleRate)
+        // DSD always changes rate to become PCM; what counts is whether that PCM is resampled.
+        if dsd != nil { return !FormatSelection.sameRate(engineSampleRate, deviceSampleRate) }
+        return !FormatSelection.sameRate(fileSampleRate, deviceSampleRate)
             || !FormatSelection.sameRate(fileSampleRate, engineSampleRate)
     }
 
     public var fileDescription: String {
+        if let dsd { return "\(dsd.name) (\(String(format: "%.1f", fileSampleRate / 1_000_000)) MHz)" }
         let depth = fileBitDepth.map { " \($0)-bit" } ?? ""
         return "\(codec) \(FormatSelection.formatRate(fileSampleRate))\(depth)"
     }
@@ -119,9 +143,16 @@ public struct SignalPath: Sendable, Equatable {
     }
 
     public var summary: String {
-        let verdict = isResampled
-            ? "RESAMPLED (\(FormatSelection.formatRate(fileSampleRate)) → \(FormatSelection.formatRate(deviceSampleRate)))"
-            : "native rate"
+        let verdict: String
+        if let dsd {
+            let pcm = FormatSelection.formatRate(engineSampleRate)
+            verdict = dsd.isDoP ? "DoP at \(pcm)"
+                : "converted to PCM \(pcm)" + (isResampled ? ", RESAMPLED to \(FormatSelection.formatRate(deviceSampleRate))" : "")
+        } else if isResampled {
+            verdict = "RESAMPLED (\(FormatSelection.formatRate(fileSampleRate)) → \(FormatSelection.formatRate(deviceSampleRate)))"
+        } else {
+            verdict = "native rate"
+        }
         let dsp = processing.map { "; DSP: \($0.description)" } ?? ""
         let volume = appVolume < 1 ? "; app volume \(Int((appVolume * 100).rounded()))%" : ""
         return "\(fileDescription) → \(deviceDescription) [\(devicePhysicalFormat)] — \(verdict)\(dsp)\(volume)"
@@ -129,17 +160,28 @@ public struct SignalPath: Sendable, Equatable {
 }
 
 extension SignalPath {
-    init(file: AVAudioFile, url: URL, device: AudioDevice, engine: AVAudioEngine, processing: Processing? = nil) {
-        let asbd = file.fileFormat.streamDescription.pointee
+    init(file: TrackFile, url: URL, device: AudioDevice, engine: AVAudioEngine, processing: Processing? = nil) {
         let physical = (try? device.outputStreams().first)
             .flatMap { $0 }
             .flatMap { try? AudioDevice.physicalFormat(of: $0) }
+        let codec: String, rate: Double, bits: Int?, channels: Int
+        if let audioFile = file.audioFile {
+            let asbd = audioFile.fileFormat.streamDescription.pointee
+            codec = AudioCodec.name(asbd.mFormatID)
+            rate = audioFile.fileFormat.sampleRate
+            bits = TagReader.read(url)?.bitsPerSample ?? (asbd.mFormatID == kAudioFormatLinearPCM ? Int(asbd.mBitsPerChannel) : nil)
+            channels = Int(audioFile.fileFormat.channelCount)
+        } else {
+            codec = file.dsd?.name ?? "DSD"
+            rate = Double(file.dsd?.sampleRate ?? 0)
+            bits = 1
+            channels = file.dsd?.channels ?? Int(file.processingFormat.channelCount)
+        }
         self.init(
-            codec: AudioCodec.name(asbd.mFormatID),
-            fileSampleRate: file.fileFormat.sampleRate,
-            fileBitDepth: TagReader.read(url)?.bitsPerSample
-                ?? (asbd.mFormatID == kAudioFormatLinearPCM ? Int(asbd.mBitsPerChannel) : nil),
-            fileChannels: Int(file.fileFormat.channelCount),
+            codec: codec,
+            fileSampleRate: rate,
+            fileBitDepth: bits,
+            fileChannels: channels,
             engineSampleRate: engine.outputNode.inputFormat(forBus: 0).sampleRate,
             deviceName: device.name,
             deviceSampleRate: (try? device.nominalSampleRate()) ?? 0,
@@ -149,6 +191,7 @@ extension SignalPath {
             isExclusive: device.hogModeOwner() == getpid(),
             processing: processing
         )
+        if let dsd = file.dsd { self.dsd = DSD(name: dsd.name, isDoP: file.kind == .dop) }
     }
 }
 

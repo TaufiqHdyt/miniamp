@@ -9,6 +9,9 @@ import UniformTypeIdentifiers
 @MainActor
 @Observable
 final class AppState {
+    /// What Open can play: audio macOS knows, plus DSD files, which it has no type for.
+    static let playableTypes: [UTType] = [.audio] + DSDFile.fileExtensions.compactMap { UTType(filenameExtension: $0) }
+
     let player: Player
     /// Nil if the database can't be opened; the player still works without it.
     let library: Library?

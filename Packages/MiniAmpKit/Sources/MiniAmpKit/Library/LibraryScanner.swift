@@ -42,7 +42,7 @@ public enum ScanError: Error, CustomStringConvertible, Sendable {
 /// has. Tags are read in parallel off the caller's thread and written in batches, each in one
 /// transaction, so readers (the UI) see the library fill in and never wait on a long write.
 public final class LibraryScanner: Sendable {
-    public static let audioExtensions: Set<String> = ["flac", "mp3", "m4a", "wav", "aiff", "aif"]
+    public static let audioExtensions: Set<String> = ["flac", "mp3", "m4a", "wav", "aiff", "aif", "dsf", "dff"]
     static let batchSize = 256
     static let log = Logger(subsystem: "dev.miniamp", category: "scanner")
 

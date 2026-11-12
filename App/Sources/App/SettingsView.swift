@@ -220,6 +220,10 @@ private struct PlaybackSettings: View {
                 Text("Exclusive access (hog mode)")
                 Text("While playing, other apps can't use the device and system sounds don't mix in.")
             }
+            Toggle(isOn: $player.sendsDSDAsDoP) {
+                Text("Send DSD to the DAC as DoP")
+                Text("For DACs that play DSD (DSD over PCM). In bit-perfect mode, on a device that runs at the DoP rate, DSF and DFF files reach the DAC as DSD; miniamp's volume doesn't apply. Otherwise they're converted to PCM. Turn this off if DSD plays as noise.")
+            }
             LabeledContent("Sample rate") {
                 Text("Matches each file. When the device can't play a file's rate, miniamp picks the closest rate it can and says so.")
                     .foregroundStyle(.secondary)

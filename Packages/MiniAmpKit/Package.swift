@@ -83,6 +83,11 @@ let package = Package(
             ],
             linkerSettings: [.linkedFramework("Accelerate")]
         ),
+        // DSD playback's inner loops, optimized in every configuration (they run in real time).
+        .target(
+            name: "CDSD",
+            cSettings: [.unsafeFlags(["-O2"])]
+        ),
         .target(
             name: "MiniAmpKit",
             dependencies: [
@@ -90,6 +95,7 @@ let package = Package(
                 "TagLibBridge",
                 "CEBUR128",
                 "CChromaprint",
+                "CDSD",
             ]
         ),
         // Developer tool: inspect the output device and play files outside the sandbox.

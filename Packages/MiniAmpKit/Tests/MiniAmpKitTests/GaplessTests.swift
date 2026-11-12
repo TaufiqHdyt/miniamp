@@ -57,8 +57,8 @@ import Testing
         defer { [a, b].forEach { try? FileManager.default.removeItem(at: $0) } }
         let refA = try TestAudio.decodeAll(a), refB = try TestAudio.decodeAll(b)
 
-        let fileA = try AVAudioFile(forReading: a)
-        let fileB = try AVAudioFile(forReading: b)
+        let fileA = TrackFile(try AVAudioFile(forReading: a))
+        let fileB = TrackFile(try AVAudioFile(forReading: b))
         #expect(fileA.processingFormat == fileB.processingFormat)
 
         let rig = try Rig(format: fileA.processingFormat)
@@ -85,7 +85,7 @@ import Testing
         let url = try TestAudio.write(TestAudio.flac44k16, seconds: 0.5)
         defer { try? FileManager.default.removeItem(at: url) }
         let ref = try TestAudio.decodeAll(url)
-        let file = try AVAudioFile(forReading: url)
+        let file = TrackFile(try AVAudioFile(forReading: url))
 
         let rig = try Rig(format: file.processingFormat)
         let seekFrame: AVAudioFramePosition = 12_345
@@ -103,7 +103,7 @@ import Testing
     @Test func segmentCompletionFiresInManualRenderingMode() async throws {
         let url = try TestAudio.write(TestAudio.flac44k16, seconds: 0.3)
         defer { try? FileManager.default.removeItem(at: url) }
-        let file = try AVAudioFile(forReading: url)
+        let file = TrackFile(try AVAudioFile(forReading: url))
 
         let rig = try Rig(format: file.processingFormat)
         var finished: [Int] = []
@@ -130,7 +130,7 @@ import Testing
         let a = try TestAudio.write(TestAudio.flac44k16, seconds: 0.2) // 8820 frames
         let b = try TestAudio.write(TestAudio.flac44k16, seconds: 0.2)
         defer { [a, b].forEach { try? FileManager.default.removeItem(at: $0) } }
-        let fileA = try AVAudioFile(forReading: a), fileB = try AVAudioFile(forReading: b)
+        let fileA = TrackFile(try AVAudioFile(forReading: a)), fileB = TrackFile(try AVAudioFile(forReading: b))
 
         let rig = try Rig(format: fileA.processingFormat)
         rig.scheduler.append(fileA, token: 7)

@@ -60,7 +60,8 @@ struct AppVolumeControl: View {
         .imageScale(.small)
         .foregroundStyle(active ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
         .animation(.easeOut(duration: 0.15), value: active)
-        .help(Self.help(volume))
+        .help(player.isSendingDoP ? Self.dopHelp : Self.help(volume))
+        .disabled(player.isSendingDoP)
         .onHover { inside in
             hovering = inside
             inside ? watchScrolling() : stopWatchingScrolling()
@@ -78,6 +79,8 @@ struct AppVolumeControl: View {
     }
 
     static func percent(_ volume: Float) -> String { "\(Int((volume * 100).rounded()))%" }
+
+    static let dopHelp = "Volume: the DAC's. DSD goes to it as DoP, which miniamp can't scale without turning it into noise."
 
     private static func help(_ volume: Float) -> String {
         volume >= 1
@@ -155,7 +158,8 @@ struct VolumeButton: View {
         .buttonStyle(.borderless)
         .imageScale(.large)
         .foregroundStyle(.secondary)
-        .help(volume >= 1
+        .disabled(player.isSendingDoP)
+        .help(player.isSendingDoP ? AppVolumeControl.dopHelp : volume >= 1
               ? "Volume: 100%. Scroll to change it."
               : "Volume: \(percent(volume)). Scroll to change it. Below 100% playback isn't bit-perfect; the device's own volume is in the output menu.")
         .accessibilityLabel("Volume")
@@ -177,4 +181,9 @@ struct VolumeButton: View {
     }
 
     private func percent(_ volume: Float) -> String { "\(Int((volume * 100).rounded()))%" }
+}
+
+extension Player {
+    /// DSD is going to the DAC as DoP, so the app volume doesn't apply.
+    var isSendingDoP: Bool { signalPath?.dsd?.isDoP == true }
 }

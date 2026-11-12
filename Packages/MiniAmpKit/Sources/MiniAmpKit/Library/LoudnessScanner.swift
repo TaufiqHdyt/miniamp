@@ -86,7 +86,7 @@ final class LoudnessMeter: @unchecked Sendable {
 
     /// Decodes the whole file through the meter.
     static func measure(_ url: URL) throws -> LoudnessMeter {
-        let file = try AVAudioFile(forReading: url)
+        let file = try PCMReader.open(url)
         let format = file.processingFormat
         let channels = Int(format.channelCount)
         guard channels > 0, format.commonFormat == .pcmFormatFloat32, !format.isInterleaved,

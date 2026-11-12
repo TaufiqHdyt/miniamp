@@ -61,7 +61,8 @@ public final class Player {
             // (Setting it here doesn't call didSet again, so this goes on with the clamped value.)
             if !(0...1).contains(appVolume) { appVolume = appVolume.isNaN ? 1 : min(max(appVolume, 0), 1) }
             guard oldValue != appVolume else { return }
-            output?.setGain(Self.gain(forVolume: appVolume))
+            // DoP frames carry DSD bits; scaling them would make noise of them.
+            if currentFile?.kind != .dop { output?.setGain(Self.gain(forVolume: appVolume)) }
             signalPath?.appVolume = appVolume
         }
     }
@@ -91,6 +92,17 @@ public final class Player {
     }
 
     public var isShuffled: Bool { queue.isShuffled }
+
+    /// Send DSD to the device as DoP (DSD over PCM), for DACs that play it. Takes effect in
+    /// bit-perfect mode on devices that can run at the DoP rate; elsewhere, and with this off,
+    /// DSD is converted to PCM. Off by default: a DAC that doesn't know DoP plays it as noise.
+    public var sendsDSDAsDoP = false {
+        didSet {
+            if oldValue != sendsDSDAsDoP, currentFile?.isDSD == true {
+                Task { await restartInPlace("DoP \(sendsDSDAsDoP ? "on" : "off")") }
+            }
+        }
+    }
 
     /// Stop when the current track ends instead of going on (the sleep timer's "end of song").
     /// The next track is then cued, paused at its start. Resets itself once it has acted.
@@ -146,7 +158,7 @@ public final class Player {
     @ObservationIgnored var generation = 0
     /// Counts start requests, for readable traces: "[3] open …" … "[3] stop".
     @ObservationIgnored var playID = 0
-    @ObservationIgnored var currentFile: AVAudioFile?
+    @ObservationIgnored var currentFile: TrackFile?
     /// Node start time of the segment that's currently playing.
     @ObservationIgnored var currentNodeStart: AVAudioFramePosition = 0
     /// Item index scheduled after the current one, if any.
@@ -504,16 +516,17 @@ public final class Player {
 
     static func wholeSeconds(_ time: Duration) -> Int64 { time.components.seconds }
 
-    private func preloadNext(after file: AVAudioFile) {
+    private func preloadNext(after file: TrackFile) {
         preloadAttempted = true
         guard !stopsAfterCurrentTrack else { return }
         guard let next = queue.upcoming(automatic: true) else { return }
         let item = queue.order[next]
         let url = queue.items[item]
         do {
-            let nextFile = try AVAudioFile(forReading: url)
-            guard nextFile.processingFormat == file.processingFormat else {
-                Self.log.debug("[\(self.playID)] next is \(nextFile.processingFormat, privacy: .public); a different format, so not gapless")
+            guard let device = outputDevice else { return }
+            let nextFile = try openTrack(url, device: device)
+            guard nextFile.canFollow(file) else {
+                Self.log.debug("[\(self.playID)] next is \(nextFile.processingFormat, privacy: .public) (\(String(describing: nextFile.kind), privacy: .public)); a different format, so not gapless")
                 return
             }
             scheduler.append(nextFile, token: item)

@@ -31,7 +31,7 @@ struct MainWindow: View {
             app.perform { try await app.player.togglePlayPause() }
             return .handled
         }
-        .fileImporter(isPresented: $app.importingFiles, allowedContentTypes: [.audio], allowsMultipleSelection: true) { result in
+        .fileImporter(isPresented: $app.importingFiles, allowedContentTypes: AppState.playableTypes, allowsMultipleSelection: true) { result in
             switch result {
             case .success(let urls): app.perform { try await app.player.setQueue(urls) }
             case .failure(let e): app.error = e.localizedDescription

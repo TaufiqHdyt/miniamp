@@ -10,6 +10,8 @@ enum TrackFormat {
 
     static func short(codec: String, sampleRate: Int, bits: Int?, bitrateKbps: Int) -> String {
         guard sampleRate > 0 else { return codec }
+        // "DSD64" says it all: the rate is 64 × 44.1 kHz, one bit deep.
+        if codec.hasPrefix("DSD") { return codec }
         let khz = Double(sampleRate) / 1000
         let rate = khz == khz.rounded() ? "\(Int(khz))" : String(format: "%.1f", khz)
         if let bits { return "\(codec) \(rate)/\(bits)" }

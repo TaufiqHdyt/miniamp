@@ -22,6 +22,7 @@ struct QualityBadge: View {
     }
 
     private var format: String {
+        if path.dsd != nil { return path.codec }
         let rate = FormatSelection.formatRate(path.fileSampleRate)
         return path.fileBitDepth.map { "\(path.codec) \(rate)/\($0)" } ?? "\(path.codec) \(rate)"
     }
@@ -38,14 +39,16 @@ struct QualityBadge: View {
                 ? "\(path.codec) \(FormatSelection.formatRate(path.fileSampleRate)) → \(FormatSelection.formatRate(path.deviceSampleRate)) · DSP"
                 : "\(format) · DSP"
         case .volumeScaled(let percent): "\(format) · Volume \(percent)%"
+        case .dsdOverPCM: "\(format) · DoP"
+        case .dsdConverted(let to): "\(format) → PCM \(FormatSelection.formatRate(to))"
         }
     }
 
     private var symbol: String {
         switch path.verdict {
-        case .bitPerfect: "checkmark.seal.fill"
+        case .bitPerfect, .dsdOverPCM: "checkmark.seal.fill"
         case .nativeRate: "checkmark.circle"
-        case .resampled, .reducedBitDepth: "exclamationmark.triangle.fill"
+        case .resampled, .reducedBitDepth, .dsdConverted: "exclamationmark.triangle.fill"
         case .processed: "slider.vertical.3"
         case .volumeScaled: "speaker.wave.1.fill"
         }
@@ -53,9 +56,9 @@ struct QualityBadge: View {
 
     private var color: Color {
         switch path.verdict {
-        case .bitPerfect: .green
+        case .bitPerfect, .dsdOverPCM: .green
         case .nativeRate: .secondary
-        case .resampled, .reducedBitDepth: .orange
+        case .resampled, .reducedBitDepth, .dsdConverted: .orange
         case .processed: .blue
         case .volumeScaled: .secondary
         }
@@ -73,6 +76,12 @@ struct QualityBadge: View {
             "The device takes \(to)-bit samples, so the file's \(from)-bit samples lose their lowest bits."
         case .volumeScaled(let percent):
             "Volume at \(percent)%: the samples are scaled down on the way, so they aren't bit-perfect. At 100% they reach the device unchanged; turn the device itself down (in the output menu) to keep them that way."
+        case .dsdOverPCM:
+            "DSD over PCM (DoP): the DSD bits reach \(path.deviceName) unchanged, packed in \(FormatSelection.formatRate(path.engineSampleRate)) frames, and the DAC plays them as DSD. miniamp's volume doesn't apply; use the DAC's."
+        case .dsdConverted(let to):
+            "Converted to PCM: the DSD is filtered down to \(FormatSelection.formatRate(path.engineSampleRate)) PCM"
+                + (path.isResampled ? " and resampled to \(FormatSelection.formatRate(to)), the closest rate \(path.deviceName) can play" : "")
+                + ". A DAC that plays DSD over PCM can get the DSD itself: turn on DoP in Settings › Playback."
         case .processed:
             "DSP mode: the samples are changed on the way (\(path.processing?.description ?? "gain")). Choose Bit-perfect in Settings › Sound to hear the file unchanged."
                 + (path.isResampled ? " The device can't play \(FormatSelection.formatRate(path.fileSampleRate)), so it's also resampled to \(FormatSelection.formatRate(path.deviceSampleRate))." : "")

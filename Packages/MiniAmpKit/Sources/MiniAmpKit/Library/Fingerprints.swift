@@ -20,7 +20,7 @@ public enum Fingerprints {
 
     /// The raw fingerprint of the file's first two minutes.
     public static func compute(_ url: URL) throws -> [UInt32] {
-        let file = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
+        let file = try PCMReader.open(url)
         let format = file.processingFormat
         let channels = Int(format.channelCount)
         guard channels > 0, format.sampleRate > 0,

@@ -18,9 +18,9 @@ extension Player {
         state = .preparing
 
         do {
-            let file = try AVAudioFile(forReading: url)
             let device = try resolveDevice()
-            Self.log.debug("[\(id)] open \(url.lastPathComponent, privacy: .public): \(file.fileFormat, privacy: .public), \(file.length) frames")
+            var file = try openTrack(url, device: device, keepDeviceRate: keepDeviceRate)
+            Self.log.debug("[\(id)] open \(url.lastPathComponent, privacy: .public): \(file.audioFile?.fileFormat.description ?? file.dsd?.name ?? "", privacy: .public) as \(file.processingFormat, privacy: .public), \(file.length) frames")
 
             if autoplay, wasPlaying, canSwapInPlace(file: file, device: device, keepDeviceRate: keepDeviceRate) {
                 do {
@@ -45,10 +45,17 @@ extension Player {
             var warning: String?
             do {
                 expectedDeviceRate = try await DeviceConfigurator.configure(
-                    device, sampleRate: file.fileFormat.sampleRate, hogMode: hogMode, keepRate: keepDeviceRate)
+                    device, sampleRate: file.sampleRate, hogMode: hogMode, keepRate: keepDeviceRate)
             } catch {
                 warning = "\(error)"
                 Self.log.error("[\(id)] device setup failed: \(warning ?? "", privacy: .public)")
+            }
+            // DoP resampled is noise. If the device didn't take its rate after all, convert to PCM.
+            if file.kind == .dop, !FormatSelection.sameRate(expectedDeviceRate, file.sampleRate), let dsd = file.dsd {
+                Self.log.notice("[\(id)] \(device.name, privacy: .public) didn't go to \(file.sampleRate) Hz for DoP; converting to PCM")
+                file = try TrackFile(dsd: dsd, mode: .pcm)
+                expectedDeviceRate = (try? await DeviceConfigurator.configure(
+                    device, sampleRate: file.sampleRate, hogMode: hogMode, keepRate: keepDeviceRate)) ?? expectedDeviceRate
             }
             guard gen == generation else {
                 Self.log.debug("[\(id)] superseded during device setup")
@@ -89,7 +96,7 @@ extension Player {
         }
     }
 
-    private func finishStart(file: AVAudioFile, url: URL, device: AudioDevice, frame: AVAudioFramePosition,
+    private func finishStart(file: TrackFile, url: URL, device: AudioDevice, frame: AVAudioFramePosition,
                              autoplay: Bool, id: Int) {
         duration = Self.time(file.length, file)
         lastKnownFrame = frame
@@ -106,8 +113,10 @@ extension Player {
     /// Whether `file` can start on the running output without touching the device: same device,
     /// already at the rate the file needs (its own, or the fallback), same channel count, and
     /// hog mode as wanted. True for every track on a fixed-rate device such as Bluetooth speakers.
-    private func canSwapInPlace(file: AVAudioFile, device: AudioDevice, keepDeviceRate: Bool) -> Bool {
-        guard let output, output.isRunning, device == outputDevice, currentFile != nil, graphHasDSP == dspMode,
+    private func canSwapInPlace(file: TrackFile, device: AudioDevice, keepDeviceRate: Bool) -> Bool {
+        // A change to or from DoP starts from scratch, which sets the output's gain for it.
+        guard let output, output.isRunning, device == outputDevice, let current = currentFile, current.kind == file.kind,
+              graphHasDSP == dspMode,
               engine.isInManualRenderingMode, engine.isRunning,
               engine.manualRenderingFormat.channelCount == file.processingFormat.channelCount,
               hogMode == (device.hogModeOwner() == getpid()),
@@ -117,7 +126,7 @@ extension Player {
         else { return false }
         if keepDeviceRate { return true }
         guard let ranges = try? device.availableNominalSampleRates(),
-              let target = FormatSelection.fallbackRate(for: file.fileFormat.sampleRate, supported: ranges)
+              let target = FormatSelection.fallbackRate(for: file.sampleRate, supported: ranges)
         else { return false }
         return FormatSelection.sameRate(target, rate)
     }
@@ -125,7 +134,7 @@ extension Player {
     /// Starts `file` while the output keeps running. A file in the current format is scheduled
     /// like a seek. Another format needs the player reconnected, which needs the engine stopped,
     /// so the output plays silence for those few milliseconds.
-    private func swapInPlace(file: AVAudioFile, item: Int, frame: AVAudioFramePosition) throws {
+    private func swapInPlace(file: TrackFile, item: Int, frame: AVAudioFramePosition) throws {
         guard let output else { return }
         currentFile = file
         preloadedItem = nil
@@ -160,7 +169,7 @@ extension Player {
     /// rate differs (the fallback case), the engine's output node resamples at mastering
     /// quality; otherwise nothing converts. The output unit maps channels (mono to both sides)
     /// and converts float to the device's physical format.
-    private func startGraph(file: AVAudioFile, device: AudioDevice, item: Int, frame: AVAudioFramePosition,
+    private func startGraph(file: TrackFile, device: AudioDevice, item: Int, frame: AVAudioFramePosition,
                             autoplay: Bool, id: Int) throws {
         guard let output else {
             throw CoreAudioError(status: kAudioUnitErr_FailedInitialization, operation: "Create output unit")
@@ -193,6 +202,8 @@ extension Player {
         try engine.start()
 
         let renderBlock = engine.manualRenderingBlock
+        // DoP goes out unscaled; anything else at the app volume, from its first frame.
+        output.resetGain(file.kind == .dop ? 1 : Self.gain(forVolume: appVolume))
         let map = OutputUnit.channelMap(sourceChannels: Int(channels), deviceChannels: device.outputChannelCount)
         try output.configure(device: device, format: renderFormat, channelMap: map) { frames, data in
             renderBlock(frames, data, nil) == .success
@@ -204,6 +215,42 @@ extension Player {
         Self.log.debug("[\(id)] started; output unit on \(device.name, privacy: .public), \(autoplay ? "playing" : "paused", privacy: .public)")
     }
 
+    /// Opens `url` for playback on `device`. A DSD file goes as DoP when that's turned on and
+    /// everything on the way can carry it untouched: bit-perfect mode, a device that runs at
+    /// the DoP rate with at least 24-bit samples, and (when following another app's rate) the
+    /// device already there. Otherwise it's converted to PCM.
+    func openTrack(_ url: URL, device: AudioDevice, keepDeviceRate: Bool = false) throws -> TrackFile {
+        try TrackFile.open(url) { dsd in
+            guard sendsDSDAsDoP, !dspMode else { return .pcm }
+            let rate = DSDDecoder.dopRate(of: dsd)
+            guard let ranges = try? device.availableNominalSampleRates(),
+                  ranges.contains(where: { $0.contains(rate) }),
+                  Self.hasDoPFormat(device, rate: rate, hogMode: hogMode)
+            else {
+                Self.log.notice("\(device.name, privacy: .public) can't take DoP at \(rate) Hz; converting \(dsd.name, privacy: .public) to PCM")
+                return .pcm
+            }
+            if keepDeviceRate, let current = try? device.nominalSampleRate(), !FormatSelection.sameRate(current, rate) {
+                return .pcm
+            }
+            return .dop
+        }
+    }
+
+    /// Whether every output stream of `device` has a physical format of 24 bits or more at `rate`.
+    static func hasDoPFormat(_ device: AudioDevice, rate: Double, hogMode: Bool) -> Bool {
+        guard let streams = try? device.outputStreams(), !streams.isEmpty else { return false }
+        return streams.allSatisfy { stream in
+            guard let current = try? AudioDevice.physicalFormat(of: stream),
+                  let formats = try? AudioDevice.availablePhysicalFormats(of: stream),
+                  let best = FormatSelection.bestPhysicalFormat(from: formats, sampleRate: rate,
+                                                                channels: current.mChannelsPerFrame,
+                                                                allowNonMixable: hogMode)
+            else { return false }
+            return best.mBitsPerChannel >= 24
+        }
+    }
+
     /// AVAudioEngine errors that mean "the device hasn't settled yet", seen right after hog mode.
     static func isTransientStartError(_ error: NSError) -> Bool {
         error.domain == "com.apple.coreaudio.avfaudio"
@@ -211,11 +258,11 @@ extension Player {
                 || error.code == -10875 /* kAudioUnitErr_FailedInitialization: invalid hardware format */)
     }
 
-    static func time(_ frames: AVAudioFramePosition, _ file: AVAudioFile) -> Duration {
+    static func time(_ frames: AVAudioFramePosition, _ file: TrackFile) -> Duration {
         .seconds(Double(frames) / file.processingFormat.sampleRate)
     }
 
-    static func frames(_ time: Duration, _ file: AVAudioFile) -> AVAudioFramePosition {
+    static func frames(_ time: Duration, _ file: TrackFile) -> AVAudioFramePosition {
         AVAudioFramePosition(time.seconds * file.processingFormat.sampleRate)
     }
 

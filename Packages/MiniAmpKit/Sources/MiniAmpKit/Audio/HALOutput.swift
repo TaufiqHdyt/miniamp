@@ -204,6 +204,14 @@ final class HALOutput: @unchecked Sendable {
         gainBits.store(min(max(gain, 0), 1).bitPattern, ordering: .relaxed)
     }
 
+    /// Sets the gain with no ramp, so the next render starts at it. Only while stopped: the
+    /// gain the last render ended at belongs to the I/O thread.
+    func resetGain(_ gain: Float) {
+        precondition(!isRunning, "resetGain while the output is running")
+        setGain(gain)
+        appliedGain = min(max(gain, 0), 1)
+    }
+
     /// Multiplies Float32 buffers by a gain going linearly from `start` to `end` across them.
     /// At 1 throughout, nothing is touched: the samples stay bit-for-bit what was rendered.
     static func applyGain(from start: Float, to end: Float, _ data: UnsafeMutablePointer<AudioBufferList>) {
