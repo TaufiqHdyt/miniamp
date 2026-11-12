@@ -1,35 +1,24 @@
 import MiniAmpKit
 import SwiftUI
 
-/// The file's format and what the device is doing with it, said plainly. Click for details.
+/// What the device is doing with the file, as a coloured symbol; the format and a plain
+/// explanation are in its tooltip, and more in the popover it opens.
 struct QualityBadge: View {
     let path: SignalPath
-    /// Just the coloured symbol, for tight spaces; the format moves into the tooltip.
-    var iconOnly = false
     @State private var showsDetails = false
 
     var body: some View {
         Button { showsDetails.toggle() } label: {
-            if iconOnly {
-                Image(systemName: symbol)
-                    .imageScale(.large)
-                    .foregroundStyle(color)
-            } else {
-                Label(title, systemImage: symbol)
-                    .font(.caption.weight(.medium))
-                    .lineLimit(1)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .foregroundStyle(color)
-                    .background(color.opacity(0.12), in: Capsule())
-            }
+            Image(systemName: symbol)
+                .imageScale(.large)
+                .foregroundStyle(color)
         }
         .buttonStyle(.plain)
-        .help(iconOnly ? "\(title)\n\n\(headline)" : headline)
+        .help("\(title)\n\n\(headline)")
         .popover(isPresented: $showsDetails, arrowEdge: .top) {
-            SignalDetails(path: path, headline: headline, title: iconOnly ? title : nil)
+            SignalDetails(path: path, headline: headline, title: title)
         }
-        .accessibilityLabel(iconOnly ? "\(title). \(headline)" : headline)
+        .accessibilityLabel("\(title). \(headline)")
     }
 
     private var format: String {
@@ -89,12 +78,11 @@ struct QualityBadge: View {
 private struct SignalDetails: View {
     let path: SignalPath
     let headline: String
-    /// The badge's label, shown here when the badge itself is just an icon.
-    var title: String?
+    let title: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let title { Text(title).font(.headline) }
+            Text(title).font(.headline)
             Text(headline).fixedSize(horizontal: false, vertical: true)
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
                 GridRow {

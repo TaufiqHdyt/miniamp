@@ -175,9 +175,18 @@ final class AppState {
 
     // MARK: Lyrics
 
-    func showLyrics() {
-        showsNowPlaying = true
-        inspectorPane = .lyrics
+    /// Whether the inspector is open on `pane`.
+    func isShowing(_ pane: InspectorPane) -> Bool { showsNowPlaying && inspectorPane == pane }
+
+    /// Up Next and Lyrics each have a button: it opens the inspector on its pane, switches to
+    /// it from the other, or closes the inspector when it's already showing.
+    func toggle(_ pane: InspectorPane) {
+        if isShowing(pane) {
+            showsNowPlaying = false
+        } else {
+            inspectorPane = pane
+            showsNowPlaying = true
+        }
     }
 
     /// Every song's synced lyrics held back this much, for speakers that play the sound late

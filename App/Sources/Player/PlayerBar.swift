@@ -2,8 +2,8 @@ import MiniAmpKit
 import SwiftUI
 
 /// The strip along the bottom of the window, in three parts: what's playing on the left,
-/// transport and position in the middle (centred on the window), and quality, Now Playing,
-/// sleep timer, volume and output device on the right.
+/// transport and position in the middle (centred on the window), and quality, Up Next,
+/// Lyrics, sleep timer, volume and output device on the right.
 struct PlayerBar: View {
     let app: AppState
     @State private var current: QueueEntry?
@@ -24,7 +24,8 @@ struct PlayerBar: View {
 
             HStack(spacing: 12) {
                 SignalSummary(player: player)
-                NowPlayingToggle(app: app)
+                PaneButton(app: app, pane: .upNext)
+                PaneButton(app: app, pane: .lyrics)
                 SleepTimerButton(timer: app.sleepTimer)
                 VolumeButton(player: player)
                 OutputButton(player: player)
@@ -48,7 +49,7 @@ struct PlayerBar: View {
     }
 }
 
-/// Cover, then title over artist, all left-aligned. The cover opens and closes Now Playing.
+/// Cover, then title over artist, all left-aligned. The cover opens and closes the inspector.
 private struct NowPlayingSummary: View {
     let entry: QueueEntry?
     let artwork: ArtworkCache?
@@ -63,7 +64,8 @@ private struct NowPlayingSummary: View {
                     .shadow(color: .black.opacity(0.15), radius: 1.5, y: 0.5)
             }
             .buttonStyle(.plain)
-            .help(app.showsNowPlaying ? "Hide Now Playing" : "Show Now Playing")
+            .help(app.showsNowPlaying ? "Hide \(app.inspectorPane == .lyrics ? "Lyrics" : "Up Next")"
+                                      : "Show \(app.inspectorPane == .lyrics ? "Lyrics" : "Up Next")")
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(entry?.title ?? "Not Playing")
@@ -151,19 +153,24 @@ extension PlayQueue<URL>.Repeat {
     }
 }
 
-/// Opens and closes the Now Playing inspector (the cover, Up Next, and lyrics).
-private struct NowPlayingToggle: View {
-    @Bindable var app: AppState
+/// Opens the inspector on Up Next or Lyrics, lit while that pane shows; again closes it.
+private struct PaneButton: View {
+    let app: AppState
+    let pane: InspectorPane
 
     var body: some View {
-        Toggle(isOn: $app.showsNowPlaying) {
-            Label("Now Playing", systemImage: "music.note.list")
+        let (name, symbol, key) = switch pane {
+        case .upNext: ("Up Next", "list.bullet", "⌥⌘I")
+        case .lyrics: ("Lyrics", "quote.bubble", "⌥⌘L")
+        }
+        Toggle(isOn: Binding(get: { app.isShowing(pane) }, set: { _ in app.toggle(pane) })) {
+            Label(name, systemImage: symbol)
         }
         .toggleStyle(.button)
         .buttonStyle(.borderless)
         .labelStyle(.iconOnly)
         .imageScale(.large)
-        .help(app.showsNowPlaying ? "Hide the cover and what plays next (⌥⌘I)" : "Show the cover and what plays next (⌥⌘I)")
+        .help("\(app.isShowing(pane) ? "Hide" : "Show") \(name) (\(key))")
     }
 }
 
@@ -173,7 +180,7 @@ private struct SignalSummary: View {
 
     var body: some View {
         if let path = player.signalPath {
-            QualityBadge(path: path, iconOnly: true)
+            QualityBadge(path: path)
         }
         if let warning = player.deviceWarning {
             Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).help(warning)

@@ -23,9 +23,9 @@ struct AppCommands: Commands {
                 .disabled(app.library == nil)
         }
         CommandGroup(before: .sidebar) {
-            Button(app.showsNowPlaying ? "Hide Now Playing" : "Show Now Playing") { app.showsNowPlaying.toggle() }
+            Button(app.isShowing(.upNext) ? "Hide Up Next" : "Show Up Next") { app.toggle(.upNext) }
                 .keyboardShortcut("i", modifiers: [.command, .option])
-            Button("Show Lyrics") { app.showLyrics() }
+            Button(app.isShowing(.lyrics) ? "Hide Lyrics" : "Show Lyrics") { app.toggle(.lyrics) }
                 .keyboardShortcut("l", modifiers: [.command, .option])
             Menu("Lyrics Timing") {
                 Button("Show Lyrics Sooner") { app.adjustLyricsTiming(by: AppState.lyricsStep) }

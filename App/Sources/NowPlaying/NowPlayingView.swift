@@ -1,7 +1,8 @@
 import MiniAmpKit
 import SwiftUI
 
-/// The inspector: the current track's cover and details, then what plays next.
+/// The inspector, in one of two panes, each opened by its own button in the player bar:
+/// Up Next (the song playing, then what follows, each with its cover) or Lyrics.
 struct NowPlayingView: View {
     let app: AppState
     @State private var entries: [URL: QueueEntry] = [:]
@@ -13,50 +14,25 @@ struct NowPlayingView: View {
 
     var body: some View {
         let player = app.player
-        let upcoming = upcomingRows(player.queue)
-        VStack(spacing: 0) {
+        // Lyrics don't need the queue's tags read.
+        let upcoming = app.inspectorPane == .upNext ? upcomingRows(player.queue) : []
+        Group {
             if let url = player.queue.current {
                 let entry = entries[url] ?? QueueEntry(fileName: url)
-                CurrentTrack(entry: entry, artwork: app.library?.artwork, compact: app.inspectorPane == .lyrics)
-                    .padding([.horizontal, .top], 16)
-                if let path = player.signalPath {
-                    QualityBadge(path: path).padding(.vertical, 10)
-                } else {
-                    Spacer().frame(height: 16)
-                }
-            } else {
-                ContentUnavailableView("Nothing playing", systemImage: "music.note",
-                                       description: Text("Double-click a song to play it."))
-                    .frame(maxHeight: 260)
-            }
-            Divider()
-            HStack {
-                Picker("Show", selection: Binding(get: { app.inspectorPane }, set: { app.inspectorPane = $0 })) {
-                    Text("Up Next").tag(InspectorPane.upNext)
-                    Text("Lyrics").tag(InspectorPane.lyrics)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                Spacer()
-                if app.inspectorPane == .upNext {
-                    if player.queue.isShuffled { Image(systemName: "shuffle").foregroundStyle(.secondary).help("Shuffled") }
-                    if player.repeatMode != .off {
-                        Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat").foregroundStyle(.secondary)
-                            .help(player.repeatMode == .one ? "Repeating one" : "Repeating all")
+                switch app.inspectorPane {
+                case .upNext:
+                    upNext(current: entry, upcoming: upcoming)
+                case .lyrics:
+                    VStack(spacing: 0) {
+                        QueueRow(entry: entry, artwork: app.library?.artwork, isCurrent: true, state: player.state)
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                        Divider()
+                        LyricsView(app: app, url: url).id(url)
                     }
                 }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            if app.inspectorPane == .lyrics {
-                if let url = player.queue.current {
-                    LyricsView(app: app, url: url).id(url)
-                } else {
-                    Spacer()
-                }
             } else {
-                upNext(upcoming)
+                ContentUnavailableView("Nothing Playing", systemImage: "music.note",
+                                       description: Text("Double-click a song to play it."))
             }
         }
         // Read the tags of what's shown when the queue moves, or when the library changes (a retag).
@@ -79,25 +55,41 @@ struct NowPlayingView: View {
         }
     }
 
-    private func upNext(_ upcoming: [Row]) -> some View {
+    private func upNext(current: QueueEntry, upcoming: [Row]) -> some View {
         let player = app.player
+        let artwork = app.library?.artwork
         return List {
-            ForEach(upcoming, id: \.position) { row in
-                let url = player.queue.items[row.item]
-                UpNextRow(entry: entries[url] ?? QueueEntry(fileName: url))
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) { app.perform { try await player.jump(toItem: row.item) } }
+            Section("Now Playing") {
+                QueueRow(entry: current, artwork: artwork, isCurrent: true, state: player.state)
             }
-            let remaining = remainingCount(player.queue, shown: upcoming.count)
-            if remaining > 0 {
-                Text("and \(remaining) more").foregroundStyle(.secondary).font(.callout)
-            }
-            if upcoming.isEmpty && !player.queue.isEmpty {
-                Text(player.repeatMode == .off ? "This is the last song." : "The queue starts over.")
-                    .foregroundStyle(.secondary).font(.callout)
+            Section {
+                ForEach(upcoming, id: \.position) { row in
+                    let url = player.queue.items[row.item]
+                    QueueRow(entry: entries[url] ?? QueueEntry(fileName: url), artwork: artwork)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) { app.perform { try await player.jump(toItem: row.item) } }
+                }
+                let remaining = remainingCount(player.queue, shown: upcoming.count)
+                if remaining > 0 {
+                    Text("and \(remaining) more").foregroundStyle(.secondary).font(.callout)
+                }
+                if upcoming.isEmpty {
+                    Text(player.repeatMode == .off ? "This is the last song." : "The queue starts over.")
+                        .foregroundStyle(.secondary).font(.callout)
+                }
+            } header: {
+                HStack {
+                    Text("Up Next")
+                    Spacer()
+                    if player.queue.isShuffled { Image(systemName: "shuffle").help("Shuffled") }
+                    if player.repeatMode != .off {
+                        Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
+                            .help(player.repeatMode == .one ? "Repeating one" : "Repeating all")
+                    }
+                }
             }
         }
-        .listStyle(.plain)
+        .listStyle(.inset)
     }
 
     private struct Row { var position: Int; var item: Int }
@@ -120,45 +112,39 @@ struct NowPlayingView: View {
     }
 }
 
-private struct CurrentTrack: View {
+/// A queue entry: cover, title over artist and album, and its length. The song playing is
+/// marked with a speaker and its format.
+private struct QueueRow: View {
     let entry: QueueEntry
     let artwork: ArtworkCache?
-    /// Smaller cover art, leaving the room to the lyrics.
-    var compact = false
+    var isCurrent = false
+    var state: Player.State = .stopped
 
     var body: some View {
-        VStack(spacing: 10) {
+        HStack(spacing: 10) {
             ArtworkView(key: entry.artworkKey, artwork: artwork,
-                        fileURL: entry.inLibrary ? nil : entry.url, size: .large, cornerRadius: 8)
-                .frame(maxWidth: compact ? 140 : 360)
-                .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
-            VStack(spacing: 3) {
-                Text(entry.title).font(.title3.bold()).multilineTextAlignment(.center)
-                if let artist = entry.artist, !artist.isEmpty { Text(artist).foregroundStyle(.secondary) }
-                if let album = entry.album, !album.isEmpty { Text(album).foregroundStyle(.secondary).font(.callout) }
-            }
-            .lineLimit(2)
-            .textSelection(.enabled)
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-private struct UpNextRow: View {
-    let entry: QueueEntry
-
-    var body: some View {
-        HStack {
+                        fileURL: entry.inLibrary ? nil : entry.url, size: .small, cornerRadius: 4)
+                .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 1) {
-                Text(entry.title).lineLimit(1)
+                Text(entry.title).fontWeight(isCurrent ? .semibold : .regular).lineLimit(1)
                 if let subtitle = entry.subtitle {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
-            Spacer()
-            if let ms = entry.durationMs, ms > 0 {
-                Text(TimeFormat.minutes(ms / 1000)).monospacedDigit().foregroundStyle(.secondary).font(.caption)
+            .help([entry.title, entry.subtitle].compactMap { $0 }.joined(separator: "\n"))
+            Spacer(minLength: 4)
+            VStack(alignment: .trailing, spacing: 1) {
+                if isCurrent {
+                    Image(systemName: state == .playing ? "speaker.wave.2.fill" : "speaker.fill")
+                        .foregroundStyle(Color.accentColor)
+                        .help(state == .playing ? "Playing" : "Paused")
+                } else if let ms = entry.durationMs, ms > 0 {
+                    Text(TimeFormat.minutes(ms / 1000)).monospacedDigit()
+                }
+                if isCurrent { Text(entry.format).lineLimit(1) }
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 }
