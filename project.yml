@@ -14,6 +14,9 @@ targets:
     sources:
       - App/Sources
       - Shared
+      # Resources: the app icon, made in Icon Composer (layers for Liquid Glass; Xcode
+      # makes the flat icons for macOS 15 from it).
+      - App/Resources
     dependencies:
       - package: MiniAmpKit
       - target: miniampWidget
@@ -42,6 +45,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: miniamp
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.music
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # Local development: ad-hoc signing. Set a team to distribute (see README).
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
