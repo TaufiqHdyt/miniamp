@@ -169,4 +169,10 @@ enum Schema {
             );
             """)
     }
+
+    /// Duplicate groups the user said aren't duplicates, by their sorted track ids. A group
+    /// that gains or loses a track has a new signature, so it comes back for review.
+    static func v5(_ db: Database) throws {
+        try db.execute(sql: "CREATE TABLE duplicateDismissal (signature TEXT PRIMARY KEY) WITHOUT ROWID")
+    }
 }

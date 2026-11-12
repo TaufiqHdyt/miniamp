@@ -37,7 +37,7 @@ Other targets:
 ```
 App/Sources/              SwiftUI app target (thin; UI only)
   App/                    Entry point, shared state, menus, settings, preferences
-  Library/                Main window, sidebar, browsing, the track table, Get Info, listening stats
+  Library/                Main window, sidebar, browsing, the track table, Get Info, listening stats, duplicates
   NowPlaying/             The inspector: Up Next (with the song playing) and Lyrics
   Player/                 Player bar, seek bar, volume, output picker, equalizer, Control Center
   Support/                Artwork, formatting, window visibility, hang logging

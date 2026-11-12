@@ -77,6 +77,8 @@ struct MainWindow: View {
                 AlbumsView(app: app, library: library)
             case .stats:
                 StatsView(app: app, library: library)
+            case .duplicates:
+                DuplicatesView(app: app, library: library)
             case .playlist(let id):
                 TrackListView(app: app, library: library, scope: .playlist(id),
                               title: app.playlists.first { $0.id == id }?.name ?? "Playlist")
@@ -92,7 +94,7 @@ struct MainWindow: View {
         let defaults = UserDefaults.standard
         // Hooks for automated checks: in Debug builds, or in any build when a test database
         // is in use (-libraryDatabase), so a Release check never touches the real library.
-        //   miniamp -sidebar albums            (songs, artists, albums, stats, or playlist:<id>)
+        //   miniamp -sidebar albums            (songs, artists, albums, stats, duplicates, or playlist:<id>)
         //   miniamp -libraryFolder /path/in/container
         var addsFolders = defaults.string(forKey: "libraryDatabase") != nil
         #if DEBUG

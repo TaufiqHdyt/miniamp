@@ -188,6 +188,28 @@ public final class Library {
         }
     }
 
+    /// Moves these tracks' files to the Trash (Finder's Put Back works) and rescans them out of
+    /// the library. Stops at the first file that can't be moved; those before it are gone.
+    public func moveToTrash(_ tracks: [Track]) async throws {
+        var trashed: [Track] = []
+        defer {
+            for (folderId, gone) in Dictionary(grouping: trashed, by: \.folderId) {
+                if let folder = folders.first(where: { $0.id == folderId }), access[folderId] != nil {
+                    enqueue(folder, .paths(Set(gone.map(\.path))))
+                }
+            }
+        }
+        for track in tracks {
+            try await Self.trash(track.url)
+            trashed.append(track)
+        }
+    }
+
+    @concurrent
+    private nonisolated static func trash(_ url: URL) async throws {
+        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+    }
+
     @concurrent
     private nonisolated static func write(_ changes: TagChanges, to url: URL, replacingFile: Bool) async throws {
         try TagWriter.write(changes, to: url, replacingFile: replacingFile)
