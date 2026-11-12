@@ -59,7 +59,7 @@ struct MainWindow: View {
             TagEditor(app: app, tracks: target.tracks)
         }
         // Nobody sees the position while the window is hidden or covered; stop redrawing it.
-        .onWindowVisibilityChange { app.player.updatesPosition = $0 }
+        .onWindowVisibilityChange { app.mainWindowVisible = $0 }
         .task { await start() }
     }
 

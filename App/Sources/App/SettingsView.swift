@@ -10,7 +10,7 @@ struct SettingsView: View {
                 LibrarySettings(app: app)
             }
             Tab("Playback", systemImage: "hifispeaker") {
-                PlaybackSettings(player: app.player)
+                PlaybackSettings(app: app, player: app.player)
             }
             Tab("Sound", systemImage: "slider.vertical.3") {
                 SoundSettings(app: app, player: app.player)
@@ -197,10 +197,15 @@ private struct LoudnessAnalysisRow: View {
 }
 
 private struct PlaybackSettings: View {
+    @Bindable var app: AppState
     @Bindable var player: Player
 
     var body: some View {
         Form {
+            Toggle(isOn: $app.showsMenuBarPlayer) {
+                Text("Show a mini player in the menu bar")
+                Text("Controls and what's playing, a click away when the window is closed.")
+            }
             Picker("Output device", selection: Binding(get: { player.preferredDeviceUID },
                                                        set: { Preferences.setOutputDevice($0, on: player) })) {
                 Text("System default").tag(String?.none)

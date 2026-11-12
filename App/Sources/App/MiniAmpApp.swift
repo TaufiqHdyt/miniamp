@@ -51,6 +51,12 @@ struct MiniAmpApp: App {
         .windowResizability(.contentSize)
         .defaultLaunchBehavior(.suppressed)
 
+        MenuBarExtra("miniamp", systemImage: app.player.state == .playing ? "play.circle.fill" : "music.note",
+                     isInserted: Binding(get: { app.showsMenuBarPlayer }, set: { app.showsMenuBarPlayer = $0 })) {
+            MiniPlayer(app: app)
+        }
+        .menuBarExtraStyle(.window)
+
         Settings {
             SettingsView(app: app)
         }
