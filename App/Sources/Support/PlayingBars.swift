@@ -3,50 +3,29 @@ import SwiftUI
 
 /// Marks the song playing, as Apple Music does: little bars bouncing like a level meter while
 /// it plays, resting low while it's paused (and kept still under Reduce Motion).
-struct PlayingBars: View {
+///
+/// Drawn by `PlayingBarsView`, whose Core Animation runs outside the app. A SwiftUI timeline
+/// redrawing them would update the view graph 30 times a second, and each update lays out the
+/// whole window: that tripled the app's CPU while playing, even with the bars hidden.
+struct PlayingBars: NSViewRepresentable {
     var isPlaying: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
-        let animating = isPlaying && !reduceMotion
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !animating)) { context in
-            let time = context.date.timeIntervalSinceReferenceDate
-            Canvas { canvas, size in
-                let count = PlayingBarsShape.count
-                let gap = size.width * 0.12
-                let width = (size.width - gap * CGFloat(count - 1)) / CGFloat(count)
-                for bar in 0..<count {
-                    let level = animating ? PlayingBarsShape.level(bar, at: time) : PlayingBarsShape.rest[bar]
-                    let height = max(size.height * level, width)
-                    let rect = CGRect(x: CGFloat(bar) * (width + gap), y: size.height - height, width: width, height: height)
-                    canvas.fill(Path(roundedRect: rect, cornerRadius: width / 2), with: .foreground)
-                }
-            }
-        }
-        .frame(width: 14, height: 12)
-        .foregroundStyle(Color.accentColor)
-        .accessibilityElement()
-        .accessibilityLabel(isPlaying ? "Playing" : "Paused")
+    func makeNSView(context: Context) -> PlayingBarsView { PlayingBarsView(frame: .zero) }
+
+    func updateNSView(_ view: PlayingBarsView, context: Context) { view.isPlaying = isPlaying }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: PlayingBarsView, context: Context) -> CGSize? {
+        CGSize(width: 14, height: 12)
     }
 }
 
-/// The bars' shared rhythm.
+/// The bars' heights while paused, as fractions of the full height.
 enum PlayingBarsShape {
     static let count = 4
-    /// Heights while paused, as fractions of the full height.
     static let rest: [CGFloat] = [0.35, 0.6, 0.45, 0.3]
-    /// Each bar a different pair of speeds, so they never move in step.
-    private static let speeds: [(Double, Double)] = [(9.1, 3.7), (7.3, 5.9), (10.7, 4.3), (8.2, 6.6)]
-
-    static func level(_ bar: Int, at time: Double) -> CGFloat {
-        let (a, b) = speeds[bar]
-        let wave = (sin(time * a + Double(bar)) + sin(time * b + Double(bar) * 2.1)) / 2 // -1...1
-        return CGFloat(0.55 + 0.45 * wave)
-    }
 }
 
-/// The same bars for AppKit (the song list), drawn by Core Animation so they move without
-/// redrawing the table.
+/// The bars, drawn by Core Animation so they move without redrawing the table or the window.
 final class PlayingBarsView: NSView {
     var isPlaying = false {
         didSet { if isPlaying != oldValue { updateAnimations() } }

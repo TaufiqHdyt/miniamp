@@ -1,4 +1,4 @@
-.PHONY: bootstrap doctor project open build run test fixtures ctl bench library-bench
+.PHONY: bootstrap doctor project open build run test fixtures ctl bench app-bench library-bench
 
 bootstrap: doctor
 	brew bundle --file=Brewfile
@@ -38,6 +38,10 @@ run: build
 
 bench:
 	scripts/bench.sh $(or $(SECS),30)
+
+# The app idle and playing, on a scratch library. CONFIG=Release for a Release build.
+app-bench:
+	scripts/app-bench.sh $(or $(SECS),30)
 
 # Cold scan of a generated library, then a rescan with nothing changed. TRACKS=N (default 10000).
 library-bench:

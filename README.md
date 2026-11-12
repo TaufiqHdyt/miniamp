@@ -30,6 +30,7 @@ Other targets:
 | `make ctl ARGS="fingerprint <file> [<other>]"` | A file's Chromaprint fingerprint, or how alike two files sound |
 | `make library-bench` | Generates a 10,000-track fake library in `/tmp/miniamp-library` (`TRACKS=N`), then scans it cold and again with nothing changed |
 | `make bench`   | Measures CPU, energy impact, wakeups, and memory while playing silent files in each format (`SECS=N` per case, default 30). Quit miniamp first |
+| `make app-bench` | The same for the app: idle, then playing with Up Next, Lyrics, and the inspector closed, on a scratch library in its container (`SECS=N`, `CONFIG=Release`). Quit miniamp first |
 
 `MiniAmp.xcodeproj` is generated and not committed. Edit `project.yml` and run `make project` instead of changing build settings in Xcode.
 
