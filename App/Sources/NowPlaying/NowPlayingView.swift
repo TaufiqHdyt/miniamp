@@ -43,9 +43,9 @@ struct NowPlayingView: View {
         }
         .animation(.easeInOut(duration: 0.6), value: app.tint)
         // Read the tags of what's shown when the queue moves, or when the library changes (a retag).
-        .task(id: Shown(urls: [player.queue.current].compactMap { $0 } + upcoming.map { player.queue.items[$0.item] },
+        .task(id: Shown(urls: [player.queue.current].compactMap { $0 } + upcoming.map(\.url),
                         revision: app.library?.revision ?? 0)) {
-            let urls = [player.queue.current].compactMap { $0 } + upcoming.map { player.queue.items[$0.item] }
+            let urls = [player.queue.current].compactMap { $0 } + upcoming.map(\.url)
             let revision = app.library?.revision ?? 0
             // After a library change, read everything again so retagged files show their new tags.
             let stale = revision != entriesRevision
@@ -70,11 +70,16 @@ struct NowPlayingView: View {
                 QueueRow(entry: current, artwork: artwork, isCurrent: true, state: player.state)
             }
             Section {
-                ForEach(upcoming, id: \.position) { row in
-                    let url = player.queue.items[row.item]
-                    QueueRow(entry: entries[url] ?? QueueEntry(fileName: url), artwork: artwork)
+                // Each row keeps the file it shows: SwiftUI can still be drawing a row from the
+                // queue before (one just replaced by a shorter one), so never index the queue here.
+                ForEach(upcoming, id: \.self) { row in
+                    QueueRow(entry: entries[row.url] ?? QueueEntry(fileName: row.url), artwork: artwork)
                         .contentShape(Rectangle())
-                        .onTapGesture(count: 2) { app.perform { try await player.jump(toItem: row.item) } }
+                        .onTapGesture(count: 2) {
+                            // Only if it's still that song: the queue may have changed under the row.
+                            guard player.queue.items.indices.contains(row.item), player.queue.items[row.item] == row.url else { return }
+                            app.perform { try await player.jump(toItem: row.item) }
+                        }
                 }
                 let remaining = remainingCount(player.queue, shown: upcoming.count)
                 if remaining > 0 {
@@ -99,7 +104,11 @@ struct NowPlayingView: View {
         .listStyle(.inset)
     }
 
-    private struct Row { var position: Int; var item: Int }
+    private struct Row: Hashable {
+        var position: Int
+        var item: Int
+        var url: URL
+    }
 
     private struct Shown: Equatable {
         var urls: [URL]
@@ -110,7 +119,7 @@ struct NowPlayingView: View {
     private func upcomingRows(_ queue: PlayQueue<URL>) -> [Row] {
         guard let position = queue.position else { return [] }
         let end = min(queue.order.count, position + 1 + Self.upcomingLimit)
-        return (position + 1 ..< end).map { Row(position: $0, item: queue.order[$0]) }
+        return (position + 1 ..< end).map { Row(position: $0, item: queue.order[$0], url: queue.items[queue.order[$0]]) }
     }
 
     private func remainingCount(_ queue: PlayQueue<URL>, shown: Int) -> Int {
