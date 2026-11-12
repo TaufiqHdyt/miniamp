@@ -157,4 +157,16 @@ enum Schema {
             );
             """)
     }
+
+    /// Lyrics timing corrections, per track, set from the Lyrics pane when a song's lyrics are
+    /// out of step. Positive shows them sooner. Kept apart from the lyrics themselves, since
+    /// those can come from the file, a sidecar, or LRCLIB, and the correction applies to whichever.
+    static func v4(_ db: Database) throws {
+        try db.execute(sql: """
+            CREATE TABLE lyricsTiming (
+                trackId INTEGER PRIMARY KEY REFERENCES track(id) ON DELETE CASCADE,
+                offsetMs INTEGER NOT NULL
+            );
+            """)
+    }
 }

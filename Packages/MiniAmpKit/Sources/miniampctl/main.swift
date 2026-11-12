@@ -17,6 +17,7 @@ options:
   --eq PRESET      DSP mode with this EQ preset (Flat, Rock, Bass Boost, …)
   --gain DB        DSP mode, turned up or down by DB (as a preamp)
   --lyrics         print each line of the track's synced lyrics (.lrc or tags) as it's reached
+  --lyrics-offset MS   with --lyrics, show them MS sooner (negative: later)
        miniampctl lyrics [--online] <file>   show a file's lyrics and where they came from
                                              (--online asks LRCLIB when the file has none)
        miniampctl library ...        scan, search, and watch a library (miniampctl library for help)
@@ -62,6 +63,7 @@ func play(_ args: [String]) async throws {
     var dsp = false
     var preset: Equalizer.Preset?
     var showsLyrics = false
+    var lyricsOffset = 0
     var gain: Float = 0
     var it = args.makeIterator()
     while let arg = it.next() {
@@ -74,6 +76,7 @@ func play(_ args: [String]) async throws {
         case "--shuffle": shuffle = true
         case "--dsp": dsp = true
         case "--lyrics": showsLyrics = true
+        case "--lyrics-offset": lyricsOffset = it.next().flatMap(Int.init) ?? 0
         case "--eq":
             let name = it.next() ?? ""
             guard let match = Equalizer.Preset.all.first(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) else {
@@ -122,6 +125,7 @@ func play(_ args: [String]) async throws {
     // Lyrics follow the player the way the app's Lyrics pane does: a line prints when the
     // follower moves to it, with where the player really is at that moment.
     let follower = showsLyrics ? LyricsFollower(player: player) : nil
+    follower?.offset = .milliseconds(lyricsOffset)
     var lyricsURL: URL?
     var lastLine: Int?
     func followLyrics() async {

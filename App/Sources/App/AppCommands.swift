@@ -27,6 +27,16 @@ struct AppCommands: Commands {
                 .keyboardShortcut("i", modifiers: [.command, .option])
             Button("Show Lyrics") { app.showLyrics() }
                 .keyboardShortcut("l", modifiers: [.command, .option])
+            Menu("Lyrics Timing") {
+                Button("Show Lyrics Sooner") { app.adjustLyricsTiming(by: AppState.lyricsStep) }
+                    .keyboardShortcut("[", modifiers: [.command, .option])
+                Button("Show Lyrics Later") { app.adjustLyricsTiming(by: .zero - AppState.lyricsStep) }
+                    .keyboardShortcut("]", modifiers: [.command, .option])
+                Divider()
+                Button("Reset for This Song") { app.adjustLyricsTiming(by: nil) }
+                    .disabled(app.currentURL.map { app.lyricsOffset(for: $0) == .zero } ?? true)
+            }
+            .disabled(app.currentURL == nil)
             Button("Listening Stats") { app.sidebarRequest = .stats }
                 .disabled(app.library == nil)
             Divider()

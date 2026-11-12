@@ -14,6 +14,16 @@ public final class LyricsFollower {
     public var lyrics: Lyrics? {
         didSet { if oldValue != lyrics { resync() } }
     }
+    /// Time correction: positive shows the lyrics sooner (as LRC's `[offset:]` does), negative later.
+    public var offset: Duration = .zero {
+        didSet { if oldValue != offset { resync() } }
+    }
+
+    /// Where in the lyrics' own timeline playback is, with the correction applied.
+    public var lyricsTime: Duration { clock().time + offset }
+
+    /// The playback time at which a lyrics time is due: where to seek to play from a line.
+    public func playbackTime(for time: Duration) -> Duration { max(time - offset, .zero) }
 
     /// Where playback is, and whether it's moving.
     public typealias Clock = @MainActor () -> (time: Duration, isRunning: Bool)
@@ -48,7 +58,8 @@ public final class LyricsFollower {
             if position != LyricsPosition() { position = LyricsPosition() }
             return
         }
-        let (now, running) = clock()
+        let (playhead, running) = clock()
+        let now = playhead + offset
         let new = lyrics.position(at: now)
         if new != position { position = new }
         guard running, let next = lyrics.nextChange(after: now) else { return }

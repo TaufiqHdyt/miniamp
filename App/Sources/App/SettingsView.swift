@@ -33,6 +33,16 @@ private struct LyricsSettings: View {
                     .foregroundStyle(.secondary)
             }
             Section {
+                Stepper(value: Binding(get: { app.lyricsDelay.wholeMilliseconds },
+                                       set: { app.lyricsDelay = .milliseconds($0) }),
+                        in: 0...3000, step: 50) {
+                    LabeledContent("Delay synced lyrics by", value: "\(app.lyricsDelay.wholeMilliseconds) ms")
+                }
+            } footer: {
+                Text("For speakers that play the sound late, such as Bluetooth headphones (often 150 to 300 ms), where lyrics would otherwise show before you hear the words. It applies to every song, on top of the timing set for a song in the Lyrics pane.")
+                    .foregroundStyle(.secondary).font(.caption)
+            }
+            Section {
                 Toggle("Look up missing lyrics on LRCLIB", isOn: $app.looksUpLyricsOnline)
             } footer: {
                 Text("When a song has no lyrics of its own, miniamp asks lrclib.net, sending the song's title, artist, album, and duration. What it finds is kept in the library, so each song is asked about once. With this off, you can still search for one song from the Lyrics pane.")

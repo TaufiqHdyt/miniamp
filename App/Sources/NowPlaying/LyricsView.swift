@@ -29,8 +29,11 @@ struct LyricsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .task(id: LoadKey(url: url, online: app.looksUpLyricsOnline)) {
                 if follower == nil { follower = LyricsFollower(player: app.player) }
+                await app.loadLyricsOffset(for: url)
+                follower?.offset = app.totalLyricsOffset(for: url)
                 await load(app.looksUpLyricsOnline ? .automatic : .cachedOnly)
             }
+            .onChange(of: app.totalLyricsOffset(for: url)) { follower?.offset = app.totalLyricsOffset(for: url) }
     }
 
     @ViewBuilder
@@ -46,7 +49,7 @@ struct LyricsView: View {
         case .found(let found):
             VStack(spacing: 0) {
                 if found.lyrics.isSynced, let follower {
-                    SyncedLyrics(lyrics: found.lyrics, follower: follower) { app.player.seek(to: $0) }
+                    SyncedLyrics(lyrics: found.lyrics, follower: follower) { app.player.seek(to: follower.playbackTime(for: $0)) }
                 } else {
                     ScrollView {
                         Text(found.lyrics.lines.map(\.text).joined(separator: "\n"))
@@ -58,10 +61,13 @@ struct LyricsView: View {
                     }
                 }
                 Divider()
-                Text(sourceLabel(found.source))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16).padding(.vertical, 6)
+                HStack {
+                    Text(sourceLabel(found.source)).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer()
+                    if found.lyrics.isSynced { TimingControl(app: app, url: url) }
+                }
+                .font(.caption)
+                .padding(.horizontal, 16).padding(.vertical, 6)
             }
         case .none(let searched):
             ContentUnavailableView {
@@ -122,6 +128,38 @@ struct LyricsView: View {
         case .embedded: "From the file's tags"
         case .lrclib: "From LRCLIB"
         }
+    }
+}
+
+/// Nudges one song's lyrics sooner or later, 0.1 s a click; the readout resets it.
+private struct TimingControl: View {
+    let app: AppState
+    let url: URL
+
+    var body: some View {
+        let offset = app.lyricsOffset(for: url)
+        HStack(spacing: 2) {
+            Button { app.adjustLyricsTiming(by: .zero - AppState.lyricsStep) } label: { Image(systemName: "minus") }
+                .help("Show the lyrics later (⌥⌘])")
+            Button(Self.label(offset)) { app.adjustLyricsTiming(by: nil) }
+                .monospacedDigit()
+                .frame(minWidth: 70)
+                .disabled(offset == .zero)
+                .help(offset == .zero ? "Use − and + if the lyrics are out of step with this song"
+                                      : "Click to put this song's lyrics back as they were")
+            Button { app.adjustLyricsTiming(by: AppState.lyricsStep) } label: { Image(systemName: "plus") }
+                .help("Show the lyrics sooner (⌥⌘[)")
+        }
+        .buttonStyle(.borderless)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Lyrics timing")
+    }
+
+    /// "In step", "0.3 s sooner", "1.2 s later".
+    static func label(_ offset: Duration) -> String {
+        guard offset != .zero else { return "In step" }
+        let seconds = String(format: "%.1f s", abs(Double(offset.wholeMilliseconds)) / 1000)
+        return offset > .zero ? "\(seconds) sooner" : "\(seconds) later"
     }
 }
 

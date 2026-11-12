@@ -180,6 +180,44 @@ final class AppState {
         inspectorPane = .lyrics
     }
 
+    /// Every song's synced lyrics held back this much, for speakers that play the sound late
+    /// (Bluetooth): the player's clock is where the audio is rendered, ahead of what's heard.
+    /// Settings › Lyrics.
+    var lyricsDelay: Duration = .milliseconds(UserDefaults.standard.integer(forKey: "lyricsDelayMs")) {
+        didSet { UserDefaults.standard.set(lyricsDelay.wholeMilliseconds, forKey: "lyricsDelayMs") }
+    }
+    /// Per-song corrections, read from the library (or set) this session, by file. Files
+    /// outside the library keep theirs until quit.
+    private(set) var lyricsOffsets: [URL: Duration] = [:]
+    @ObservationIgnored private var lyricsOffsetSave: Task<Void, Never>?
+    static let lyricsStep: Duration = .milliseconds(100)
+
+    /// The song's own correction: positive shows its lyrics sooner.
+    func lyricsOffset(for url: URL) -> Duration { lyricsOffsets[url] ?? .zero }
+
+    /// What the lyrics view shifts by: the song's correction, less the delay for every song.
+    func totalLyricsOffset(for url: URL) -> Duration { lyricsOffset(for: url) - lyricsDelay }
+
+    func loadLyricsOffset(for url: URL) async {
+        guard lyricsOffsets[url] == nil, let library else { return }
+        let stored = (try? await library.database.writer.read { try LyricsTiming.offset(for: url, $0) }) ?? .zero
+        if lyricsOffsets[url] == nil { lyricsOffsets[url] = stored }
+    }
+
+    /// Nudges the current song's lyrics (positive: sooner), or with nil puts them back as they were.
+    func adjustLyricsTiming(by delta: Duration?) {
+        guard let url = currentURL else { return }
+        let value = delta.map { lyricsOffset(for: url) + $0 } ?? .zero
+        lyricsOffsets[url] = value
+        guard let library else { return }
+        // One save at a time, in order, so quick clicks end on the last value.
+        let previous = lyricsOffsetSave
+        lyricsOffsetSave = Task {
+            await previous?.value
+            _ = try? await library.database.writer.write { try LyricsTiming.setOffset(value, for: url, $0) }
+        }
+    }
+
     // MARK: Equalizer
 
     /// The window that was in front when the Equalizer opened (Settings, say). When the

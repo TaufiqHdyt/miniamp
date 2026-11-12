@@ -153,6 +153,36 @@ import Testing
         #expect(follower.position == LyricsPosition())
     }
 
+    @MainActor
+    @Test func offsetShiftsTheLyrics() async throws {
+        let clock = FakeClock()
+        clock.running = false
+        clock.jump(to: .milliseconds(150))
+        let follower = LyricsFollower { (clock.now, clock.running) }
+        follower.lyrics = Lyrics(lrc: "[00:00.10]a\n[00:00.20]b\n[00:00.30]c")
+        #expect(follower.position.line == 0)
+        // Sooner: at 0.15 s the lyrics are at 0.25 s.
+        follower.offset = .milliseconds(100)
+        #expect(follower.position.line == 1)
+        #expect(follower.lyricsTime == .milliseconds(250))
+        // Later.
+        follower.offset = .milliseconds(-100)
+        #expect(follower.position.line == nil)
+        // Playing from a line seeks to where it's due in playback time.
+        #expect(follower.playbackTime(for: .milliseconds(200)) == .milliseconds(300))
+        follower.offset = .seconds(1)
+        #expect(follower.playbackTime(for: .milliseconds(200)) == .zero)
+
+        // While playing, it still wakes for each (shifted) line.
+        follower.offset = .milliseconds(100)
+        clock.jump(to: .zero)
+        clock.running = true
+        follower.resync()
+        // At 0 s of playback the lyrics are at 0.1 s: line a has just started.
+        #expect(follower.position.line == 0)
+        #expect(await waitFor { follower.position.line == 2 })
+    }
+
     /// Polls on the main actor (where the follower lives) for up to 2 seconds.
     @MainActor
     func waitFor(_ condition: () -> Bool) async -> Bool {
@@ -348,6 +378,33 @@ import Testing
         // Deleting the track deletes what was cached.
         try await db.writer.write { try $0.execute(sql: "DELETE FROM track") }
         #expect(try await db.writer.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM onlineLyrics") } == 0)
+    }
+}
+
+/// Per-track lyrics timing corrections.
+@Suite struct LyricsTimingTests {
+    @Test func storesAnOffsetPerTrack() throws {
+        let db = try AppDatabase.inMemory()
+        let folder = try TestFolder()
+        let url = folder.url.appendingPathComponent("a.flac")
+        try db.writer.write { d in _ = try SchemaTests.insertTrack("A", artist: nil, album: nil, path: folder.canonical("a.flac"), d) }
+        try folder.flac("a.flac")
+
+        #expect(try db.writer.read { try LyricsTiming.offset(for: url, $0) } == .zero)
+        #expect(try db.writer.write { try LyricsTiming.setOffset(.milliseconds(-300), for: url, $0) })
+        #expect(try db.writer.read { try LyricsTiming.offset(for: url, $0) } == .milliseconds(-300))
+        try db.writer.write { try LyricsTiming.setOffset(.milliseconds(500), for: url, $0) }
+        #expect(try db.writer.read { try LyricsTiming.offset(for: url, $0) } == .milliseconds(500))
+        // Zero removes the row.
+        try db.writer.write { try LyricsTiming.setOffset(.zero, for: url, $0) }
+        #expect(try db.writer.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM lyricsTiming") } == 0)
+        // Outside the library there's nowhere to keep it.
+        let elsewhere = URL(fileURLWithPath: "/elsewhere.flac")
+        #expect(try db.writer.write { try LyricsTiming.setOffset(.seconds(1), for: elsewhere, $0) } == false)
+        // It goes with the track.
+        try db.writer.write { try LyricsTiming.setOffset(.seconds(1), for: url, $0) }
+        try db.writer.write { try $0.execute(sql: "DELETE FROM track") }
+        #expect(try db.writer.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM lyricsTiming") } == 0)
     }
 }
 
