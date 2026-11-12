@@ -27,7 +27,7 @@ struct PlayerBar: View {
                 PaneButton(app: app, pane: .upNext)
                 PaneButton(app: app, pane: .lyrics)
                 SleepTimerButton(timer: app.sleepTimer)
-                AppVolumeControl(player: player)
+                VolumeButton(player: player)
                 OutputButton(player: player)
             }
             .frame(minWidth: 180, maxWidth: .infinity, alignment: .trailing)
