@@ -12,7 +12,9 @@ public struct TagChanges: Sendable, Equatable {
     public var year: Int?
     public var trackNumber: Int?
     public var discNumber: Int?
-    /// Unsynced lyrics; LRC text works too, since it's read back through the LRC parser.
+    /// Lyrics: plain words, or LRC, which is read back through the LRC parser. Saving them
+    /// replaces every lyrics tag the file has (an MP3's synced SYLT frame is rewritten from
+    /// the LRC's times, for other players); an empty string removes them all.
     public var lyrics: String?
 
     public init(title: String? = nil, artist: String? = nil, album: String? = nil, albumArtist: String? = nil,
@@ -68,11 +70,14 @@ public enum TagWriter {
                         withText(changes.albumArtist) { albumArtist in
                             withText(changes.genre) { genre in
                                 withText(changes.lyrics) { lyrics in
-                                    var edit = MATagEdit(
-                                        title: title, artist: artist, album: album, albumArtist: albumArtist, genre: genre,
-                                        year: number(changes.year), trackNumber: number(changes.trackNumber),
-                                        discNumber: number(changes.discNumber), lyrics: lyrics)
-                                    return ma_taglib_write(path, &edit)
+                                    withSyncedLines(changes.lyrics) { times, texts, count in
+                                        var edit = MATagEdit(
+                                            title: title, artist: artist, album: album, albumArtist: albumArtist, genre: genre,
+                                            year: number(changes.year), trackNumber: number(changes.trackNumber),
+                                            discNumber: number(changes.discNumber), lyrics: lyrics,
+                                            syncedTimes: times, syncedTexts: texts, syncedCount: count)
+                                        return ma_taglib_write(path, &edit)
+                                    }
                                 }
                             }
                         }
@@ -87,6 +92,24 @@ public enum TagWriter {
     private static func withText<R>(_ text: String?, _ body: (UnsafePointer<CChar>?) -> R) -> R {
         guard let text else { return body(nil) }
         return text.trimmingCharacters(in: .whitespacesAndNewlines).withCString { body($0) }
+    }
+
+    /// Synced lyrics' lines, times in milliseconds, for an ID3v2 SYLT frame: none for plain
+    /// lyrics, or when the lyrics are left alone.
+    private static func withSyncedLines<R>(_ text: String?,
+                                           _ body: (UnsafePointer<UInt32>?, UnsafePointer<UnsafePointer<CChar>?>?, Int32) -> R) -> R {
+        guard let text else { return body(nil, nil, 0) }
+        let lyrics = Lyrics(lrc: text)
+        guard lyrics.isSynced, !lyrics.lines.isEmpty else { return body(nil, nil, 0) }
+        let times = lyrics.lines.map { UInt32(clamping: $0.time?.wholeMilliseconds ?? 0) }
+        let texts = lyrics.lines.map { strdup($0.text) }
+        defer { texts.forEach { free($0) } }
+        let pointers = texts.map { UnsafePointer($0) }
+        return times.withUnsafeBufferPointer { timeBuffer in
+            pointers.withUnsafeBufferPointer { textBuffer in
+                body(timeBuffer.baseAddress, textBuffer.baseAddress, Int32(lyrics.lines.count))
+            }
+        }
     }
 
     /// Nil is -1 (leave alone), 0 removes, anything else is the value.

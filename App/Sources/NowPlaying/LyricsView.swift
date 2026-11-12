@@ -36,6 +36,8 @@ struct LyricsView<NowPlaying: View>: View {
     private struct LoadKey: Equatable {
         var url: URL
         var online: Bool
+        /// Lyrics saved: read them again.
+        var revision: Int
     }
 
     var body: some View {
@@ -49,7 +51,7 @@ struct LyricsView<NowPlaying: View>: View {
             .onChange(of: follower?.position.line) { scroll(proxy, animated: true) }
             .onChange(of: state) { scroll(proxy, animated: false) }
         }
-        .task(id: LoadKey(url: url, online: app.looksUpLyricsOnline)) {
+        .task(id: LoadKey(url: url, online: app.looksUpLyricsOnline, revision: app.lyricsRevision)) {
             if follower == nil { follower = LyricsFollower(player: app.player) }
             await app.loadLyricsOffset(for: url)
             follower?.offset = app.totalLyricsOffset(for: url)
@@ -92,6 +94,7 @@ struct LyricsView<NowPlaying: View>: View {
                         extrasMenu
                     }
                     if case .found = state {
+                        editButton
                         Button { app.toggleFullLyrics() } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
                             .buttonStyle(.borderless)
                             .help("Show the lyrics full size (⇧⌥⌘L)")
@@ -142,6 +145,9 @@ struct LyricsView<NowPlaying: View>: View {
             if case .found(let found) = state, !found.lyrics.isInstrumental {
                 if found.lyrics.isSynced { TimingControl(app: app, url: url) }
                 extrasMenu
+            }
+            if case .found = state {
+                editButton
                 Divider().frame(height: 14)
             }
             Button { app.showsFullLyrics = false } label: { Image(systemName: "arrow.down.right.and.arrow.up.left") }
@@ -172,6 +178,12 @@ struct LyricsView<NowPlaying: View>: View {
         default:
             rows.font(.title3)
         }
+    }
+
+    private var editButton: some View {
+        Button { app.editLyrics() } label: { Image(systemName: "pencil") }
+            .buttonStyle(.borderless)
+            .help("Edit the lyrics, or time them to the song")
     }
 
     /// Where the lyrics came from, and how the translation went.
@@ -272,13 +284,16 @@ struct LyricsView<NowPlaying: View>: View {
                         .onTapGesture { if let time = line.time { app.player.seek(to: follower.playbackTime(for: time)) } }
                         .listRowSeparator(.hidden)
                 }
-            } else if found.lyrics.lines.contains(where: { !extras(for: $0).isEmpty }) {
+            } else if found.lyrics.hasVoices || found.lyrics.lines.contains(where: { !extras(for: $0).isEmpty }) {
                 // A row per line, so each has its romanization or translation under it.
                 ForEach(found.lyrics.lines) { line in
-                    VStack(alignment: .leading, spacing: 2) {
+                    let side = VoiceSide(line)
+                    VStack(alignment: side.alignment, spacing: 2) {
                         Text(verbatim: line.text.isEmpty ? " " : line.text)
                         ForEach(extras(for: line), id: \.self) { Text(verbatim: $0).font(.callout).foregroundStyle(.secondary) }
                     }
+                    .multilineTextAlignment(side.textAlignment)
+                    .frame(maxWidth: .infinity, alignment: side.frameAlignment)
                     .textSelection(.enabled)
                     .listRowSeparator(.hidden)
                 }
@@ -295,8 +310,12 @@ struct LyricsView<NowPlaying: View>: View {
                      ? "No lyrics in the file, beside it, or on LRCLIB."
                      : "No lyrics in the file or in a .lrc file beside it.")
                     .foregroundStyle(.secondary)
-                Button(searched ? "Search LRCLIB Again" : "Search LRCLIB") { Task { await load(.refresh) } }
-                    .help("Sends this song's title, artist, album, and duration to lrclib.net")
+                HStack {
+                    Button(searched ? "Search LRCLIB Again" : "Search LRCLIB") { Task { await load(.refresh) } }
+                        .help("Sends this song's title, artist, album, and duration to lrclib.net")
+                    Button("Add Lyrics…") { app.editLyrics() }
+                        .help("Type or paste the lyrics, and time them to the song")
+                }
             }
             .padding(.vertical, 4)
         case .failed(let message):
@@ -404,7 +423,8 @@ private struct LyricLine: View {
 
     var body: some View {
         let current = position == nil || position?.line == line.id
-        VStack(alignment: .leading, spacing: style == .full ? 4 : 2) {
+        let side = VoiceSide(line)
+        VStack(alignment: side.alignment, spacing: style == .full ? 4 : 2) {
             text(current: current).font(lineFont(current: current))
             ForEach(extras, id: \.self) { extra in
                 Text(verbatim: extra).font(style == .full ? .title3.weight(.semibold) : .callout)
@@ -412,7 +432,8 @@ private struct LyricLine: View {
             }
         }
         .opacity(current || position?.line.map { line.id > $0 } ?? true ? 1 : (style == .full ? 0.4 : 0.55))
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .multilineTextAlignment(side.textAlignment)
+        .frame(maxWidth: .infinity, alignment: side.frameAlignment)
         .animation(.easeOut(duration: 0.2), value: current)
         .help(line.time.map { "Play from \(TimeFormat.minutes(Int($0.components.seconds)))" } ?? "")
     }
@@ -441,4 +462,16 @@ private struct LyricLine: View {
             }
         }
     }
+}
+
+/// Which side a duet line goes on, as in Apple Music: the first voice (and lines with none)
+/// on the left, the others on the right.
+struct VoiceSide {
+    let trailing: Bool
+
+    init(_ line: Lyrics.Line) { trailing = (line.voice ?? 1) > 1 }
+
+    var alignment: HorizontalAlignment { trailing ? .trailing : .leading }
+    var textAlignment: TextAlignment { trailing ? .trailing : .leading }
+    var frameAlignment: Alignment { trailing ? .trailing : .leading }
 }

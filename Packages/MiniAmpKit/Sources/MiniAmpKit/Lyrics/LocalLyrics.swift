@@ -35,7 +35,7 @@ public enum LocalLyrics {
     }
 
     /// "Song.flac" → "Song.lrc" beside it, if there is one.
-    static func sidecar(for url: URL) -> URL? {
+    public static func sidecar(for url: URL) -> URL? {
         let base = url.deletingPathExtension()
         return ["lrc", "LRC"].lazy.map { base.appendingPathExtension($0) }
             .first { FileManager.default.isReadableFile(atPath: $0.path) }
@@ -43,7 +43,7 @@ public enum LocalLyrics {
 
     /// UTF-8, or UTF-16 with a byte-order mark; failing those, whatever Foundation detects
     /// (old LRC files are often in a legacy encoding: Windows-1252, Shift JIS, GB 18030).
-    static func decode(_ data: Data) -> String? {
+    public static func decode(_ data: Data) -> String? {
         if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
             return String(data: data, encoding: .utf16)
         }
@@ -57,5 +57,17 @@ public enum LocalLyrics {
         _ = NSString.stringEncoding(for: data, encodingOptions: [.suggestedEncodingsKey: suggested],
                                     convertedString: &converted, usedLossyConversion: nil)
         return converted as String?
+    }
+}
+
+extension LocalLyrics {
+    /// The text of the lyrics as they're stored, to edit: the `.lrc` file, or the tags.
+    @concurrent
+    public static func text(of source: FoundLyrics.Source, for url: URL) async -> String? {
+        switch source {
+        case .sidecar(let file): (try? Data(contentsOf: file)).flatMap(decode)
+        case .embedded: TagReader.lyrics(url)
+        case .lrclib: nil
+        }
     }
 }

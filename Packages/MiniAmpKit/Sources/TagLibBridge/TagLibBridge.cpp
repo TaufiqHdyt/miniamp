@@ -1,5 +1,6 @@
 #include "TagLibBridge.h"
 
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -148,6 +149,49 @@ void setText(TagLib::PropertyMap &map, const char *key, const char *value) {
     else map.replace(key, TagLib::StringList(TagLib::String(value, TagLib::String::UTF8)));
 }
 
+/// The file's ID3v2 tag, if it has one; with create, made if it doesn't (for formats that
+/// carry ID3v2: MP3, WAV, AIFF). NULL for other formats.
+TagLib::ID3v2::Tag *id3v2Tag(TagLib::File *file, bool create = false) {
+    if (auto f = dynamic_cast<TagLib::MPEG::File *>(file)) return f->hasID3v2Tag() || create ? f->ID3v2Tag(true) : nullptr;
+    if (auto f = dynamic_cast<TagLib::RIFF::WAV::File *>(file)) return f->hasID3v2Tag() || create ? f->ID3v2Tag() : nullptr;
+    if (auto f = dynamic_cast<TagLib::RIFF::AIFF::File *>(file)) return f->hasID3v2Tag() || create ? f->tag() : nullptr;
+    return nullptr;
+}
+
+bool isLyricsKey(const TagLib::String &key) {
+    return key == "LYRICS" || key.startsWith("LYRICS:") || key == "UNSYNCEDLYRICS" || key == "UNSYNCED LYRICS";
+}
+
+/// Replaces every kind of lyrics tag with `text` (none when it's empty), so no older one is
+/// left to be read instead: LYRICS, ID3 USLT frames with a description, UNSYNCEDLYRICS.
+void setLyrics(TagLib::PropertyMap &map, const char *text) {
+    TagLib::StringList keys;
+    for (const auto &[key, values] : map) {
+        if (isLyricsKey(key)) keys.append(key);
+    }
+    for (const auto &key : keys) map.erase(key);
+    if (*text) map.replace("LYRICS", TagLib::StringList(TagLib::String(text, TagLib::String::UTF8)));
+}
+
+/// Replaces the ID3v2 SYLT frames with one holding these lines, or removes them with none.
+void setSyncedLyrics(TagLib::File *file, const MATagEdit *edit) {
+    auto tag = id3v2Tag(file, edit->syncedCount > 0);
+    if (!tag) return;
+    tag->removeFrames("SYLT");
+    if (edit->syncedCount <= 0) return;
+    auto frame = new TagLib::ID3v2::SynchronizedLyricsFrame(TagLib::String::UTF8);
+    frame->setLanguage(TagLib::ByteVector("XXX", 3));
+    frame->setTimestampFormat(TagLib::ID3v2::SynchronizedLyricsFrame::AbsoluteMilliseconds);
+    frame->setType(TagLib::ID3v2::SynchronizedLyricsFrame::Lyrics);
+    TagLib::ID3v2::SynchronizedLyricsFrame::SynchedTextList lines;
+    for (int i = 0; i < edit->syncedCount; i++) {
+        const char *text = edit->syncedTexts[i] ? edit->syncedTexts[i] : "";
+        lines.append(TagLib::ID3v2::SynchronizedLyricsFrame::SynchedText(edit->syncedTimes[i], TagLib::String(text, TagLib::String::UTF8)));
+    }
+    frame->setSynchedText(lines);
+    tag->addFrame(frame);
+}
+
 /// Sets "n", keeping a total that was there ("3/12" edited to 5 becomes "5/12").
 void setNumber(TagLib::PropertyMap &map, const char *key, int value) {
     if (value < 0) return;
@@ -182,19 +226,13 @@ extern "C" bool ma_taglib_write(const char *path, const MATagEdit *edit) {
     else if (edit->year > 0) map.replace("DATE", TagLib::StringList(TagLib::String::number(edit->year)));
     setNumber(map, "TRACKNUMBER", edit->trackNumber);
     setNumber(map, "DISCNUMBER", edit->discNumber);
-    setText(map, "LYRICS", edit->lyrics);
+    if (edit->lyrics) setLyrics(map, edit->lyrics);
     ref.setProperties(map);
+    if (edit->lyrics) setSyncedLyrics(ref.file(), edit);
     return ref.save();
 }
 
 namespace {
-
-TagLib::ID3v2::Tag *id3v2Tag(TagLib::File *file) {
-    if (auto f = dynamic_cast<TagLib::MPEG::File *>(file)) return f->hasID3v2Tag() ? f->ID3v2Tag() : nullptr;
-    if (auto f = dynamic_cast<TagLib::RIFF::WAV::File *>(file)) return f->hasID3v2Tag() ? f->ID3v2Tag() : nullptr;
-    if (auto f = dynamic_cast<TagLib::RIFF::AIFF::File *>(file)) return f->hasID3v2Tag() ? f->tag() : nullptr;
-    return nullptr;
-}
 
 /// The first SYLT frame with millisecond times and some text, as "[mm:ss.xx]line" LRC.
 std::string syncedLyricsAsLRC(TagLib::File *file) {
@@ -242,14 +280,36 @@ std::string unsyncedLyrics(const TagLib::PropertyMap &map) {
     return {};
 }
 
+/// Text with LRC time tags in it ("[01:23" at a line's start), not plain words.
+bool looksLikeLRC(const std::string &text) {
+    size_t at = 0;
+    while (at < text.size()) {
+        size_t i = text.find_first_not_of(" \t", at);
+        if (i != std::string::npos && text[i] == '[') {
+            size_t digits = 0;
+            while (i + 1 + digits < text.size() && std::isdigit(static_cast<unsigned char>(text[i + 1 + digits]))) digits++;
+            if (digits > 0 && i + 1 + digits < text.size() && text[i + 1 + digits] == ':') return true;
+        }
+        size_t newline = text.find('\n', at);
+        if (newline == std::string::npos) break;
+        at = newline + 1;
+    }
+    return false;
+}
+
 } // namespace
 
 extern "C" char *ma_taglib_lyrics(const char *path) {
     if (!path) return nullptr;
     TagLib::FileRef ref(path, false);
     if (ref.isNull()) return nullptr;
-    std::string text = syncedLyricsAsLRC(ref.file());
-    if (text.empty()) text = unsyncedLyrics(ref.properties());
+    // LRC in the lyrics tag first: it keeps what SYLT can't (word times, duet voices), and
+    // it's what miniamp writes, with a SYLT copy for other players. Then SYLT, then plain words.
+    std::string text = unsyncedLyrics(ref.properties());
+    if (!looksLikeLRC(text)) {
+        std::string synced = syncedLyricsAsLRC(ref.file());
+        if (!synced.empty()) text = synced;
+    }
     if (text.find_first_not_of(" \t\r\n") == std::string::npos) return nullptr;
     return strdup(text.c_str());
 }

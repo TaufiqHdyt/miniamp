@@ -62,6 +62,9 @@ struct MainWindow: View {
         .sheet(item: $app.editingTags) { target in
             TagEditor(app: app, tracks: target.tracks)
         }
+        .sheet(item: $app.editingLyrics) { target in
+            LyricsEditor(app: app, target: target)
+        }
         // Nobody sees the position while the window is hidden or covered; stop redrawing it.
         .onWindowVisibilityChange { app.mainWindowVisible = $0 }
         .task { await start() }

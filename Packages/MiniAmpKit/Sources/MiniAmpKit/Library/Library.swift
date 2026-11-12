@@ -192,6 +192,48 @@ public final class Library {
         }
     }
 
+    /// Where edited lyrics go.
+    public enum LyricsDestination: Sendable, Hashable {
+        /// The track's own tags.
+        case tags
+        /// The `.lrc` file beside the track.
+        case sidecar(URL)
+    }
+
+    /// Saves edited lyrics for a track (nil removes them). With `trashing`, a `.lrc` beside the
+    /// track goes to the Trash once they're saved: a synced one would be shown instead of
+    /// the tags. Tags are written as by `editTags`, and the track rescanned.
+    public func saveLyrics(_ text: String?, for track: Track, to destination: LyricsDestination,
+                           trashing sidecar: URL? = nil, openFiles: Set<String> = []) async throws {
+        switch destination {
+        case .tags:
+            guard !track.isEvicted else { throw TagWriter.WriteError(path: track.path) }
+            try await editTags(of: [track], TagChanges(lyrics: text ?? ""), openFiles: openFiles)
+        case .sidecar(let url):
+            if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                try await Self.writeText(text, to: url)
+            } else {
+                try await Self.trashIfThere(url)
+            }
+        }
+        if let sidecar, sidecar != Self.sidecarURL(of: destination) { try await Self.trashIfThere(sidecar) }
+    }
+
+    private static func sidecarURL(of destination: LyricsDestination) -> URL? {
+        if case .sidecar(let url) = destination { url } else { nil }
+    }
+
+    @concurrent private nonisolated static func writeText(_ text: String, to url: URL) async throws {
+        var body = text
+        if !body.hasSuffix("\n") { body += "\n" }
+        try Data(body.utf8).write(to: url, options: .atomic)
+    }
+
+    @concurrent private nonisolated static func trashIfThere(_ url: URL) async throws {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+    }
+
     /// Moves these tracks' files to the Trash (Finder's Put Back works) and rescans them out of
     /// the library. Stops at the first file that can't be moved; those before it are gone.
     public func moveToTrash(_ tracks: [Track]) async throws {

@@ -111,6 +111,7 @@ Unordered. Pick these up as interest dictates.
 - [ ] DSD playback over DoP to compatible DACs
 - [x] Backup and restore of the database and settings
 - [x] Lyric translation and romanization
+- [x] Lyrics editing and timing, saved in the song's tags, with duet voices (`v1:`, `v2:`)
 - [x] Artwork-based tinting
 - [x] Build TagLib from source and embed it in the app
 

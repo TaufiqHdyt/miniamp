@@ -13,6 +13,10 @@ struct TagEditor: View {
     @State private var values: [Field: String] = [:]
     @State private var initial: [Field: String] = [:]
     @State private var mixed: Set<Field> = []
+    /// One song's lyrics, as in its tags; nil until read (and for several songs).
+    @State private var lyrics: String?
+    @State private var initialLyrics: String?
+    @State private var sidecar: URL?
 
     enum Field: CaseIterable {
         case title, artist, album, albumArtist, genre, year, trackNumber, discNumber
@@ -62,6 +66,7 @@ struct TagEditor: View {
                 }
             }
             .formStyle(.columns)
+            if tracks.count == 1, lyrics != nil { lyricsField }
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
@@ -77,6 +82,33 @@ struct TagEditor: View {
         .padding(20)
         .frame(width: 460)
         .onAppear(perform: load)
+        .task {
+            guard tracks.count == 1 else { return }
+            let url = tracks[0].track.url
+            let text = await LocalLyrics.text(of: .embedded, for: url) ?? ""
+            sidecar = LocalLyrics.sidecar(for: url)
+            initialLyrics = text
+            lyrics = text
+        }
+    }
+
+    /// The lyrics in the song's tags: plain, or LRC with times.
+    private var lyricsField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Lyrics").font(.callout)
+            TextEditor(text: Binding(get: { lyrics ?? "" }, set: { lyrics = $0 }))
+                .font(.system(.callout, design: .monospaced))
+                .autocorrectionDisabled()
+                .scrollContentBackground(.hidden)
+                .padding(4)
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
+                .frame(height: 140)
+            Text(sidecar.map { "\($0.lastPathComponent) beside the song is shown instead when it's timed. Edit Lyrics in the Lyrics pane can save there." }
+                 ?? "Plain, or LRC with times ([01:23.45]). Edit Lyrics in the Lyrics pane times them to the song.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var header: some View {
@@ -130,6 +162,7 @@ struct TagEditor: View {
     private var changes: TagChanges {
         TagChanges(title: text(.title), artist: text(.artist), album: text(.album), albumArtist: text(.albumArtist),
                    genre: text(.genre), year: number(.year), trackNumber: number(.trackNumber),
-                   discNumber: number(.discNumber))
+                   discNumber: number(.discNumber),
+                   lyrics: lyrics == initialLyrics ? nil : lyrics?.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }

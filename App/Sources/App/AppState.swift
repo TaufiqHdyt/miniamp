@@ -83,6 +83,10 @@ final class AppState {
     var renamingPlaylist: Int64?
     /// The tracks in the Get Info sheet.
     var editingTags: TagEditTarget?
+    /// The lyrics editor's song, while it's open.
+    var editingLyrics: LyricsEditTarget?
+    /// Bumped when lyrics are saved, so what shows them reads them again.
+    var lyricsRevision = 0
     /// Media keys and Control Center.
     @ObservationIgnored private var systemNowPlaying: SystemNowPlaying?
     @ObservationIgnored private var playHistory: PlayHistory?
@@ -332,17 +336,80 @@ final class AppState {
     /// (opened early for gapless playback), are replaced rather than edited in place.
     func saveTags(_ changes: TagChanges, of tracks: [TrackInfo]) {
         guard let library else { return }
+        let open = openFiles
+        perform {
+            try await library.editTags(of: tracks.map(\.track), changes, openFiles: open)
+            if changes.lyrics != nil { self.lyricsRevision += 1 }
+        }
+    }
+
+    /// The file playing now, and the one queued after it (opened early for gapless playback):
+    /// edits replace them rather than writing in place.
+    private var openFiles: Set<String> {
         var open: Set<String> = []
         if let current = currentURL { open.insert(LibraryPaths.normalized(current.path)) }
         if let next = player.queue.upcoming(automatic: true) {
             open.insert(LibraryPaths.normalized(player.queue.item(atPosition: next).path))
         }
-        perform { try await library.editTags(of: tracks.map(\.track), changes, openFiles: open) }
+        return open
+    }
+
+    // MARK: Editing lyrics
+
+    /// Opens the lyrics editor for the song playing, on its lyrics as they're stored: the
+    /// `.lrc` beside it, its tags, or (from LRCLIB) written out as LRC. Library songs only.
+    func editLyrics() {
+        guard let url = currentURL, let library else { return }
+        perform {
+            guard let info = try await library.tracks(at: [url])[url] else {
+                self.error = "Only songs in the library can have their lyrics edited. Add its folder with File › Add Music Folder…"
+                return
+            }
+            guard !info.track.isEvicted else {
+                self.error = "This song is in iCloud. Play it once to download it, then edit its lyrics."
+                return
+            }
+            var text = ""
+            var source: FoundLyrics.Source?
+            if case .found(let found) = try? await self.lyricsFinder.find(for: url, online: .cachedOnly) {
+                source = found.source
+                text = await LocalLyrics.text(of: found.source, for: url) ?? found.lyrics.lrc
+            }
+            self.editingLyrics = LyricsEditTarget(info: info, url: url, text: text, source: source,
+                                                  sidecar: LocalLyrics.sidecar(for: url))
+        }
+    }
+
+    /// Saves the lyrics editor's text (nil removes the lyrics) where it was asked to go. With
+    /// `trashingSidecar`, the `.lrc` beside the song goes to the Trash: saving to the tags, it
+    /// would be shown instead.
+    func saveLyrics(_ text: String?, for target: LyricsEditTarget, to destination: Library.LyricsDestination,
+                    trashingSidecar: Bool) {
+        guard let library else { return }
+        let open = openFiles
+        perform {
+            try await library.saveLyrics(text, for: target.info.track, to: destination,
+                                         trashing: trashingSidecar ? target.sidecar : nil, openFiles: open)
+            self.lyricsRevision += 1
+        }
     }
 }
 
 enum InspectorPane: String {
     case upNext, lyrics
+}
+
+/// The song a lyrics editor edits, and its lyrics as they were.
+struct LyricsEditTarget: Identifiable {
+    let id = UUID()
+    let info: TrackInfo
+    let url: URL
+    /// The lyrics' text as stored; empty when there are none.
+    let text: String
+    /// Where they came from; nil when there were none.
+    let source: FoundLyrics.Source?
+    /// A `.lrc` beside the song, if there is one.
+    let sidecar: URL?
 }
 
 /// The tracks a Get Info sheet edits.

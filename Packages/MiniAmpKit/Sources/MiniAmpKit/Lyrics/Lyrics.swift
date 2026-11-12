@@ -12,6 +12,9 @@ public struct Lyrics: Sendable, Equatable {
         /// Word timings from enhanced LRC, in order; empty when the line has none. Their
         /// texts, joined, make up `text`.
         public var words: [Word] = []
+        /// Who sings it, in a duet: 1 for `v1:`, 2 for `v2:`, and so on (the prefix is taken
+        /// out of `text`). Nil when the line has no prefix.
+        public var voice: Int?
     }
 
     public struct Word: Sendable, Equatable {
@@ -33,6 +36,8 @@ public struct Lyrics: Sendable, Equatable {
     }
 
     public var isSynced: Bool { lines.first?.time != nil }
+    /// Some line is sung by a second (or later) voice: a duet.
+    public var hasVoices: Bool { lines.contains { ($0.voice ?? 1) > 1 } }
     public var hasWordTiming: Bool { lines.contains { !$0.words.isEmpty } }
     /// No words to show (and not known to be instrumental): treat as no lyrics.
     public var isEmpty: Bool { !isInstrumental && lines.allSatisfy { $0.text.isEmpty } }
@@ -100,9 +105,11 @@ extension Lyrics {
     ///   go past 59. A line can have several (`[00:12.00][01:30.00]a chorus`).
     /// - `[offset:+n]` moves every time n ms earlier (a negative n, later).
     /// - In a synced file, lines with no time are dropped: there's nowhere to put them.
+    /// - A line can start with who sings it, `v1:` or `v2:` (duets, as Apple Music's lyrics
+    ///   mark them); see `Line.voice`.
     public init(lrc text: String) {
-        var timed: [(time: Duration, order: Int, text: String, words: [Word])] = []
-        var plain: [String] = []
+        var timed: [(time: Duration, order: Int, text: String, words: [Word], voice: Int?)] = []
+        var plain: [(text: String, voice: Int?)] = []
         var metadata: [String: String] = [:]
 
         let body = text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text
@@ -123,21 +130,34 @@ extension Lyrics {
                 rest = rest[rest.index(after: close)...]
             }
             if !times.isEmpty {
-                let (line, words) = Self.words(rest)
+                let (found, body) = Self.voice(rest)
+                var voice = found
+                var (line, words) = Self.words(body)
+                // The prefix after the first word's time: "<00:12.00>v2: words".
+                if voice == nil, let first = words.first {
+                    let (found, rest) = Self.voice(Substring(first.text))
+                    if let found, !rest.isEmpty {
+                        voice = found
+                        words[0].text = String(rest)
+                        line = words.map(\.text).joined()
+                    }
+                }
                 for time in times {
-                    timed.append((time, timed.count, line, words))
+                    timed.append((time, timed.count, line, words, voice))
                 }
             } else if !isHeader {
-                plain.append(String(rest).trimmingCharacters(in: .whitespaces))
+                let (voice, body) = Self.voice(rest)
+                plain.append((String(body).trimmingCharacters(in: .whitespaces), voice))
             }
         }
 
         if timed.isEmpty {
             // Plain text: keep stanza breaks, drop blank lines at either end.
-            let start = plain.firstIndex { !$0.isEmpty } ?? plain.endIndex
-            let end = plain.lastIndex { !$0.isEmpty }.map { $0 + 1 } ?? start
-            self.init(lines: plain[start..<end].enumerated().map { Line(id: $0.offset, time: nil, text: $0.element) },
-                      metadata: metadata)
+            let start = plain.firstIndex { !$0.text.isEmpty } ?? plain.endIndex
+            let end = plain.lastIndex { !$0.text.isEmpty }.map { $0 + 1 } ?? start
+            self.init(lines: plain[start..<end].enumerated().map {
+                Line(id: $0.offset, time: nil, text: $0.element.text, voice: $0.element.voice)
+            }, metadata: metadata)
             return
         }
 
@@ -148,13 +168,25 @@ extension Lyrics {
         timed.sort { ($0.time, $0.order) < ($1.time, $1.order) }
         let lines = timed.enumerated().map { index, item in
             Line(id: index, time: shifted(item.time), text: item.text,
-                 words: item.words.map { Word(time: shifted($0.time < .zero ? item.time : $0.time), text: $0.text) })
+                 words: item.words.map { Word(time: shifted($0.time < .zero ? item.time : $0.time), text: $0.text) },
+                 voice: item.voice)
         }
         self.init(lines: lines, metadata: metadata)
     }
 
+    /// "v2: words" → (2, "words"). Only a prefix at the start counts, lowercase v, then a
+    /// number from 1 to 99 and a colon; anything else is left as words.
+    static func voice(_ text: Substring) -> (Int?, Substring) {
+        let trimmed = text.drop { $0 == " " || $0 == "\t" }
+        guard trimmed.first == "v" else { return (nil, text) }
+        let digits = trimmed.dropFirst().prefix { $0.isASCII && $0.isNumber }
+        guard (1...2).contains(digits.count), let number = Int(digits), number > 0,
+              trimmed.dropFirst(1 + digits.count).first == ":" else { return (nil, text) }
+        return (number, trimmed.dropFirst(2 + digits.count).drop { $0 == " " || $0 == "\t" })
+    }
+
     /// "[ar:Someone]" → ("ar", "Someone"). Keys are letters only, lowercased.
-    private static func headerTag(_ tag: Substring) -> (String, String)? {
+    static func headerTag(_ tag: Substring) -> (String, String)? {
         guard let colon = tag.firstIndex(of: ":") else { return nil }
         let key = tag[..<colon].trimmingCharacters(in: .whitespaces)
         guard !key.isEmpty, key.allSatisfy(\.isLetter) else { return nil }
