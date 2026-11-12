@@ -25,8 +25,7 @@ public enum Duplicates {
 
     public static func find(_ db: Database) throws -> [DuplicateGroup] {
         let infos = try TrackInfo.fetchAll(db, sql: TrackInfo.selectSQL + " WHERE track.artistId IS NOT NULL")
-        let plays = try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT trackId, count(*) FROM play GROUP BY trackId")
-            .map { ($0[0] as Int64, $0[1] as Int) })
+        let plays = try playCounts(db)
         let dismissed = try Set(String.fetchAll(db, sql: "SELECT signature FROM duplicateDismissal"))
 
         var byKey: [String: [TrackInfo]] = [:]
@@ -59,6 +58,45 @@ public enum Duplicates {
         return groups.sorted {
             ($0.artist.localizedLowercase, $0.title.localizedLowercase) < ($1.artist.localizedLowercase, $1.title.localizedLowercase)
         }
+    }
+
+    /// Tracks that sound the same, by their Chromaprint fingerprints, whatever their tags say.
+    /// Tracks with no current fingerprint (see `Library.fingerprintTracks`) are left out.
+    public static func findBySound(_ db: Database) throws -> [DuplicateGroup] {
+        let pairs = Fingerprints.matchingPairs(try Fingerprints.all(db))
+        guard !pairs.isEmpty else { return [] }
+        // Matches chain into groups: A sounds like B, B like C.
+        var parent: [Int64: Int64] = [:]
+        func root(_ id: Int64) -> Int64 {
+            var id = id
+            while let up = parent[id], up != id { parent[id] = parent[up]; id = up }
+            return id
+        }
+        for (a, b) in pairs {
+            parent[a] = parent[a] ?? a
+            parent[b] = parent[b] ?? b
+            parent[root(a)] = root(b)
+        }
+        let members = Dictionary(grouping: parent.keys, by: root).values
+        let ids = Array(parent.keys)
+        let infos = try Dictionary(uniqueKeysWithValues: TrackInfo.fetchAll(
+            db, sql: TrackInfo.selectSQL + " WHERE track.id IN (\(ids.map { _ in "?" }.joined(separator: ",")))",
+            arguments: StatementArguments(ids)).map { ($0.track.id!, $0) })
+        let plays = try playCounts(db)
+        let dismissed = try Set(String.fetchAll(db, sql: "SELECT signature FROM duplicateDismissal"))
+        return members.compactMap { group -> DuplicateGroup? in
+            let entries = group.compactMap { infos[$0] }.map { DuplicateGroup.Entry(info: $0, plays: plays[$0.track.id!] ?? 0) }
+                .sorted(by: isBetter)
+            let id = group.sorted().map(String.init).joined(separator: ",")
+            guard entries.count > 1, !dismissed.contains(id) else { return nil }
+            return DuplicateGroup(id: id, title: entries[0].info.track.title, artist: entries[0].info.artistName ?? "", entries: entries)
+        }
+        .sorted { ($0.artist.localizedLowercase, $0.title.localizedLowercase) < ($1.artist.localizedLowercase, $1.title.localizedLowercase) }
+    }
+
+    private static func playCounts(_ db: Database) throws -> [Int64: Int] {
+        try Dictionary(uniqueKeysWithValues: Row.fetchAll(db, sql: "SELECT trackId, count(*) FROM play GROUP BY trackId")
+            .map { ($0[0] as Int64, $0[1] as Int) })
     }
 
     /// Hides this group from review until its tracks change (one is added to it, or leaves).

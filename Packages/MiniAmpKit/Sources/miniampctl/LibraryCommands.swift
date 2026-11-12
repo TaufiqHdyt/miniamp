@@ -10,6 +10,7 @@ usage: miniampctl library scan <folder>... [--db PATH] [--no-artwork]
        miniampctl library browse [--db PATH]    time the queries the window runs (median of 5)
        miniampctl library history [--db PATH]   the last 50 plays
        miniampctl library recap [YEAR] [--db PATH]   listening stats for a year, or all time
+       miniampctl library duplicates [--sound] [--db PATH]  by tags, or by sound (fingerprints what's needed first)
        miniampctl library backup <file> [--db PATH]  back the library up (no settings: those are the app's)
        miniampctl library restore <file> [--db PATH] replace the library with a backup's
 The database defaults to $TMPDIR/miniampctl/library.sqlite, with thumbnails in artwork/ beside it.
@@ -104,6 +105,24 @@ func libraryCommand(_ args: [String]) async throws {
         let settings = try LibraryBackup.restore(from: url, into: library.database, artwork: library.artwork)
         print("restored \(info.tracks) tracks, \(info.playlists) playlists, \(info.plays) plays from \(info.createdAt.formatted()) "
               + "(app \(info.appVersion)); \(settings.count) settings in the backup, not applied here")
+    case "duplicates":
+        let library = try options.open()
+        let bySound = options.rest.contains("--sound")
+        if bySound {
+            let start = ContinuousClock.now
+            library.fingerprintTracks()
+            await library.waitForFingerprinting()
+            print("fingerprinted in \((ContinuousClock.now - start).formatted(.units(allowed: [.seconds, .milliseconds])))")
+        }
+        let start = ContinuousClock.now
+        let groups = try await library.database.writer.read { bySound ? try Duplicates.findBySound($0) : try Duplicates.find($0) }
+        for group in groups {
+            print("\(group.title) — \(group.artist)")
+            for (i, entry) in group.entries.enumerated() {
+                print("  \(i == 0 ? "keep" : "    ")  \(entry.info.track.codec) \(entry.info.track.sampleRate) Hz  \(entry.info.track.path)")
+            }
+        }
+        print("\(groups.count) group\(groups.count == 1 ? "" : "s"), found in \((ContinuousClock.now - start).formatted(.units(allowed: [.seconds, .milliseconds])))")
     case "recap":
         let library = try options.open()
         let year = options.rest.first.flatMap(Int.init)

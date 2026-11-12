@@ -65,12 +65,31 @@ let package = Package(
                 .unsafeFlags(["-Wno-#warnings"]),
             ]
         ),
+        // Chromaprint (audio fingerprints, for duplicates), vendored; see Sources/CChromaprint/VENDORED.txt.
+        .target(
+            name: "CChromaprint",
+            exclude: ["VENDORED.txt", "LICENSE.md"],
+            cSettings: [
+                .headerSearchPath("src"),
+                .define("HAVE_CONFIG_H"),
+                // FFmpeg's resampler narrows 64-bit values it has already bounded.
+                .unsafeFlags(["-Wno-shorten-64-to-32"]),
+            ],
+            cxxSettings: [
+                .headerSearchPath("src"),
+                .define("HAVE_CONFIG_H"),
+                .define("_USE_MATH_DEFINES"),
+                .define("CHROMAPRINT_NODLL"),
+            ],
+            linkerSettings: [.linkedFramework("Accelerate")]
+        ),
         .target(
             name: "MiniAmpKit",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
                 "TagLibBridge",
                 "CEBUR128",
+                "CChromaprint",
             ]
         ),
         // Developer tool: inspect the output device and play files outside the sandbox.

@@ -26,7 +26,8 @@ Other targets:
 | `make ctl ARGS="play <file>..."` | Plays files as a queue outside the sandbox and prints the signal path. Options: `--seconds N`, `--seek S`, `--device NAME`, `--hog`, `--repeat off\|all\|one`, `--shuffle`, `--dsp`, `--eq PRESET`, `--gain DB`, `--lyrics` (prints each synced line as the player reaches it; `--lyrics-offset MS` shifts them) |
 | `make ctl ARGS="lyrics [--online] <file>"` | Shows a file's lyrics (sidecar `.lrc` or tags) and where they came from; `--online` asks LRCLIB when it has none |
 | `make ctl ARGS="volume [0-1]"` | Reads or sets the default output device's own volume |
-| `make ctl ARGS="library scan <folder>"` | Scans a folder into a scratch library (`$TMPDIR/miniampctl`, or `--db PATH`) and reports scan time and the longest main-actor stall. Also `library search <words>`, `library watch` (follows file changes live), `library stats`, `library history` (the last 50 plays), and `library recap [YEAR]` (listening stats), `library backup <file>` and `library restore <file>` |
+| `make ctl ARGS="library scan <folder>"` | Scans a folder into a scratch library (`$TMPDIR/miniampctl`, or `--db PATH`) and reports scan time and the longest main-actor stall. Also `library search <words>`, `library watch` (follows file changes live), `library stats`, `library history` (the last 50 plays), and `library recap [YEAR]` (listening stats), `library duplicates [--sound]`, `library backup <file>` and `library restore <file>` |
+| `make ctl ARGS="fingerprint <file> [<other>]"` | A file's Chromaprint fingerprint, or how alike two files sound |
 | `make library-bench` | Generates a 10,000-track fake library in `/tmp/miniamp-library` (`TRACKS=N`), then scans it cold and again with nothing changed |
 | `make bench`   | Measures CPU, energy impact, wakeups, and memory while playing silent files in each format (`SECS=N` per case, default 30). Quit miniamp first |
 
@@ -46,6 +47,7 @@ Widget/                   The Now Playing widget (WidgetKit extension)
 Packages/MiniAmpKit/      Everything testable: playback, library, database
   Sources/TagLibBridge    C++ shim with a C API over TagLib, which is built from source with it (vendor/; see VENDORED.txt)
   Sources/CEBUR128        libebur128 (EBU R128 loudness), vendored unmodified
+  Sources/CChromaprint    Chromaprint (audio fingerprints, for duplicates), vendored unmodified; see VENDORED.txt
   Sources/MiniAmpKit/
     Audio/                Core Audio: devices, the hardware output, format selection
     Playback/             Player, queue, gapless scheduling, DSP mode and EQ, sleep timer, play history
@@ -70,3 +72,4 @@ scripts/                  Fixtures, the test library, benchmarks, and `make run`
 - A backup restores fully on the Mac it was made on. On another Mac the music folders need adding again: the sandbox's folder permissions are tied to the Mac that granted them. Cover thumbnails aren't in a backup; the next scan makes any that are missing.
 - Romanized lyrics use the system's readings for Japanese and Chinese, and transliteration for other scripts, so Korean comes out letter by letter ("salanghae") rather than in Revised Romanization ("saranghae"). Translation uses Apple's on-device Translation; the first time, macOS asks to download the languages.
 - The widget gets what's playing through an app group shared with the app. The group is named after the signing team (`$(TeamIdentifierPrefix)dev.miniamp`); with the ad-hoc signing used for now there's no team, so it's plain `dev.miniamp`, which recent macOS may not grant. If the widget stays on "Not Playing", set a development team in `project.yml`.
+- Duplicates by sound compare fingerprints of each song's first two minutes, so a song that differs only later on (an extended version) still matches. Finding matches in a 10,000-song library takes a few seconds, each time the By Sound list loads. Songs shorter than a few seconds can't be fingerprinted.

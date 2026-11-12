@@ -1,0 +1,16 @@
+Chromaprint 1.6.2, from its release tag:
+
+  https://github.com/acoustid/chromaprint/archive/refs/tags/v1.6.2.tar.gz
+    SHA-256 7f92ea1141429b43f695a1ba56d5058132f89fae5f137ce705afc57734f6b5fa
+
+Copied unmodified from the tarball's src/: the sources its CMake builds on macOS with vDSP and
+the internal resampler (audio_processor, chroma, chroma_resampler, chroma_filter, spectrum,
+fft, fingerprinter, image_builder, simhash, silence_remover, fingerprint_calculator,
+fingerprint_compressor, fingerprint_decompressor, fingerprinter_configuration,
+fingerprint_matcher, chromaprint, fft_lib_vdsp, utils/base64, avresample/resample2.c), and the
+headers they use. include/chromaprint.h is the tarball's src/include/chromaprint.h.
+Left out: the FFmpeg, FFTW, and KissFFT back ends, tests, the command-line tool, and CMake files.
+
+Written for this build in place of what CMake generates: src/config.h.
+Licence: LICENSE.md. Chromaprint is MIT; the included FFmpeg resampler (src/avresample) is
+LGPL 2.1, so the whole is LGPL 2.1, like TagLib.

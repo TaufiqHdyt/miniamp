@@ -22,6 +22,8 @@ public final class Library {
     public private(set) var lastError: String?
     /// The loudness analysis in progress (see `analyzeLoudness`), or nil when idle.
     public private(set) var loudnessProgress: LoudnessProgress?
+    /// Fingerprinting in progress (see `fingerprintTracks`), or nil when idle.
+    public private(set) var fingerprintProgress: FingerprintProgress?
     /// Called after each album's ReplayGain is stored, with the paths it covered.
     @ObservationIgnored public var onLoudnessMeasured: (@MainActor (Set<String>) -> Void)?
 
@@ -38,6 +40,7 @@ public final class Library {
     @ObservationIgnored private var observer: Task<Void, Never>?
     @ObservationIgnored private var opened = false
     @ObservationIgnored private var loudnessTask: Task<Void, Never>?
+    @ObservationIgnored private var fingerprintTask: Task<Void, Never>?
 
     static let log = Logger(subsystem: "dev.miniamp", category: "library")
 
@@ -49,6 +52,7 @@ public final class Library {
 
     isolated deinit {
         loudnessTask?.cancel()
+        fingerprintTask?.cancel()
         observer?.cancel()
         scanQueue?.cancel()
         watcher?.invalidate()
@@ -274,6 +278,69 @@ public final class Library {
     @concurrent
     private nonisolated static func measure(_ tracks: [Track]) async -> [ReplayGain?] {
         LoudnessScanner.measure(tracks)
+    }
+
+    /// Fingerprints every local track that has no current fingerprint, one file per core, in
+    /// the background; does nothing while it's already running. `revision` goes up when it's done.
+    public func fingerprintTracks() {
+        guard fingerprintTask == nil else { return }
+        fingerprintProgress = FingerprintProgress()
+        fingerprintTask = Task { [database] in
+            defer {
+                fingerprintProgress = nil
+                fingerprintTask = nil
+                revision += 1
+            }
+            do {
+                let tracks = try await database.writer.read { try Fingerprints.unfingerprinted($0) }
+                fingerprintProgress?.tracksTotal = tracks.count
+                let start = ContinuousClock.now
+                try await withThrowingTaskGroup(of: (Track, [UInt32]?).self) { group in
+                    var pending = tracks.makeIterator()
+                    func addNext() -> Bool {
+                        guard let track = pending.next() else { return false }
+                        group.addTask { (track, await Self.fingerprint(track)) }
+                        return true
+                    }
+                    for _ in 0..<max(ProcessInfo.processInfo.activeProcessorCount, 1) where !addNext() { break }
+                    var batch: [(Track, [UInt32])] = []
+                    while let (track, values) = try await group.next() {
+                        try Task.checkCancellation()
+                        // Too short or unreadable: stored empty, so it isn't tried again until the file changes.
+                        if values?.isEmpty ?? true { fingerprintProgress?.failed += 1 }
+                        batch.append((track, values ?? []))
+                        fingerprintProgress?.tracksDone += 1
+                        if batch.count >= 50 {
+                            let done = batch
+                            batch = []
+                            try await database.writer.write { db in for (t, v) in done { try Fingerprints.store(v, for: t, db) } }
+                        }
+                        _ = addNext()
+                    }
+                    let done = batch
+                    try await database.writer.write { db in for (t, v) in done { try Fingerprints.store(v, for: t, db) } }
+                }
+                let p = fingerprintProgress ?? FingerprintProgress()
+                Self.log.info("fingerprinted \(p.tracksDone) tracks (\(p.failed) failed) in \((ContinuousClock.now - start).formatted(), privacy: .public)")
+            } catch is CancellationError {
+            } catch {
+                report("fingerprinting failed: \(error)")
+            }
+        }
+    }
+
+    public func cancelFingerprinting() {
+        fingerprintTask?.cancel()
+    }
+
+    /// Waits for running fingerprinting (tests and the command-line tool).
+    public func waitForFingerprinting() async {
+        await fingerprintTask?.value
+    }
+
+    @concurrent
+    private nonisolated static func fingerprint(_ track: Track) async -> [UInt32]? {
+        CloudFiles.withoutDownloading { try? Fingerprints.compute(track.url) }
     }
 
     /// Starts downloading offloaded tracks. Once a file is local, the watcher sees it and its tags are read.

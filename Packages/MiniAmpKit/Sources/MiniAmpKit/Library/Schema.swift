@@ -175,4 +175,17 @@ enum Schema {
     static func v5(_ db: Database) throws {
         try db.execute(sql: "CREATE TABLE duplicateDismissal (signature TEXT PRIMARY KEY) WITHOUT ROWID")
     }
+
+    /// Chromaprint fingerprints, for duplicates by sound: the raw fingerprint (little-endian
+    /// UInt32s) of each track's first two minutes, with the file's modification time when it
+    /// was taken, so a changed file is fingerprinted again.
+    static func v6(_ db: Database) throws {
+        try db.execute(sql: """
+            CREATE TABLE fingerprint (
+                trackId INTEGER PRIMARY KEY REFERENCES track(id) ON DELETE CASCADE,
+                modifiedAt DOUBLE NOT NULL,
+                fingerprint BLOB NOT NULL
+            );
+            """)
+    }
 }

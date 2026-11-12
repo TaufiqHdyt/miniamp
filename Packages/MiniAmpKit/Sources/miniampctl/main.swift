@@ -20,6 +20,7 @@ options:
   --lyrics-offset MS   with --lyrics, show them MS sooner (negative: later)
        miniampctl lyrics [--online] <file>   show a file's lyrics and where they came from
                                              (--online asks LRCLIB when the file has none)
+       miniampctl fingerprint <file> [<other>]  a file's Chromaprint fingerprint, or how alike two files sound
        miniampctl library ...        scan, search, and watch a library (miniampctl library for help)
 """
 
@@ -209,6 +210,16 @@ do {
         try await play(Array(args.dropFirst()))
     case "library":
         try await libraryCommand(Array(args.dropFirst()))
+    case "fingerprint" where args.count == 2 || args.count == 3:
+        let start = ContinuousClock.now
+        let a = try Fingerprints.compute(URL(fileURLWithPath: args[1]))
+        print("\(args[1]): \(a.count) values in \((ContinuousClock.now - start).formatted(.units(allowed: [.milliseconds])))")
+        if a.isEmpty { print("too short to fingerprint (it takes a few seconds of audio)") }
+        if args.count == 3 {
+            let b = try Fingerprints.compute(URL(fileURLWithPath: args[2]))
+            let score = Fingerprints.similarity(a, b)
+            print(String(format: "similarity %.3f: %@", score, score >= Fingerprints.matchThreshold ? "the same recording" : "different"))
+        }
     case "lyrics" where args.count >= 2:
         try await showLyrics(Array(args.dropFirst()))
     case "leaktest" where args.count >= 2:
