@@ -19,14 +19,6 @@ struct MainWindow: View {
                         NowPlayingView(app: app)
                             .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
                     }
-                    .toolbar {
-                        ToolbarItem(placement: .primaryAction) {
-                            Toggle(isOn: $app.showsNowPlaying) {
-                                Label("Now Playing", systemImage: "music.note.list")
-                            }
-                            .help("Show the cover and what plays next")
-                        }
-                    }
             }
             .searchable(text: $app.searchText, placement: .toolbar, prompt: "Songs, artists, albums, genres")
             .searchFocused($searchFocused)

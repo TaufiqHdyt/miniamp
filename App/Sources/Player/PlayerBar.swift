@@ -2,8 +2,8 @@ import MiniAmpKit
 import SwiftUI
 
 /// The strip along the bottom of the window, in three parts: what's playing on the left,
-/// transport and position in the middle (centred on the window), and quality, sleep timer,
-/// volume and output device on the right.
+/// transport and position in the middle (centred on the window), and quality, Now Playing,
+/// sleep timer, volume and output device on the right.
 struct PlayerBar: View {
     let app: AppState
     @State private var current: QueueEntry?
@@ -24,6 +24,7 @@ struct PlayerBar: View {
 
             HStack(spacing: 12) {
                 SignalSummary(player: player)
+                NowPlayingToggle(app: app)
                 SleepTimerButton(timer: app.sleepTimer)
                 VolumeButton(player: player)
                 OutputButton(player: player)
@@ -147,6 +148,22 @@ extension PlayQueue<URL>.Repeat {
         case .all: "Repeating all. Click to repeat one."
         case .one: "Repeating one. Click to turn repeat off."
         }
+    }
+}
+
+/// Opens and closes the Now Playing inspector (the cover, Up Next, and lyrics).
+private struct NowPlayingToggle: View {
+    @Bindable var app: AppState
+
+    var body: some View {
+        Toggle(isOn: $app.showsNowPlaying) {
+            Label("Now Playing", systemImage: "music.note.list")
+        }
+        .toggleStyle(.button)
+        .buttonStyle(.borderless)
+        .labelStyle(.iconOnly)
+        .imageScale(.large)
+        .help(app.showsNowPlaying ? "Hide the cover and what plays next (⌥⌘I)" : "Show the cover and what plays next (⌥⌘I)")
     }
 }
 
