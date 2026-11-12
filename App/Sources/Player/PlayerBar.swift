@@ -173,7 +173,7 @@ private struct SignalSummary: View {
 
     var body: some View {
         if let path = player.signalPath {
-            QualityBadge(path: path)
+            QualityBadge(path: path, iconOnly: true)
         }
         if let warning = player.deviceWarning {
             Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).help(warning)
