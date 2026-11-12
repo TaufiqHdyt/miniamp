@@ -6,6 +6,7 @@ import SwiftUI
 struct MiniAmpApp: App {
     @State private var app: AppState = {
         let library: Library?
+        var launchError: String?
         do {
             var database = AppDatabase.onDisk
             var artwork = { try? ArtworkCache.standard() }
@@ -17,14 +18,22 @@ struct MiniAmpApp: App {
                 artwork = { try? ArtworkCache(directory: dir.appendingPathComponent("artwork", isDirectory: true)) }
             }
             MainThreadWatchdog.startIfWanted()
-            library = Library(database: try database(.default), artwork: artwork())
+            let opened = try database(.default)
+            let cache = artwork()
+            // A backup chosen with Restore from Backup… (only into the real library).
+            if UserDefaults.standard.string(forKey: "libraryDatabase") == nil {
+                launchError = Backups.restorePending(into: opened, artwork: cache)
+            }
+            library = Library(database: opened, artwork: cache)
         } catch {
             Logger(subsystem: "dev.miniamp", category: "library").error("can't open the library: \(error, privacy: .public)")
             library = nil
         }
         let player = Player()
         Preferences.apply(to: player)
-        return AppState(player: player, library: library)
+        let state = AppState(player: player, library: library)
+        state.error = launchError
+        return state
     }()
 
     var body: some Scene {

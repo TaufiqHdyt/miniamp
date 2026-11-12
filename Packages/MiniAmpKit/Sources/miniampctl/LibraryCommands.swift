@@ -10,6 +10,8 @@ usage: miniampctl library scan <folder>... [--db PATH] [--no-artwork]
        miniampctl library browse [--db PATH]    time the queries the window runs (median of 5)
        miniampctl library history [--db PATH]   the last 50 plays
        miniampctl library recap [YEAR] [--db PATH]   listening stats for a year, or all time
+       miniampctl library backup <file> [--db PATH]  back the library up (no settings: those are the app's)
+       miniampctl library restore <file> [--db PATH] replace the library with a backup's
 The database defaults to $TMPDIR/miniampctl/library.sqlite, with thumbnails in artwork/ beside it.
 """
 
@@ -89,6 +91,19 @@ func libraryCommand(_ args: [String]) async throws {
             print("\(when)  \(listened)  \(info.track.title) · \(info.artistName ?? "?")")
         }
         print("\(plays.count) play\(plays.count == 1 ? "" : "s")")
+    case "backup" where options.rest.count == 1:
+        let library = try options.open()
+        let url = URL(fileURLWithPath: options.rest[0])
+        try LibraryBackup.write(library.database, settings: [:], appVersion: "miniampctl", to: url)
+        let info = try LibraryBackup.info(of: url)
+        print("backed up \(info.tracks) tracks, \(info.playlists) playlists, \(info.plays) plays to \(url.path)")
+    case "restore" where options.rest.count == 1:
+        let library = try options.open()
+        let url = URL(fileURLWithPath: options.rest[0])
+        let info = try LibraryBackup.info(of: url)
+        let settings = try LibraryBackup.restore(from: url, into: library.database, artwork: library.artwork)
+        print("restored \(info.tracks) tracks, \(info.playlists) playlists, \(info.plays) plays from \(info.createdAt.formatted()) "
+              + "(app \(info.appVersion)); \(settings.count) settings in the backup, not applied here")
     case "recap":
         let library = try options.open()
         let year = options.rest.first.flatMap(Int.init)

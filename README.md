@@ -26,7 +26,7 @@ Other targets:
 | `make ctl ARGS="play <file>..."` | Plays files as a queue outside the sandbox and prints the signal path. Options: `--seconds N`, `--seek S`, `--device NAME`, `--hog`, `--repeat off\|all\|one`, `--shuffle`, `--dsp`, `--eq PRESET`, `--gain DB`, `--lyrics` (prints each synced line as the player reaches it; `--lyrics-offset MS` shifts them) |
 | `make ctl ARGS="lyrics [--online] <file>"` | Shows a file's lyrics (sidecar `.lrc` or tags) and where they came from; `--online` asks LRCLIB when it has none |
 | `make ctl ARGS="volume [0-1]"` | Reads or sets the default output device's own volume |
-| `make ctl ARGS="library scan <folder>"` | Scans a folder into a scratch library (`$TMPDIR/miniampctl`, or `--db PATH`) and reports scan time and the longest main-actor stall. Also `library search <words>`, `library watch` (follows file changes live), `library stats`, `library history` (the last 50 plays), and `library recap [YEAR]` (listening stats) |
+| `make ctl ARGS="library scan <folder>"` | Scans a folder into a scratch library (`$TMPDIR/miniampctl`, or `--db PATH`) and reports scan time and the longest main-actor stall. Also `library search <words>`, `library watch` (follows file changes live), `library stats`, `library history` (the last 50 plays), and `library recap [YEAR]` (listening stats), `library backup <file>` and `library restore <file>` |
 | `make library-bench` | Generates a 10,000-track fake library in `/tmp/miniamp-library` (`TRACKS=N`), then scans it cold and again with nothing changed |
 | `make bench`   | Measures CPU, energy impact, wakeups, and memory while playing silent files in each format (`SECS=N` per case, default 30). Quit miniamp first |
 
@@ -66,3 +66,4 @@ scripts/                  Fixtures, the test library, benchmarks, and `make run`
 - A sidecar `.lrc` is only found for songs inside a library folder: the sandbox doesn't let the app read files beside one opened with Open….
 - Synced lyrics follow the audio as it's rendered, not as it's heard, so on a device with a lot of latency (Bluetooth) they come a little early. They don't measure it: set a delay in Settings › Lyrics (all songs), or nudge one song in the Lyrics pane.
 - Looking up lyrics on LRCLIB is off by default. With it on, or when you search for a song from the Lyrics pane, the song's title, artist, album, and duration go to lrclib.net.
+- A backup restores fully on the Mac it was made on. On another Mac the music folders need adding again: the sandbox's folder permissions are tied to the Mac that granted them. Cover thumbnails aren't in a backup; the next scan makes any that are missing.

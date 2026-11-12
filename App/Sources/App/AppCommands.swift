@@ -16,6 +16,11 @@ struct AppCommands: Commands {
             Button("Add Music Folder…") { app.addingFolder = true }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
                 .disabled(app.library == nil)
+            Divider()
+            Button("Back Up Library…") { Backups.backUp(app) }
+                .disabled(app.library == nil)
+            Button("Restore from Backup…") { Backups.chooseRestore(app) }
+                .disabled(app.library == nil)
         }
         CommandGroup(replacing: .textEditing) {
             Button("Find") { app.searchFocusRequests += 1 }

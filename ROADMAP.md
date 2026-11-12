@@ -108,7 +108,7 @@ Unordered. Pick these up as interest dictates.
 - [ ] Menu bar mini player and a WidgetKit widget
 - [ ] Crossfade with beat detection (DSP mode only)
 - [ ] DSD playback over DoP to compatible DACs
-- [ ] Backup and restore of the database and settings
+- [x] Backup and restore of the database and settings
 - [ ] Lyric translation and romanization
 - [x] Artwork-based tinting
 - [ ] Build TagLib from source and embed it in the app

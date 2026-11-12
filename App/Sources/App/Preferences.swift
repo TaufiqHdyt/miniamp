@@ -47,4 +47,25 @@ enum Preferences {
             Task { @MainActor in saveDSPSettings(of: player) }
         }
     }
+
+    // MARK: Backups
+
+    /// The app's own settings, for a backup: everything in its defaults except what the
+    /// system keeps there (window frames, panel state) and launch-argument test hooks.
+    static func exportable() -> [String: Any] {
+        guard let domain = Bundle.main.bundleIdentifier.flatMap(UserDefaults.standard.persistentDomain(forName:)) else { return [:] }
+        return domain.filter { key, _ in !excludedPrefixes.contains { key.hasPrefix($0) } && !testHooks.contains(key) }
+    }
+
+    /// Applies settings from a backup.
+    static func importSettings(_ settings: [String: Any]) {
+        let defaults = UserDefaults.standard
+        for (key, value) in settings where !excludedPrefixes.contains(where: { key.hasPrefix($0) }) && !testHooks.contains(key) {
+            defaults.set(value, forKey: key)
+        }
+    }
+
+    private static let excludedPrefixes = ["NS", "Apple", "com.apple."]
+    private static let testHooks: Set<String> = ["libraryDatabase", "libraryFolder", "autoplay", "sidebar", "hog",
+                                                  "sleepAtEndOfTrack", "logHangs"]
 }
