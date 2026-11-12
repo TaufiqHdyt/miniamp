@@ -27,7 +27,7 @@ struct MiniPlayer: View {
             }
             TransportButtons(app: app)
             SeekBar(player: player)
-            AppVolumeControl(player: player)
+            AppVolumeControl(player: player, width: 200)
             HStack {
                 if let path = player.signalPath { QualityBadge(path: path) }
                 Spacer()
