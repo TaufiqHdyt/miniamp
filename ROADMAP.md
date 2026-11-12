@@ -110,7 +110,7 @@ Unordered. Pick these up as interest dictates.
 - [ ] DSD playback over DoP to compatible DACs
 - [ ] Backup and restore of the database and settings
 - [ ] Lyric translation and romanization
-- [ ] Artwork-based tinting
+- [x] Artwork-based tinting
 - [ ] Build TagLib from source and embed it in the app
 
 ## Out of scope

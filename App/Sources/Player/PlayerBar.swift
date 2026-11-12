@@ -34,12 +34,28 @@ struct PlayerBar: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(.bar)
+        .background {
+            ZStack {
+                Rectangle().fill(.bar)
+                if let tint = app.tint {
+                    LinearGradient(colors: [tint.opacity(0.28), tint.opacity(0.08)], startPoint: .leading, endPoint: .trailing)
+                }
+            }
+            .animation(.easeInOut(duration: 0.6), value: app.tint)
+        }
         // Re-read when the track changes, or when the library does (a retagged file).
         .task(id: CurrentKey(url: app.currentURL, revision: app.library?.revision ?? 0)) {
-            guard let url = app.currentURL else { return current = nil }
+            guard let url = app.currentURL else {
+                current = nil
+                app.artworkTint = nil
+                return
+            }
             if current?.url != url { current = QueueEntry(fileName: url) }
             current = await QueueEntry.load([url], from: app.library)[url] ?? current
+            guard let entry = current, entry.url == url else { return }
+            let tint = await ArtworkImages.shared.tint(key: entry.artworkKey, fileURL: entry.inLibrary ? nil : url,
+                                                       in: app.library?.artwork)
+            if !Task.isCancelled { app.artworkTint = tint }
         }
     }
 

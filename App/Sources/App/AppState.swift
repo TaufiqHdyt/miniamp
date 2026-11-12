@@ -40,6 +40,15 @@ final class AppState {
 
     @ObservationIgnored let lyricsFinder: LyricsFinder
 
+    /// Wash the player bar and the inspector in a colour from the playing song's cover.
+    var tintsWithArtwork = UserDefaults.standard.object(forKey: "tintsWithArtwork") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(tintsWithArtwork, forKey: "tintsWithArtwork") }
+    }
+    /// The playing song's cover colour (set by the player bar as the song changes).
+    var artworkTint: ArtworkTint?
+    /// What to tint with now, if anything.
+    var tint: Color? { tintsWithArtwork ? artworkTint?.color : nil }
+
     var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
     /// An offloaded track that was double-clicked: it plays, with the list it was in, once it's downloaded.
     private(set) var waitingToPlay: (id: TrackInfo.ID, list: [TrackInfo])?

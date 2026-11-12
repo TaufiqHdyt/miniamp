@@ -51,6 +51,27 @@ final class ArtworkImages {
         }
     }
 
+    /// Tints already worked out, by cover (nil: a cover with no colour to take).
+    private var tints: [String: ArtworkTint?] = [:]
+
+    /// The colour to tint with for a library cover, or the one embedded in a file outside it.
+    func tint(key: String?, fileURL: URL?, in artwork: ArtworkCache?) async -> ArtworkTint? {
+        let id = key ?? fileURL.map { "file:" + $0.path } ?? ""
+        guard !id.isEmpty else { return nil }
+        if let known = tints[id] { return known }
+        var image: NSImage?
+        if let key, let artwork {
+            image = await self.image(for: key, size: .small, in: artwork)
+        } else if let fileURL {
+            image = await self.image(embeddedIn: fileURL, size: .small)
+        }
+        guard let cgImage = image?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let tint = await Task.detached(priority: .utility) { ArtworkTint.of(cgImage) }.value
+        if tints.count > 500 { tints.removeAll() }
+        tints[id] = tint
+        return tint
+    }
+
     private func load(_ cacheKey: String, _ decode: @escaping @Sendable () -> CGImage?) async -> NSImage? {
         if let image = cache.object(forKey: cacheKey as NSString) { return image }
         if let task = inFlight[cacheKey] { return await task.value }
@@ -130,4 +151,8 @@ struct ArtworkView: View {
             }
             .accessibilityHidden(true)
     }
+}
+
+extension ArtworkTint {
+    var color: Color { Color(.sRGB, red: red, green: green, blue: blue) }
 }

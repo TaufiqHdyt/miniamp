@@ -33,6 +33,15 @@ struct NowPlayingView: View {
                                        description: Text("Double-click a song to play it."))
             }
         }
+        // The cover's colour, strongest at the top where the song is, fading down the list.
+        .scrollContentBackground(app.tint == nil ? .automatic : .hidden)
+        .background {
+            if let tint = app.tint {
+                LinearGradient(colors: [tint.opacity(0.22), tint.opacity(0.04)], startPoint: .top, endPoint: .bottom)
+                    .ignoresSafeArea()
+            }
+        }
+        .animation(.easeInOut(duration: 0.6), value: app.tint)
         // Read the tags of what's shown when the queue moves, or when the library changes (a retag).
         .task(id: Shown(urls: [player.queue.current].compactMap { $0 } + upcoming.map { player.queue.items[$0.item] },
                         revision: app.library?.revision ?? 0)) {

@@ -37,6 +37,7 @@ struct AppCommands: Commands {
                     .disabled(app.currentURL.map { app.lyricsOffset(for: $0) == .zero } ?? true)
             }
             .disabled(app.currentURL == nil)
+            Toggle("Tint with Album Artwork", isOn: Binding(get: { app.tintsWithArtwork }, set: { app.tintsWithArtwork = $0 }))
             Button("Listening Stats") { app.sidebarRequest = .stats }
                 .disabled(app.library == nil)
             Divider()
