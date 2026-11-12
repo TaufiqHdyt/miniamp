@@ -82,6 +82,8 @@ final class AppState {
     /// Media keys and Control Center.
     @ObservationIgnored private var systemNowPlaying: SystemNowPlaying?
     @ObservationIgnored private var playHistory: PlayHistory?
+    /// The Now Playing widget's data.
+    @ObservationIgnored private var widgetPublisher: WidgetPublisher?
 
     init(player: Player, library: Library?) {
         self.player = player
@@ -90,6 +92,7 @@ final class AppState {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
         lyricsFinder = LyricsFinder(database: library?.database, client: LRCLIB(userAgent: "miniamp/\(version)"))
         systemNowPlaying = SystemNowPlaying(app: self)
+        widgetPublisher = WidgetPublisher(app: self)
         if let library {
             playHistory = PlayHistory(player: player, database: library.database)
             // A primary-key read, on the main actor as each track starts (gapless needs it

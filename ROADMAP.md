@@ -106,7 +106,7 @@ Unordered. Pick these up as interest dictates.
 - [ ] Network sources: Subsonic and WebDAV clients with a local cache and Keychain credentials
 - [x] Duplicate review, by tags and duration
 - [ ] Duplicate review by Chromaprint fingerprints
-- [ ] Menu bar mini player and a WidgetKit widget
+- [x] Menu bar mini player and a WidgetKit widget
 - [ ] Crossfade with beat detection (DSP mode only)
 - [ ] DSD playback over DoP to compatible DACs
 - [x] Backup and restore of the database and settings

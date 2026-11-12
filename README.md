@@ -39,8 +39,10 @@ App/Sources/              SwiftUI app target (thin; UI only)
   App/                    Entry point, shared state, menus, settings, preferences
   Library/                Main window, sidebar, browsing, the track table, Get Info, listening stats, duplicates
   NowPlaying/             The inspector: Up Next (with the song playing) and Lyrics
-  Player/                 Player bar, seek bar, volume, output picker, equalizer, Control Center
-  Support/                Artwork, formatting, window visibility, hang logging
+  Player/                 Player bar, menu bar mini player, seek bar, volume, output picker, equalizer, Control Center
+  Support/                Artwork, formatting, window visibility, hang logging, the widget's data
+Shared/                   Compiled into the app and the widget: the now-playing snapshot, playback intents
+Widget/                   The Now Playing widget (WidgetKit extension)
 Packages/MiniAmpKit/      Everything testable: playback, library, database
   Sources/CTagLib         Links Homebrew TagLib through pkg-config
   Sources/TagLibBridge    C++ shim with a C API over TagLib
@@ -68,3 +70,4 @@ scripts/                  Fixtures, the test library, benchmarks, and `make run`
 - Looking up lyrics on LRCLIB is off by default. With it on, or when you search for a song from the Lyrics pane, the song's title, artist, album, and duration go to lrclib.net.
 - A backup restores fully on the Mac it was made on. On another Mac the music folders need adding again: the sandbox's folder permissions are tied to the Mac that granted them. Cover thumbnails aren't in a backup; the next scan makes any that are missing.
 - Romanized lyrics use the system's readings for Japanese and Chinese, and transliteration for other scripts, so Korean comes out letter by letter ("salanghae") rather than in Revised Romanization ("saranghae"). Translation uses Apple's on-device Translation; the first time, macOS asks to download the languages.
+- The widget gets what's playing through an app group shared with the app. The group is named after the signing team (`$(TeamIdentifierPrefix)dev.miniamp`); with the ad-hoc signing used for now there's no team, so it's plain `dev.miniamp`, which recent macOS may not grant. If the widget stays on "Not Playing", set a development team in `project.yml`.

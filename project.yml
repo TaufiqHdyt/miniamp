@@ -13,12 +13,21 @@ targets:
     platform: macOS
     sources:
       - App/Sources
+      - Shared
     dependencies:
       - package: MiniAmpKit
+      - target: miniampWidget
+    info:
+      path: App/Info.plist
+      properties:
+        MiniAmpAppGroup: $(TeamIdentifierPrefix)dev.miniamp
     entitlements:
       path: App/miniamp.entitlements
       properties:
         com.apple.security.app-sandbox: true
+        # Shared with the widget: what's playing, and its cover.
+        com.apple.security.application-groups:
+          - $(TeamIdentifierPrefix)dev.miniamp
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.files.bookmarks.app-scope: true
         # LRCLIB lyrics lookups (off until turned on in Settings, or asked for per song).
@@ -38,6 +47,38 @@ targets:
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
         ENABLE_HARDENED_RUNTIME: NO
+  # The Now Playing widget (WidgetKit), embedded in the app.
+  miniampWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - Widget
+      - Shared
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: miniamp
+        MiniAmpAppGroup: $(TeamIdentifierPrefix)dev.miniamp
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Widget/miniampWidget.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+          - $(TeamIdentifierPrefix)dev.miniamp
+    settings:
+      base:
+        PRODUCT_NAME: miniampWidget
+        PRODUCT_BUNDLE_IDENTIFIER: dev.miniamp.app.widget
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: NO
+        SKIP_INSTALL: YES
 schemes:
   miniamp:
     build:
