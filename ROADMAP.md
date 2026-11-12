@@ -110,7 +110,7 @@ Unordered. Pick these up as interest dictates.
 - [ ] Crossfade with beat detection (DSP mode only)
 - [ ] DSD playback over DoP to compatible DACs
 - [x] Backup and restore of the database and settings
-- [ ] Lyric translation and romanization
+- [x] Lyric translation and romanization
 - [x] Artwork-based tinting
 - [ ] Build TagLib from source and embed it in the app
 

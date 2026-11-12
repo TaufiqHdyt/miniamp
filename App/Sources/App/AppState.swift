@@ -40,6 +40,15 @@ final class AppState {
 
     @ObservationIgnored let lyricsFinder: LyricsFinder
 
+    /// Lyrics in another script also shown in Latin letters, line by line.
+    var showsLyricsRomanization = UserDefaults.standard.bool(forKey: "showsLyricsRomanization") {
+        didSet { UserDefaults.standard.set(showsLyricsRomanization, forKey: "showsLyricsRomanization") }
+    }
+    /// Lyrics in another language also shown translated into the system language, on this Mac.
+    var showsLyricsTranslation = UserDefaults.standard.bool(forKey: "showsLyricsTranslation") {
+        didSet { UserDefaults.standard.set(showsLyricsTranslation, forKey: "showsLyricsTranslation") }
+    }
+
     /// Wash the player bar and the inspector in a colour from the playing song's cover.
     var tintsWithArtwork = UserDefaults.standard.object(forKey: "tintsWithArtwork") as? Bool ?? true {
         didSet { UserDefaults.standard.set(tintsWithArtwork, forKey: "tintsWithArtwork") }
