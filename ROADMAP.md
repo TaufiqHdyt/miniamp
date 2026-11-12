@@ -112,7 +112,7 @@ Unordered. Pick these up as interest dictates.
 - [x] Backup and restore of the database and settings
 - [x] Lyric translation and romanization
 - [x] Artwork-based tinting
-- [ ] Build TagLib from source and embed it in the app
+- [x] Build TagLib from source and embed it in the app
 
 ## Out of scope
 

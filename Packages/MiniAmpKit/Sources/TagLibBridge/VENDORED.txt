@@ -1,0 +1,17 @@
+TagLib 2.3.2 and utfcpp 4.2.1, from their release tags:
+(In vendor/, relative to this file. Not named VERSION: on a case-insensitive disk that would
+shadow C++'s <version> header, since vendor/ is on the header search path.)
+
+  https://github.com/taglib/taglib/archive/refs/tags/v2.3.2.tar.gz
+    SHA-256 cda2d6dac7f12a84e46fbb0907bb1a1ec0679e4722b5237576be5563e295244e
+    taglib/  ← the tarball's taglib/ directory: its .h, .cpp, and .tcc files, unmodified.
+             Left out: its CMakeLists.txt files and taglib_config.h.cmake.
+  https://github.com/nemtrif/utfcpp/archive/refs/tags/v4.2.1.tar.gz
+    SHA-256 6d6a5493a111884cc085ee31babfe6d9960c8fb08fc80a64852eaeea8323dbc1
+    utfcpp/  ← the tarball's source/ directory, unmodified (header-only).
+
+Written for this build in place of what CMake generates: config.h and taglib/taglib_config.h.
+Licences: taglib/COPYING.LGPL and taglib/COPYING.MPL (TagLib, LGPL 2.1 or MPL 1.1), utfcpp/LICENSE (BSL 1.0).
+
+To update: replace taglib/ and utfcpp/ from newer tags the same way, check config.h.cmake and
+taglib_config.h.cmake for new options, and update the hashes above.

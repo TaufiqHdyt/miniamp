@@ -31,7 +31,7 @@ import Testing
 
         node.scheduleFile(file, at: nil)
         try engine.start()
-        try node.playAudio()
+        try node.startPlayback()
         defer { engine.stop() }
 
         let rendered = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,

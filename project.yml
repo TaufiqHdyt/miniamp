@@ -2,7 +2,7 @@ name: MiniAmp
 options:
   bundleIdPrefix: dev.miniamp
   deploymentTarget:
-    macOS: "27.0" # matches Homebrew TagLib; lower once TagLib is built from source
+    macOS: "15.0"
   createIntermediateGroups: true
 packages:
   MiniAmpKit:
@@ -42,11 +42,10 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: miniamp
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.music
-        # Local development: ad-hoc signing. Hardened runtime is off because
-        # TagLib is linked from Homebrew for now (see README).
+        # Local development: ad-hoc signing. Set a team to distribute (see README).
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
-        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_HARDENED_RUNTIME: YES
   # The Now Playing widget (WidgetKit), embedded in the app.
   miniampWidget:
     type: app-extension
@@ -77,7 +76,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
-        ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_HARDENED_RUNTIME: YES
         SKIP_INSTALL: YES
 schemes:
   miniamp:

@@ -8,12 +8,19 @@ import AVFoundation
 enum OutputUnit {
     /// Runs `body` with the output node's audio unit (the unit is only lent out for the call).
     static func withUnit<R>(_ engine: AVAudioEngine, _ body: (AudioUnit) throws -> R) throws -> R {
-        try engine.outputNode.withAudioUnit { (unit: borrowing AudioUnit?) throws(any Error) -> R in
-            guard let unit = copy unit else {
-                throw CoreAudioError(status: kAudioUnitErr_Uninitialized, operation: "Get output unit")
+        if #available(macOS 27, *) {
+            return try engine.outputNode.withAudioUnit { (unit: borrowing AudioUnit?) throws(any Error) -> R in
+                guard let unit = copy unit else {
+                    throw CoreAudioError(status: kAudioUnitErr_Uninitialized, operation: "Get output unit")
+                }
+                return try body(unit)
             }
-            return try body(unit)
         }
+        // Before macOS 27 the unit is a plain property.
+        guard let unit = engine.outputNode.audioUnit else {
+            throw CoreAudioError(status: kAudioUnitErr_Uninitialized, operation: "Get output unit")
+        }
+        return try body(unit)
     }
 
     /// Sets a fixed-size property on the engine's output unit.

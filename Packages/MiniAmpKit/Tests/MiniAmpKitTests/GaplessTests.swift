@@ -23,7 +23,7 @@ import Testing
 
         func start() throws {
             try engine.start()
-            try node.playAudio()
+            try node.startPlayback()
         }
 
         /// Renders `frames` frames and returns channel 0 and 1.

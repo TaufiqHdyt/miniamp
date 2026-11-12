@@ -134,7 +134,7 @@ extension Player {
             scheduler.reset()
             currentNodeStart = 0
             scheduler.append(file, from: frame, token: item)
-            try node.playAudio()
+            try node.startPlayback()
             return
         }
         output.hold()
@@ -150,7 +150,7 @@ extension Player {
         engine.prepare()
         try engine.start()
         renderBlock = engine.manualRenderingBlock
-        try node.playAudio()
+        try node.startPlayback()
     }
 
     /// Sets up the engine in manual rendering mode and binds our output unit to it.
@@ -199,7 +199,7 @@ extension Player {
         }
         if autoplay {
             try output.start()
-            try node.playAudio()
+            try node.startPlayback()
         }
         Self.log.debug("[\(id)] started; output unit on \(device.name, privacy: .public), \(autoplay ? "playing" : "paused", privacy: .public)")
     }
@@ -245,8 +245,8 @@ extension Player {
         }
         guard let dsp else { return try connectBitPerfect(node, in: engine, format: format) }
         if dsp.engine == nil { engine.attach(dsp) }
-        try engine.connectNode(node, to: dsp, format: format)
-        try engine.connectNode(dsp, to: engine.outputNode, format: format)
+        try engine.link(node, to: dsp, format: format)
+        try engine.link(dsp, to: engine.outputNode, format: format)
     }
 
     /// Connects the player straight to the output node using the file's processing format.
@@ -256,6 +256,6 @@ extension Player {
     /// integer sources up to 24 bits. When the device runs at the file's rate, nothing resamples.
     static func connectBitPerfect(_ node: AVAudioPlayerNode, in engine: AVAudioEngine, format: AVAudioFormat) throws {
         engine.disconnectNodeOutput(node)
-        try engine.connectNode(node, to: engine.outputNode, format: format)
+        try engine.link(node, to: engine.outputNode, format: format)
     }
 }

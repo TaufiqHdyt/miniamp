@@ -8,7 +8,7 @@ Requirements: Apple silicon Mac, [Xcode](https://apps.apple.com/app/xcode/id4977
 
 ```sh
 sudo xcode-select -s /Applications/Xcode.app   # once, after installing Xcode
-make bootstrap   # installs xcodegen, taglib, pkgconf; generates MiniAmp.xcodeproj
+make bootstrap   # installs xcodegen and lame (for test fixtures); generates MiniAmp.xcodeproj
 make open        # opens the project in Xcode
 ```
 
@@ -16,7 +16,7 @@ Other targets:
 
 | Command        | What it does                                         |
 |----------------|------------------------------------------------------|
-| `make doctor`  | Checks that Xcode, TagLib, and XcodeGen are present  |
+| `make doctor`  | Checks that Xcode and XcodeGen are present           |
 | `make project` | Regenerates `MiniAmp.xcodeproj` from `project.yml`   |
 | `make build`   | Builds the app from the command line                 |
 | `make run`     | Builds, launches the app, and streams its trace logs here (`VERBOSE=1` adds system messages) |
@@ -44,8 +44,7 @@ App/Sources/              SwiftUI app target (thin; UI only)
 Shared/                   Compiled into the app and the widget: the now-playing snapshot, playback intents
 Widget/                   The Now Playing widget (WidgetKit extension)
 Packages/MiniAmpKit/      Everything testable: playback, library, database
-  Sources/CTagLib         Links Homebrew TagLib through pkg-config
-  Sources/TagLibBridge    C++ shim with a C API over TagLib
+  Sources/TagLibBridge    C++ shim with a C API over TagLib, which is built from source with it (vendor/; see VENDORED.txt)
   Sources/CEBUR128        libebur128 (EBU R128 loudness), vendored unmodified
   Sources/MiniAmpKit/
     Audio/                Core Audio: devices, the hardware output, format selection
@@ -59,8 +58,8 @@ scripts/                  Fixtures, the test library, benchmarks, and `make run`
 
 ## Known limitations
 
-- TagLib is linked from Homebrew, so the app only runs on machines that have it installed. Hardened runtime is off for the same reason. To distribute the app, TagLib will need to be built from source and embedded.
-- The minimum is macOS 27 because Homebrew's TagLib is built for it. Supporting older macOS means building TagLib from source with a lower target.
+- Builds are signed ad hoc, with no team. Hardened runtime is on in `project.yml`, but Xcode only applies it when signing with a real identity, so set a team (and a Developer ID to distribute) to get a hardened, notarizable app.
+- The minimum is macOS 15. Only macOS 27 has been run; on earlier systems the engine uses the older `AVAudioEngine` calls (`play()`, `connect`, `outputNode.audioUnit`) in place of their macOS 27 replacements.
 - Tracks only join gaplessly when they share a format (sample rate and channel count). Otherwise, if the device stays at the same rate (a fixed-rate device such as a Bluetooth speaker, or a file it resamples), the next track starts on the running output after a few milliseconds of silence. If the device has to change rate, the switch takes about half a second.
 - `AVAudioPlayerNode.playAudio()` waits on the main thread for the device's first I/O cycle. Normally that's milliseconds, but a device that never starts can block for up to about 5 seconds.
 - Switching between bit-perfect and DSP mode while playing restarts the track where it was, which takes about half a second.

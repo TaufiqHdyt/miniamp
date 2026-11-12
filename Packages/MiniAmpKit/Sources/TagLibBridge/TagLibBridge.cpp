@@ -6,21 +6,21 @@
 #include <cstring>
 #include <string>
 
-#include <taglib/aifffile.h>
-#include <taglib/aiffproperties.h>
-#include <taglib/id3v2tag.h>
-#include <taglib/mpegfile.h>
-#include <taglib/synchronizedlyricsframe.h>
-#include <taglib/wavfile.h>
-#include <taglib/fileref.h>
-#include <taglib/flacproperties.h>
-#include <taglib/mp4properties.h>
-#include <taglib/tag.h>
-#include <taglib/taglib.h>
-#include <taglib/tpropertymap.h>
-#include <taglib/tvariant.h>
-#include <taglib/mpegproperties.h>
-#include <taglib/wavproperties.h>
+#include "aifffile.h"
+#include "aiffproperties.h"
+#include "id3v2tag.h"
+#include "mpegfile.h"
+#include "synchronizedlyricsframe.h"
+#include "wavfile.h"
+#include "fileref.h"
+#include "flacproperties.h"
+#include "mp4properties.h"
+#include "tag.h"
+#include "taglib.h"
+#include "tpropertymap.h"
+#include "tvariant.h"
+#include "mpegproperties.h"
+#include "wavproperties.h"
 
 namespace {
 

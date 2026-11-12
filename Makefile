@@ -9,7 +9,6 @@ doctor:
 	  && echo "Xcode: $$(xcodebuild -version | head -1)" \
 	  || echo "Xcode: NOT ACTIVE. Install Xcode, then: sudo xcode-select -s /Applications/Xcode.app"
 	@command -v brew >/dev/null || { echo "Homebrew missing: https://brew.sh"; exit 1; }
-	@pkg-config --exists taglib 2>/dev/null && echo "TagLib: $$(pkg-config --modversion taglib)" || echo "TagLib: missing (make bootstrap)"
 	@command -v xcodegen >/dev/null && echo "XcodeGen: $$(xcodegen --version)" || echo "XcodeGen: missing (make bootstrap)"
 
 project:

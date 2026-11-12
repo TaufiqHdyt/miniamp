@@ -1,5 +1,0 @@
-module CTagLib [system] {
-    header "shim.h"
-    link "tag"
-    export *
-}

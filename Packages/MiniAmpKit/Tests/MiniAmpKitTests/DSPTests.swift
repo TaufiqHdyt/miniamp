@@ -82,7 +82,7 @@ import Testing
         try Player.connect(node, through: eq, detaching: eq, in: engine, format: file.processingFormat)
         node.scheduleFile(file, at: nil)
         try engine.start()
-        try node.playAudio()
+        try node.startPlayback()
         defer { engine.stop() }
         let output = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat, frameCapacity: input.frameLength)!
         let chunk = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat, frameCapacity: 4096)!

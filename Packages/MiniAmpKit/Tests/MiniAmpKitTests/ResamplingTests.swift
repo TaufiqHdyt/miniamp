@@ -30,7 +30,7 @@ import Testing
         try Player.connectBitPerfect(node, in: engine, format: file.processingFormat)
         node.scheduleFile(file, at: nil)
         try engine.start()
-        try node.playAudio()
+        try node.startPlayback()
         defer { engine.stop() }
 
         let total = AVAudioFrameCount(outputRate * 0.5)

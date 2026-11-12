@@ -253,7 +253,7 @@ public final class Player {
     public func resume() throws {
         guard state == .paused, let output else { return }
         try output.start()
-        try node.playAudio()
+        try node.startPlayback()
         state = .playing
         startTicker()
         Self.log.debug("[\(self.playID)] resume")
@@ -290,7 +290,7 @@ public final class Player {
         setPlayhead(Self.time(frame, file), force: true)
         seekCount += 1
         if state == .playing {
-            do { try node.playAudio() } catch { Self.log.error("seek: \(error, privacy: .public)") }
+            do { try node.startPlayback() } catch { Self.log.error("seek: \(error, privacy: .public)") }
         }
         Self.log.debug("[\(self.playID)] seek to \(self.playhead.formatted(), privacy: .public)")
     }
