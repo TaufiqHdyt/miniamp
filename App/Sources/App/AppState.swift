@@ -51,6 +51,12 @@ final class AppState {
 
     /// Ask LRCLIB for lyrics when a song has none of its own. Off until turned on: it sends
     /// what's playing (title, artist, album, duration) to lrclib.net.
+    /// No crossfade between songs from the same album, which are often meant to run together
+    /// (live albums, DJ mixes). On by default.
+    var keepsAlbumsGapless = UserDefaults.standard.object(forKey: "keepsAlbumsGapless") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(keepsAlbumsGapless, forKey: "keepsAlbumsGapless") }
+    }
+
     var looksUpLyricsOnline = UserDefaults.standard.bool(forKey: "looksUpLyricsOnline") {
         didSet { UserDefaults.standard.set(looksUpLyricsOnline, forKey: "looksUpLyricsOnline") }
     }
@@ -111,6 +117,13 @@ final class AppState {
             let database = library.database
             player.replayGainLookup = { url in
                 try? database.writer.read { try ReplayGains.lookup(path: LibraryPaths.normalized(url.path), $0) }
+            }
+            player.shouldCrossfade = { [weak self] a, b in
+                guard self?.keepsAlbumsGapless ?? false else { return true }
+                let same = try? database.writer.read {
+                    try LibraryQueries.sameAlbum(LibraryPaths.normalized(a.path), LibraryPaths.normalized(b.path), $0)
+                }
+                return same != true
             }
             library.onLoudnessMeasured = { [weak player] paths in
                 guard let player, let current = player.queue.current,

@@ -131,8 +131,8 @@ private struct SoundSettings: View {
                 }
                 .pickerStyle(.segmented)
                 Text(player.dspMode
-                     ? "Samples go through the equalizer and ReplayGain on the way to the device."
-                     : "Samples reach the device unchanged. The equalizer and ReplayGain are off.")
+                     ? "Samples go through the equalizer, ReplayGain, and crossfade on the way to the device."
+                     : "Samples reach the device unchanged. The equalizer, ReplayGain, and crossfade are off.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -170,8 +170,45 @@ private struct SoundSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            CrossfadeSection(app: app, player: player)
         }
         .formStyle(.grouped)
+    }
+}
+
+/// How long songs overlap, and how the overlap is placed.
+private struct CrossfadeSection: View {
+    @Bindable var app: AppState
+    @Bindable var player: Player
+
+    var body: some View {
+        Section {
+            LabeledContent("Crossfade") {
+                HStack {
+                    Slider(value: $player.crossfadeDuration, in: 0...Player.maximumCrossfade, step: 1)
+                        .frame(width: 180)
+                    Text(player.crossfadeDuration > 0 ? "\(Int(player.crossfadeDuration)) s" : "Off")
+                        .monospacedDigit()
+                        .frame(width: 64, alignment: .trailing)
+                }
+            }
+            Toggle(isOn: $player.crossfadeMatchesBeats) {
+                Text("Fade on the beat")
+                Text("Starts the fade on a beat of the ending song, for whole bars, and brings the next one in on its first beat.")
+            }
+            .disabled(player.crossfadeDuration == 0)
+            Toggle(isOn: $app.keepsAlbumsGapless) {
+                Text("Keep albums gapless")
+                Text("No crossfade between songs from the same album.")
+            }
+            .disabled(player.crossfadeDuration == 0)
+        } header: {
+            Text("Crossfade")
+        } footer: {
+            Text("Overlaps the end of each song with the start of the next, skipping the silence between them. Applies in DSP mode, between songs of the same sample rate; others play gaplessly. Takes effect from the next song.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

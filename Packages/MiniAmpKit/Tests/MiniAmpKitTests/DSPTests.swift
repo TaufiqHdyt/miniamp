@@ -139,6 +139,9 @@ import Testing
         #expect(p.description == "EQ Rock, ReplayGain (album), -8.2 dB")
         let none = SignalPath.Processing(equalizer: nil, replayGain: .off, trackHasReplayGain: false, gain: 0)
         #expect(none.description == "+0.0 dB")
+        let crossfading = SignalPath.Processing(equalizer: nil, replayGain: .off, trackHasReplayGain: false, gain: 0,
+                                                crossfade: 6)
+        #expect(crossfading.description == "+0.0 dB, crossfade 6 s")
         var path = SignalPath(codec: "FLAC", fileSampleRate: 44_100, fileBitDepth: 16, fileChannels: 2,
                               engineSampleRate: 44_100, deviceName: "D", deviceSampleRate: 44_100,
                               devicePhysicalFormat: "24-bit integer", devicePhysicalBits: 24)

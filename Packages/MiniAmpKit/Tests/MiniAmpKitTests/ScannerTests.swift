@@ -25,6 +25,22 @@ import Testing
         try db.writer.read { try LibraryQueries.allTracks($0) }
     }
 
+    /// For keeping albums gapless when crossfading (#42).
+    @Test func tellsWhetherTwoTracksShareAnAlbum() async throws {
+        let one = try folder.mp3("A/1.mp3", title: "One", artist: "X", album: "Homogenic", track: 1)
+        let two = try folder.mp3("A/2.mp3", title: "Two", artist: "X", album: "Homogenic", track: 2)
+        let other = try folder.mp3("B/1.mp3", title: "Other", artist: "X", album: "Post")
+        let loose = try folder.flac("loose.flac")
+        _ = try await scanner.scan(record)
+        let (a, b, c, d) = (LibraryPaths.canonical(one), LibraryPaths.canonical(two), LibraryPaths.canonical(other),
+                            LibraryPaths.canonical(loose))
+        let results = try await db.writer.read { db in
+            [try LibraryQueries.sameAlbum(a, b, db), try LibraryQueries.sameAlbum(a, c, db),
+             try LibraryQueries.sameAlbum(d, a, db), try LibraryQueries.sameAlbum(a, "/not/in/the/library.mp3", db)]
+        }
+        #expect(results == [true, false, false, false])
+    }
+
     @Test func readsTagsAndGroupsAlbums() async throws {
         try folder.mp3("Björk/Homogenic/01 Hunter.mp3", title: "Hunter", artist: "Björk", album: "Homogenic",
                        track: 1, year: 1997, genre: "Electronic")

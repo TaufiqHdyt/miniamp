@@ -50,9 +50,10 @@ Packages/MiniAmpKit/      Everything testable: playback, library, database
   Sources/TagLibBridge    C++ shim with a C API over TagLib, which is built from source with it (vendor/; see VENDORED.txt)
   Sources/CEBUR128        libebur128 (EBU R128 loudness), vendored unmodified
   Sources/CChromaprint    Chromaprint (audio fingerprints, for duplicates), vendored unmodified; see VENDORED.txt
+  Sources/CDSD            DSD playback's inner loops (DoP packing, the PCM filter), optimized in Debug too
   Sources/MiniAmpKit/
-    Audio/                Core Audio: devices, the hardware output, format selection
-    Playback/             Player, queue, gapless scheduling, DSP mode and EQ, sleep timer, play history
+    Audio/                Core Audio: devices, the hardware output, format selection, DSD files
+    Playback/             Player, queue, gapless scheduling, crossfade, DSP mode and EQ, sleep timer, play history
     Library/              Database records, scanning, tag reading and writing, ReplayGain and loudness analysis, playlists, M3U8, artwork, folders
     Support/              Small shared extensions
   Sources/miniampctl      Developer CLI for the device and playback
@@ -75,4 +76,6 @@ scripts/                  Fixtures, the test library, benchmarks, and `make run`
 - Romanized lyrics use the system's readings for Japanese and Chinese, and transliteration for other scripts, so Korean comes out letter by letter ("salanghae") rather than in Revised Romanization ("saranghae"). Translation uses Apple's on-device Translation; the first time, macOS asks to download the languages.
 - The widget gets what's playing through an app group shared with the app. The group is named after the signing team (`$(TeamIdentifierPrefix)dev.miniamp`); with the ad-hoc signing used for now there's no team, so it's plain `dev.miniamp`, which recent macOS may not grant. If the widget stays on "Not Playing", set a development team in `project.yml`.
 - Duplicates by sound compare fingerprints of each song's first two minutes, so a song that differs only later on (an extended version) still matches. Finding matches in a 10,000-song library takes a few seconds, each time the By Sound list loads. Songs shorter than a few seconds can't be fingerprinted.
+- Crossfade works in DSP mode, between songs with the same sample rate and channel count; other pairs join as they would without it. It doesn't stretch tempos, so beats a few BPM apart drift a little over a long fade. A change to it applies from the next song scheduled, and a song you seek within its last seven seconds plays to its end without one.
+- DSD as DoP is a setting, off by default, because a DAC can't be asked whether it takes DoP: one that doesn't plays it as noise. DoP is only used in bit-perfect mode on a device that runs at the DoP rate (176.4 kHz for DSD64) with 24-bit samples, and miniamp's volume doesn't apply. Everywhere else DSD is converted to 88.2 kHz PCM at DSD's own scale, so it plays about 6 dB quieter than a PCM master of the same recording. DST-compressed DFF files aren't supported.
 - There are two volumes. The slider in the player bar is miniamp's own, as in Apple Music: below 100% it scales the samples, so playback isn't bit-perfect (the quality icon says so). The device's volume, under the output menu, changes the hardware level and keeps the samples intact.

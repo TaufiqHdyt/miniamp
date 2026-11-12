@@ -38,7 +38,7 @@ extension Player {
             // pulling the output unit's format out from under a running graph.
             activeDeviceWatcher?.cancel()
             output?.stop()
-            scheduler.reset()
+            resetScheduling()
             engine.stop()
             if let old = outputDevice, old != device { releaseHogMode(old) }
 
@@ -140,22 +140,22 @@ extension Player {
         preloadedItem = nil
         preloadAttempted = false
         if file.processingFormat == node.outputFormat(forBus: 0) {
-            scheduler.reset()
+            resetScheduling()
             currentNodeStart = 0
-            scheduler.append(file, from: frame, token: item)
+            reservedTail = scheduleTrack(file, from: frame, item: item)
             try node.startPlayback()
             return
         }
         output.hold()
         var renderBlock: AVAudioEngineManualRenderingBlock?
         defer { output.release(render: renderBlock.map { block in { frames, data in block(frames, data, nil) == .success } }) }
-        scheduler.reset()
+        resetScheduling()
         engine.stop()
         Self.resetTimeline(engine)
         try? OutputUnit.setMaximumResamplingQuality(on: engine)
         try connectGraph(format: file.processingFormat)
         currentNodeStart = 0
-        scheduler.append(file, from: frame, token: item)
+        reservedTail = scheduleTrack(file, from: frame, item: item)
         engine.prepare()
         try engine.start()
         renderBlock = engine.manualRenderingBlock
@@ -175,7 +175,7 @@ extension Player {
             throw CoreAudioError(status: kAudioUnitErr_FailedInitialization, operation: "Create output unit")
         }
         output.stop()
-        scheduler.reset()
+        resetScheduling()
         engine.stop()
         Self.resetTimeline(engine)
 
@@ -197,7 +197,7 @@ extension Player {
         Self.log.debug("[\(id)] connect player → \(self.dspMode ? "EQ → " : "", privacy: .public)\(device.name, privacy: .public): \(file.processingFormat, privacy: .public), rendering \(renderFormat, privacy: .public)")
 
         currentNodeStart = 0
-        scheduler.append(file, from: frame, token: item)
+        reservedTail = scheduleTrack(file, from: frame, item: item)
         engine.prepare()
         try engine.start()
 

@@ -133,6 +133,23 @@ public final class Player {
     public var preventsClipping = true {
         didSet { if oldValue != preventsClipping { applyDSP() } }
     }
+    /// Crossfade into the next track over this many seconds, in DSP mode; 0 is off (gapless).
+    /// Applies from the next track scheduled.
+    public var crossfadeDuration: Double = 0 {
+        didSet {
+            if !(0...Self.maximumCrossfade).contains(crossfadeDuration) {
+                crossfadeDuration = min(max(crossfadeDuration.isNaN ? 0 : crossfadeDuration, 0), Self.maximumCrossfade)
+            }
+            if oldValue != crossfadeDuration { applyDSP() }
+        }
+    }
+    /// Start the fade on a beat and bring the next track in on its first (see Crossfade).
+    public var crossfadeMatchesBeats = true
+    /// Whether to crossfade from one track to the next; nil crossfades every pair. (The app
+    /// uses it to keep an album's tracks gapless.)
+    @ObservationIgnored public var shouldCrossfade: (@MainActor (URL, URL) -> Bool)?
+    public static let maximumCrossfade = 12.0
+
     /// The ReplayGain for a file, from the library. Called on the main actor as each track starts.
     @ObservationIgnored public var replayGainLookup: (@MainActor (URL) -> ReplayGain?)?
 
@@ -161,6 +178,13 @@ public final class Player {
     @ObservationIgnored var currentFile: TrackFile?
     /// Node start time of the segment that's currently playing.
     @ObservationIgnored var currentNodeStart: AVAudioFramePosition = 0
+    /// The end of the current track, held back from the node while a crossfade into the next
+    /// one is worked out. Nil once it's scheduled, or when crossfade doesn't apply.
+    @ObservationIgnored var reservedTail: ReservedTail?
+    /// The same for the track scheduled next; it becomes `reservedTail` when that track starts.
+    @ObservationIgnored var nextReservedTail: ReservedTail?
+    /// Reading and mixing the crossfade, off the main actor.
+    @ObservationIgnored var crossfadeTask: Task<Void, Never>?
     /// Item index scheduled after the current one, if any.
     @ObservationIgnored var preloadedItem: Int?
     @ObservationIgnored var preloadAttempted = false
@@ -299,7 +323,7 @@ public final class Player {
         ticker?.cancel()
         activeDeviceWatcher?.cancel()
         output?.stop()
-        scheduler.reset()
+        resetScheduling()
         engine.stop()
         releaseHogMode(outputDevice)
         currentFile = nil
@@ -315,8 +339,8 @@ public final class Player {
             return
         }
         let frame = min(max(Self.frames(time, file), 0), max(file.length - 1, 0))
-        scheduler.reset()
-        scheduler.append(file, from: frame, token: item)
+        resetScheduling()
+        reservedTail = scheduleTrack(file, from: frame, item: item)
         currentNodeStart = 0
         preloadedItem = nil
         preloadAttempted = false
@@ -450,7 +474,8 @@ public final class Player {
     func processing(gain: Double? = nil) -> SignalPath.Processing {
         SignalPath.Processing(
             equalizer: equalizer.isShaping ? (equalizer.preset?.name ?? "Custom") : nil,
-            replayGain: replayGainMode, trackHasReplayGain: currentReplayGain != nil, gain: gain ?? dspGain)
+            replayGain: replayGainMode, trackHasReplayGain: currentReplayGain != nil, gain: gain ?? dspGain,
+            crossfade: crossfadeDuration > 0 ? crossfadeDuration : nil)
     }
 
     private func restartInPlace(_ reason: String) async {
@@ -496,7 +521,19 @@ public final class Player {
         lastKnownFrame = frame
         setPlayhead(Self.time(frame, file))
 
-        if !preloadAttempted, duration - playhead <= Self.preloadLead {
+        if let tail = reservedTail {
+            let left = Double(tail.start - frame) / file.sampleRate
+            if crossfadeTask == nil, !preloadAttempted, left <= Self.preloadLead.seconds {
+                preloadAttempted = true
+                prepareTransition(from: tail)
+            } else if crossfadeTask != nil, left <= Self.crossfadeDeadline {
+                Self.log.notice("[\(self.playID)] crossfade not ready in time; joining gaplessly")
+                crossfadeTask?.cancel()
+                crossfadeTask = nil
+                scheduleRest(of: tail)
+                preloadNext(after: file)
+            }
+        } else if !preloadAttempted, duration - playhead <= Self.preloadLead {
             preloadNext(after: file)
         }
     }
@@ -516,7 +553,7 @@ public final class Player {
 
     static func wholeSeconds(_ time: Duration) -> Int64 { time.components.seconds }
 
-    private func preloadNext(after file: TrackFile) {
+    func preloadNext(after file: TrackFile) {
         preloadAttempted = true
         guard !stopsAfterCurrentTrack else { return }
         guard let next = queue.upcoming(automatic: true) else { return }
@@ -529,7 +566,7 @@ public final class Player {
                 Self.log.debug("[\(self.playID)] next is \(nextFile.processingFormat, privacy: .public) (\(String(describing: nextFile.kind), privacy: .public)); a different format, so not gapless")
                 return
             }
-            scheduler.append(nextFile, token: item)
+            nextReservedTail = scheduleTrack(nextFile, from: 0, item: item)
             preloadedItem = item
             Self.log.debug("[\(self.playID)] scheduled \(url.lastPathComponent, privacy: .public) gaplessly")
         } catch {
@@ -541,6 +578,8 @@ public final class Player {
     private func advance(to segment: TrackScheduler.Segment) {
         guard segment.nodeStart > currentNodeStart else { return }
         currentNodeStart = segment.nodeStart
+        // The rest of the track that's playing (after its held-back end, or a crossfade).
+        if segment.continues, segment.token == queue.currentIndex, segment.file === currentFile { return }
         queue.jump(toItem: segment.token)
         currentFile = segment.file
         preloadedItem = nil
@@ -549,20 +588,30 @@ public final class Player {
         // The new track has only just started. Without this the playhead keeps the old
         // track's end until the next tick, and anything that reads it now (Control Center)
         // gets that. A tick that got here first sets the exact frame right after.
-        lastKnownFrame = 0
-        setPlayhead(.zero, force: true)
+        // A crossfade can bring a track in past its start (its leading silence skipped).
+        lastKnownFrame = segment.startFrame
+        setPlayhead(Self.time(segment.startFrame, segment.file), force: true)
+        reservedTail = nextReservedTail
+        nextReservedTail = nil
         trackStarts += 1
         if let device = outputDevice {
             signalPath = SignalPath(file: segment.file, url: queue.items[segment.token], device: device, engine: engine)
         }
         playID += 1
         trackChanged(to: queue.items[segment.token])
-        Self.log.info("[\(self.playID)] gapless → \(self.queue.items[segment.token].lastPathComponent, privacy: .public)")
+        Self.log.info("[\(self.playID)] → \(self.queue.items[segment.token].lastPathComponent, privacy: .public), without stopping")
     }
 
     private func segmentFinished(_ segment: TrackScheduler.Segment) {
         if let next = scheduler.segments.first {
             advance(to: next)
+            return
+        }
+        // The track's held-back end never got scheduled (the main actor was held up for
+        // seconds): pick it up from there.
+        if let tail = reservedTail, segment.file === tail.file, state == .playing {
+            Self.log.notice("[\(self.playID)] the end of the track wasn't scheduled in time; resuming there")
+            seek(to: Self.time(tail.start, tail.file))
             return
         }
         guard state == .playing, segment.nodeStart >= currentNodeStart else { return }
@@ -604,6 +653,12 @@ public final class Player {
 
     /// Shuffle or repeat changed: if the wrong track is already scheduled next, reschedule.
     private func queueChanged() async {
+        if crossfadeTask != nil {
+            // Worked out for the old next track; do it again for the new one.
+            crossfadeTask?.cancel()
+            crossfadeTask = nil
+            preloadAttempted = false
+        }
         let upcoming = stopsAfterCurrentTrack ? nil : queue.upcoming(automatic: true).map { queue.order[$0] }
         if preloadedItem != nil, preloadedItem != upcoming {
             Self.log.debug("[\(self.playID)] queue changed; rescheduling")

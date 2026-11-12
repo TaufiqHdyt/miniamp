@@ -38,6 +38,14 @@ public enum LibraryQueries {
     }
 
     /// Artwork keys any track or album refers to (for ArtworkCache.prune).
+    /// Whether the library tracks at two paths (as the library spells them) are on the same album.
+    public static func sameAlbum(_ a: String, _ b: String, _ db: Database) throws -> Bool {
+        try Bool.fetchOne(db, sql: """
+            SELECT EXISTS (SELECT 1 FROM track x JOIN track y ON y.albumId = x.albumId
+                           WHERE x.path = ? AND y.path = ? AND x.albumId IS NOT NULL)
+            """, arguments: [a, b]) ?? false
+    }
+
     public static func artworkKeys(_ db: Database) throws -> Set<String> {
         try Set(String.fetchAll(db, sql: """
             SELECT artworkKey FROM track WHERE artworkKey IS NOT NULL

@@ -20,7 +20,7 @@ A native macOS music player for a local library. It plays FLAC, MP3, ALAC, and A
 
 ## Milestones
 
-M1 to M7 are done, so the app is usable day to day. What's left is in M8.
+M1 to M8 are done.
 
 ### M1: Playback proof of concept
 
@@ -106,7 +106,7 @@ Unordered. Pick these up as interest dictates.
 - [x] Duplicate review, by tags and duration
 - [x] Duplicate review by Chromaprint fingerprints
 - [x] Menu bar mini player and a WidgetKit widget
-- [ ] Crossfade with beat detection (DSP mode only)
+- [x] Crossfade with beat detection (DSP mode only)
 - [x] DSD playback (DSF, DFF) over DoP to compatible DACs, converted to PCM for everything else
 - [x] Backup and restore of the database and settings
 - [x] Lyric translation and romanization

@@ -16,6 +16,8 @@ options:
   --dsp            DSP mode instead of bit-perfect
   --eq PRESET      DSP mode with this EQ preset (Flat, Rock, Bass Boost, …)
   --gain DB        DSP mode, turned up or down by DB (as a preamp)
+  --crossfade S    DSP mode, crossfading tracks over S seconds (on the beat; add --no-beats for plain)
+  --app-volume V   miniamp's own volume, 0...1 (0 plays silently, everything else as usual)
   --lyrics         print each line of the track's synced lyrics (.lrc or tags) as it's reached
   --lyrics-offset MS   with --lyrics, show them MS sooner (negative: later)
        miniampctl lyrics [--online] <file>   show a file's lyrics and where they came from
@@ -66,6 +68,9 @@ func play(_ args: [String]) async throws {
     var showsLyrics = false
     var lyricsOffset = 0
     var gain: Float = 0
+    var crossfade = 0.0
+    var matchesBeats = true
+    var appVolume: Float = 1
     var it = args.makeIterator()
     while let arg = it.next() {
         switch arg {
@@ -89,6 +94,11 @@ func play(_ args: [String]) async throws {
         case "--gain":
             gain = it.next().flatMap(Float.init) ?? 0
             dsp = true
+        case "--crossfade":
+            crossfade = it.next().flatMap(Double.init) ?? 0
+            dsp = true
+        case "--no-beats": matchesBeats = false
+        case "--app-volume": appVolume = it.next().flatMap(Float.init) ?? 1
         default: files.append(arg)
         }
     }
@@ -110,6 +120,9 @@ func play(_ args: [String]) async throws {
     eq.preamp += gain
     player.equalizer = eq
     player.repeatMode = repeatMode
+    player.crossfadeDuration = crossfade
+    player.crossfadeMatchesBeats = matchesBeats
+    player.appVolume = appVolume
     if shuffle { player.setShuffle(true) }
 
     let start = Date()
@@ -118,6 +131,7 @@ func play(_ args: [String]) async throws {
     try await player.setQueue(files.map { URL(fileURLWithPath: $0) })
     var lastPath = player.signalPath
     var lastState = player.state
+    var lastTrack = player.queue.current
     print("\(stamp()) ▶ \(lastPath?.summary ?? "?")")
     if hog, let device = player.outputDevice {
         print("\(stamp())   hog owner: \(device.hogModeOwner().map(String.init) ?? "none") (this process: \(getpid()))")
@@ -158,6 +172,10 @@ func play(_ args: [String]) async throws {
         if let deadline, Date() >= deadline { break }
         try await Task.sleep(for: .milliseconds(50))
         await followLyrics()
+        if player.queue.current != lastTrack {
+            lastTrack = player.queue.current
+            print("\(stamp())   → \(lastTrack?.lastPathComponent ?? "nothing"), at \(secondsString(player.exactTime))s of it")
+        }
         if player.signalPath != lastPath || player.state != lastState {
             lastPath = player.signalPath
             lastState = player.state

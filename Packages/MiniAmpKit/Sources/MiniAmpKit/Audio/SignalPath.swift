@@ -47,12 +47,16 @@ public struct SignalPath: Sendable, Equatable {
         public var trackHasReplayGain: Bool
         /// Everything the samples are turned up or down by, dB: ReplayGain and the preamps.
         public var gain: Double
+        /// Seconds tracks crossfade over; nil when they don't.
+        public var crossfade: Double?
 
-        public init(equalizer: String?, replayGain: ReplayGain.Mode, trackHasReplayGain: Bool, gain: Double) {
+        public init(equalizer: String?, replayGain: ReplayGain.Mode, trackHasReplayGain: Bool, gain: Double,
+                    crossfade: Double? = nil) {
             self.equalizer = equalizer
             self.replayGain = replayGain
             self.trackHasReplayGain = trackHasReplayGain
             self.gain = gain
+            self.crossfade = crossfade
         }
 
         public var description: String {
@@ -64,6 +68,7 @@ public struct SignalPath: Sendable, Equatable {
                 parts.append(trackHasReplayGain ? "ReplayGain (\(replayGain.rawValue))" : "ReplayGain (no values for this track)")
             }
             if gain != 0 || parts.isEmpty { parts.append(String(format: "%+.1f dB", gain)) }
+            if let crossfade { parts.append("crossfade \(crossfade.formatted(.number.precision(.fractionLength(0...1)))) s") }
             return parts.joined(separator: ", ")
         }
     }

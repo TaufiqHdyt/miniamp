@@ -12,6 +12,8 @@ enum Preferences {
     static let preventsClippingKey = "preventsClipping"
     static let appVolumeKey = "appVolume"
     static let sendsDSDAsDoPKey = "sendsDSDAsDoP"
+    static let crossfadeDurationKey = "crossfadeDuration"
+    static let crossfadeMatchesBeatsKey = "crossfadeMatchesBeats"
 
     @MainActor
     static func apply(to player: Player) {
@@ -27,6 +29,8 @@ enum Preferences {
         player.preventsClipping = defaults.object(forKey: preventsClippingKey) as? Bool ?? true
         player.appVolume = (defaults.object(forKey: appVolumeKey) as? NSNumber)?.floatValue ?? 1
         player.sendsDSDAsDoP = defaults.bool(forKey: sendsDSDAsDoPKey)
+        player.crossfadeDuration = defaults.double(forKey: crossfadeDurationKey)
+        player.crossfadeMatchesBeats = defaults.object(forKey: crossfadeMatchesBeatsKey) as? Bool ?? true
         saveDSPSettings(of: player)
     }
 
@@ -49,6 +53,8 @@ enum Preferences {
             defaults.set(player.preventsClipping, forKey: preventsClippingKey)
             defaults.set(player.appVolume, forKey: appVolumeKey)
             defaults.set(player.sendsDSDAsDoP, forKey: sendsDSDAsDoPKey)
+            defaults.set(player.crossfadeDuration, forKey: crossfadeDurationKey)
+            defaults.set(player.crossfadeMatchesBeats, forKey: crossfadeMatchesBeatsKey)
         } onChange: {
             Task { @MainActor in saveDSPSettings(of: player) }
         }
