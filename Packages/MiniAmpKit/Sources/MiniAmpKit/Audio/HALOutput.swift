@@ -1,3 +1,4 @@
+import Accelerate
 import AudioToolbox
 import AVFoundation
 import CoreAudio
@@ -23,6 +24,10 @@ final class HALOutput: @unchecked Sendable {
     private(set) var isRunning = false
     /// Set from HAL notification threads when the bound device is gone; read on the I/O thread.
     private let muted = Atomic<Bool>(false)
+    /// The app volume's gain (Float bits), set from any thread. 1 leaves samples untouched.
+    private let gainBits = Atomic<UInt32>(Float(1).bitPattern)
+    /// The gain the last render ended at; only the I/O thread touches it.
+    private var appliedGain: Float = 1
     /// Set while the engine behind the render block is rebuilt: the I/O thread outputs silence
     /// instead of rendering, and the device keeps running. `rendering` lets `hold` wait out a
     /// render already in progress.
@@ -178,7 +183,12 @@ final class HALOutput: @unchecked Sendable {
                 if Self.verifyDeviceOnRender.load(ordering: .relaxed), currentDevice != boundDevice.load(ordering: .relaxed) {
                     Self.misdirectedRenders.add(1, ordering: .relaxed)
                 }
-                if let render, render(frames, data) { return }
+                if let render, render(frames, data) {
+                    let target = Float(bitPattern: gainBits.load(ordering: .relaxed))
+                    Self.applyGain(from: appliedGain, to: target, data)
+                    appliedGain = target
+                    return
+                }
             }
         }
         // Muted, held, no data, or a render error: output silence rather than whatever was in the buffers.
@@ -186,6 +196,31 @@ final class HALOutput: @unchecked Sendable {
             if let bytes = buffer.mData { memset(bytes, 0, Int(buffer.mDataByteSize)) }
         }
         flags.pointee.insert(.unitRenderAction_OutputIsSilence)
+    }
+
+    /// Scales what's rendered from now on: the app volume. Takes effect on the next render,
+    /// ramped over it so a change doesn't click.
+    func setGain(_ gain: Float) {
+        gainBits.store(min(max(gain, 0), 1).bitPattern, ordering: .relaxed)
+    }
+
+    /// Multiplies Float32 buffers by a gain going linearly from `start` to `end` across them.
+    /// At 1 throughout, nothing is touched: the samples stay bit-for-bit what was rendered.
+    static func applyGain(from start: Float, to end: Float, _ data: UnsafeMutablePointer<AudioBufferList>) {
+        guard start != 1 || end != 1 else { return }
+        for buffer in UnsafeMutableAudioBufferListPointer(data) {
+            guard let samples = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
+            let count = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
+            guard count > 0 else { continue }
+            if start == end {
+                var gain = end
+                vDSP_vsmul(samples, 1, &gain, samples, 1, vDSP_Length(count))
+            } else {
+                var gain = start
+                var step = (end - start) / Float(count)
+                vDSP_vrampmul(samples, 1, &gain, &step, samples, 1, vDSP_Length(count))
+            }
+        }
     }
 
     private func set<T>(_ property: AudioUnitPropertyID, _ value: T, scope: AudioUnitScope = kAudioUnitScope_Global,

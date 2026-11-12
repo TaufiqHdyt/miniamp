@@ -17,7 +17,9 @@ public final class Player {
 
     public internal(set) var state: State = .stopped
     public internal(set) var queue = PlayQueue<URL>()
-    public internal(set) var signalPath: SignalPath?
+    public internal(set) var signalPath: SignalPath? {
+        didSet { if let path = signalPath, path.appVolume != appVolume { signalPath?.appVolume = appVolume } }
+    }
     /// Set when the device couldn't be configured for the file; playback continues regardless.
     public internal(set) var deviceWarning: String?
     /// The playhead for display: it changes when the whole second does (and on seek, start,
@@ -49,6 +51,26 @@ public final class Player {
     public private(set) var availableDevices: [AudioDevice] = []
     /// The output device's own volume, 0...1; nil when it has no volume control.
     public private(set) var volume: Float?
+
+    /// miniamp's own volume, 0...1, as in Apple Music: separate from the device's (`volume`),
+    /// which other apps share. Below 1 the samples are scaled down before they reach the
+    /// device, so playback isn't bit-perfect; at 1 they're untouched. Changes apply at once,
+    /// ramped over one I/O buffer.
+    public var appVolume: Float = 1 {
+        didSet {
+            // (Setting it here doesn't call didSet again, so this goes on with the clamped value.)
+            if !(0...1).contains(appVolume) { appVolume = appVolume.isNaN ? 1 : min(max(appVolume, 0), 1) }
+            guard oldValue != appVolume else { return }
+            output?.setGain(Self.gain(forVolume: appVolume))
+            signalPath?.appVolume = appVolume
+        }
+    }
+
+    /// The gain for a volume slider position: a cubic taper, close to how loudness is heard
+    /// (75% is about -7.5 dB, 50% about -18 dB, 25% about -36 dB).
+    public nonisolated static func gain(forVolume volume: Float) -> Float {
+        volume >= 1 ? 1 : max(volume, 0) * max(volume, 0) * max(volume, 0)
+    }
 
     /// The device to play to, by UID. Nil follows the system default output.
     public var preferredDeviceUID: String? {

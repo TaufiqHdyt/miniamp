@@ -78,12 +78,12 @@ struct AppCommands: Commands {
                 ForEach(ReplayGain.Mode.allCases, id: \.self) { Text($0.label).tag($0) }
             }
             Divider()
-            Button("Volume Up") { if let v = player.volume { player.setVolume(min(v + 0.0625, 1)) } }
+            Button("Volume Up") { player.appVolume += 0.0625 }
                 .keyboardShortcut(.upArrow)
-                .disabled(player.volume == nil)
-            Button("Volume Down") { if let v = player.volume { player.setVolume(max(v - 0.0625, 0)) } }
+                .disabled(player.appVolume >= 1)
+            Button("Volume Down") { player.appVolume -= 0.0625 }
                 .keyboardShortcut(.downArrow)
-                .disabled(player.volume == nil)
+                .disabled(player.appVolume <= 0)
         }
     }
 }

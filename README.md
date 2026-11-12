@@ -40,7 +40,7 @@ App/Sources/              SwiftUI app target (thin; UI only)
   App/                    Entry point, shared state, menus, settings, preferences
   Library/                Main window, sidebar, browsing, the track table, Get Info, listening stats, duplicates
   NowPlaying/             The inspector: Up Next (with the song playing) and Lyrics
-  Player/                 Player bar, menu bar mini player, seek bar, volume, output picker, equalizer, Control Center
+  Player/                 Player bar, menu bar mini player, seek bar, app volume, output picker, equalizer, Control Center
   Support/                Artwork, formatting, window visibility, hang logging, the widget's data
 Shared/                   Compiled into the app and the widget: the now-playing snapshot, playback intents
 Widget/                   The Now Playing widget (WidgetKit extension)
@@ -73,3 +73,4 @@ scripts/                  Fixtures, the test library, benchmarks, and `make run`
 - Romanized lyrics use the system's readings for Japanese and Chinese, and transliteration for other scripts, so Korean comes out letter by letter ("salanghae") rather than in Revised Romanization ("saranghae"). Translation uses Apple's on-device Translation; the first time, macOS asks to download the languages.
 - The widget gets what's playing through an app group shared with the app. The group is named after the signing team (`$(TeamIdentifierPrefix)dev.miniamp`); with the ad-hoc signing used for now there's no team, so it's plain `dev.miniamp`, which recent macOS may not grant. If the widget stays on "Not Playing", set a development team in `project.yml`.
 - Duplicates by sound compare fingerprints of each song's first two minutes, so a song that differs only later on (an extended version) still matches. Finding matches in a 10,000-song library takes a few seconds, each time the By Sound list loads. Songs shorter than a few seconds can't be fingerprinted.
+- There are two volumes. The slider in the player bar is miniamp's own, as in Apple Music: below 100% it scales the samples, so playback isn't bit-perfect (the quality icon says so). The device's volume, under the output menu, changes the hardware level and keeps the samples intact.

@@ -20,6 +20,8 @@ public struct SignalPath: Sendable, Equatable {
     public var isExclusive: Bool
     /// What DSP mode does to the samples; nil in bit-perfect mode, where nothing is in the way.
     public var processing: Processing?
+    /// The app volume, 0...1 (see `Player.appVolume`); below 1 the samples are scaled.
+    public var appVolume: Float = 1
 
     /// DSP mode's stage between the player and the output.
     public struct Processing: Sendable, Equatable {
@@ -82,10 +84,13 @@ public struct SignalPath: Sendable, Equatable {
         /// DSP mode: the samples go through EQ and gain on the way. (They may be resampled too;
         /// see `isResampled`.)
         case processed
+        /// The app volume is below 100%, so the samples are scaled down on the way.
+        case volumeScaled(percent: Int)
     }
 
     public var verdict: Verdict {
         if processing != nil { return .processed }
+        if appVolume < 1 { return .volumeScaled(percent: Int((appVolume * 100).rounded())) }
         if isResampled {
             return .resampled(from: fileSampleRate, to: deviceSampleRate)
         }
@@ -118,7 +123,8 @@ public struct SignalPath: Sendable, Equatable {
             ? "RESAMPLED (\(FormatSelection.formatRate(fileSampleRate)) → \(FormatSelection.formatRate(deviceSampleRate)))"
             : "native rate"
         let dsp = processing.map { "; DSP: \($0.description)" } ?? ""
-        return "\(fileDescription) → \(deviceDescription) [\(devicePhysicalFormat)] — \(verdict)\(dsp)"
+        let volume = appVolume < 1 ? "; app volume \(Int((appVolume * 100).rounded()))%" : ""
+        return "\(fileDescription) → \(deviceDescription) [\(devicePhysicalFormat)] — \(verdict)\(dsp)\(volume)"
     }
 }
 

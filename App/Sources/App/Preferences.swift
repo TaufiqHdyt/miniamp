@@ -10,6 +10,7 @@ enum Preferences {
     static let replayGainModeKey = "replayGainMode"
     static let replayGainPreampKey = "replayGainPreamp"
     static let preventsClippingKey = "preventsClipping"
+    static let appVolumeKey = "appVolume"
 
     @MainActor
     static func apply(to player: Player) {
@@ -23,6 +24,7 @@ enum Preferences {
         player.replayGainMode = defaults.string(forKey: replayGainModeKey).flatMap(ReplayGain.Mode.init) ?? .off
         player.replayGainPreamp = defaults.double(forKey: replayGainPreampKey)
         player.preventsClipping = defaults.object(forKey: preventsClippingKey) as? Bool ?? true
+        player.appVolume = (defaults.object(forKey: appVolumeKey) as? NSNumber)?.floatValue ?? 1
         saveDSPSettings(of: player)
     }
 
@@ -33,7 +35,7 @@ enum Preferences {
         UserDefaults.standard.set(uid, forKey: outputDeviceKey)
     }
 
-    /// Saves the DSP settings now and whenever they change, wherever they're changed from.
+    /// Saves the DSP settings and the app volume now and whenever they change, wherever from.
     @MainActor
     private static func saveDSPSettings(of player: Player) {
         withObservationTracking {
@@ -43,6 +45,7 @@ enum Preferences {
             defaults.set(player.replayGainMode.rawValue, forKey: replayGainModeKey)
             defaults.set(player.replayGainPreamp, forKey: replayGainPreampKey)
             defaults.set(player.preventsClipping, forKey: preventsClippingKey)
+            defaults.set(player.appVolume, forKey: appVolumeKey)
         } onChange: {
             Task { @MainActor in saveDSPSettings(of: player) }
         }
