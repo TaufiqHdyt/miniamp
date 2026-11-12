@@ -19,6 +19,7 @@ Other targets:
 | `make doctor`  | Checks that Xcode and XcodeGen are present           |
 | `make project` | Regenerates `MiniAmp.xcodeproj` from `project.yml`   |
 | `make build`   | Builds the app from the command line                 |
+| `make clean`   | Deletes the app's `build/` and the Kit's `.build` (`make clean build` builds from scratch) |
 | `make run`     | Builds, launches the app, and streams its trace logs here (`VERBOSE=1` adds system messages) |
 | `make test`    | Runs the `MiniAmpKit` tests (needs Xcode)            |
 | `make fixtures`| Writes 10 s test tones in every format, plus a mono file, to `Fixtures/` |

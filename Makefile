@@ -1,4 +1,4 @@
-.PHONY: bootstrap doctor project open build run test fixtures ctl bench app-bench library-bench
+.PHONY: bootstrap doctor project open build clean run test fixtures ctl bench app-bench library-bench
 
 bootstrap: doctor
 	brew bundle --file=Brewfile
@@ -19,6 +19,10 @@ open: project
 
 build: project
 	xcodebuild -project MiniAmp.xcodeproj -scheme miniamp -configuration Debug -destination "platform=macOS,arch=$(shell uname -m)" -derivedDataPath build -quiet build
+
+# Removes the app's build and the Kit's (both rebuild from scratch, vendored C/C++ included).
+clean:
+	rm -rf build Packages/MiniAmpKit/.build
 
 test:
 	swift test --package-path Packages/MiniAmpKit
