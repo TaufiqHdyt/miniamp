@@ -103,7 +103,6 @@ This carries most of the technical risk, so it comes first.
 
 Unordered. Pick these up as interest dictates.
 
-- [ ] Network sources: Subsonic and WebDAV clients with a local cache and Keychain credentials
 - [x] Duplicate review, by tags and duration
 - [x] Duplicate review by Chromaprint fingerprints
 - [x] Menu bar mini player and a WidgetKit widget
