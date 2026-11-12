@@ -32,6 +32,9 @@ struct AppCommands: Commands {
                 .keyboardShortcut("i", modifiers: [.command, .option])
             Button(app.isShowing(.lyrics) ? "Hide Lyrics" : "Show Lyrics") { app.toggle(.lyrics) }
                 .keyboardShortcut("l", modifiers: [.command, .option])
+            Button(app.showsFullLyrics ? "Hide Full Lyrics" : "Show Full Lyrics") { app.toggleFullLyrics() }
+                .keyboardShortcut("l", modifiers: [.command, .option, .shift])
+                .disabled(!app.showsFullLyrics && app.currentURL == nil)
             Menu("Lyrics Timing") {
                 Button("Show Lyrics Sooner") { app.adjustLyricsTiming(by: AppState.lyricsStep) }
                     .keyboardShortcut("[", modifiers: [.command, .option])

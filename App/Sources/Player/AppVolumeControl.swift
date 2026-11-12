@@ -149,6 +149,7 @@ struct VolumeButton: View {
         return Button { showsSlider.toggle() } label: {
             Image(systemName: volume <= 0 ? "speaker.slash.fill" : "speaker.wave.3.fill",
                   variableValue: Double(volume))
+                .contentTransition(.symbolEffect(.replace))
                 .frame(width: 22)
         }
         .buttonStyle(.borderless)

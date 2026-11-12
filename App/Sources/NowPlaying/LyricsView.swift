@@ -2,13 +2,17 @@ import MiniAmpKit
 import SwiftUI
 import Translation
 
-/// The Lyrics pane: laid out like Up Next, the song playing first, then its lyrics where the
-/// queue would be. Synced lyrics follow playback, the line being sung kept in view (and, in
-/// word-timed lyrics, its words lit as they're sung); clicking a line plays from there.
+/// A song's lyrics, in the inspector's Lyrics pane or filling the library area.
+///
+/// The pane is laid out like Up Next: the song playing first, then its lyrics where the queue
+/// would be. Full size, the lyrics are big, under the song with the controls beside it.
+/// Synced lyrics follow playback, the line being sung kept in view (and, in word-timed
+/// lyrics, its words lit as they're sung); clicking a line plays from there.
 struct LyricsView<NowPlaying: View>: View {
     let app: AppState
     let url: URL
-    /// The Now Playing row, as Up Next shows it.
+    var style: LyricsStyle = .pane
+    /// The song playing: the Now Playing row in the pane, the heading full size.
     @ViewBuilder let nowPlaying: NowPlaying
 
     @State private var state: LoadState = .loading
@@ -36,31 +40,12 @@ struct LyricsView<NowPlaying: View>: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            List {
-                Section("Now Playing") { nowPlaying }
-                Section {
-                    rows
-                } header: {
-                    HStack {
-                        Text("Lyrics")
-                        Spacer()
-                        if case .found(let found) = state, !found.lyrics.isInstrumental {
-                            if found.lyrics.isSynced { TimingControl(app: app, url: url) }
-                            extrasMenu
-                        }
-                    }
-                } footer: {
-                    if case .found(let found) = state, !found.lyrics.isInstrumental {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(sourceLabel(found.source))
-                            if app.showsLyricsTranslation, !translated.isEmpty { Text("Translated on this Mac") }
-                            if let translationError, app.showsLyricsTranslation { Text(translationError) }
-                        }
-                        .font(.caption).foregroundStyle(.secondary)
-                    }
+            Group {
+                switch style {
+                case .pane: pane
+                case .full: full
                 }
             }
-            .listStyle(.inset)
             .onChange(of: follower?.position.line) { scroll(proxy, animated: true) }
             .onChange(of: state) { scroll(proxy, animated: false) }
         }
@@ -91,6 +76,112 @@ struct LyricsView<NowPlaying: View>: View {
                 translationError = "Couldn't translate: \(error.localizedDescription)"
             }
         }
+    }
+
+    private var pane: some View {
+        List {
+            Section("Now Playing") { nowPlaying }
+            Section {
+                rows
+            } header: {
+                HStack {
+                    Text("Lyrics")
+                    Spacer()
+                    if case .found(let found) = state, !found.lyrics.isInstrumental {
+                        if found.lyrics.isSynced { TimingControl(app: app, url: url) }
+                        extrasMenu
+                    }
+                    if case .found = state {
+                        Button { app.toggleFullLyrics() } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
+                            .buttonStyle(.borderless)
+                            .help("Show the lyrics full size (⇧⌥⌘L)")
+                    }
+                }
+            } footer: {
+                if case .found(let found) = state, !found.lyrics.isInstrumental {
+                    sourceNotes(found).font(.caption)
+                }
+            }
+        }
+        .listStyle(.inset)
+    }
+
+    /// Big lyrics under the song, the controls beside it; the line being sung a third of the
+    /// way down, fading out at the edges.
+    private var full: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                nowPlaying
+                Spacer(minLength: 12)
+                fullControls
+            }
+            .padding(.horizontal, 32)
+            .padding(.top, 20)
+            .padding(.bottom, 8)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 22) {
+                    fullRows
+                }
+                .frame(maxWidth: 760, alignment: .leading)
+                .padding(.horizontal, 48)
+                .padding(.top, 40)
+                .padding(.bottom, 280)
+                .frame(maxWidth: .infinity)
+            }
+            .scrollIndicators(.never)
+            .mask {
+                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.06),
+                                       .init(color: .black, location: 0.9), .init(color: .clear, location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+        }
+    }
+
+    private var fullControls: some View {
+        HStack(spacing: 10) {
+            if case .found(let found) = state, !found.lyrics.isInstrumental {
+                if found.lyrics.isSynced { TimingControl(app: app, url: url) }
+                extrasMenu
+                Divider().frame(height: 14)
+            }
+            Button { app.showsFullLyrics = false } label: { Image(systemName: "arrow.down.right.and.arrow.up.left") }
+                .buttonStyle(.borderless)
+                .keyboardShortcut(.cancelAction)
+                .help("Back to the library (Esc)")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.regularMaterial, in: Capsule())
+    }
+
+    @ViewBuilder
+    private var fullRows: some View {
+        switch state {
+        case .found(let found) where !found.lyrics.isInstrumental:
+            let synced = found.lyrics.isSynced
+            ForEach(found.lyrics.lines) { line in
+                LyricLine(line: line, position: synced ? follower?.position ?? LyricsPosition() : nil,
+                          extras: extras(for: line), style: .full)
+                    .id(line.id)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if synced, let time = line.time, let follower { app.player.seek(to: follower.playbackTime(for: time)) }
+                    }
+            }
+            sourceNotes(found).font(.callout).padding(.top, 24)
+        default:
+            rows.font(.title3)
+        }
+    }
+
+    /// Where the lyrics came from, and how the translation went.
+    private func sourceNotes(_ found: FoundLyrics) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(sourceLabel(found.source))
+            if app.showsLyricsTranslation, !translated.isEmpty { Text("Translated on this Mac") }
+            if let translationError, app.showsLyricsTranslation { Text(translationError) }
+        }
+        .foregroundStyle(.secondary)
     }
 
     /// Romanization and translation, shown under each line.
@@ -176,7 +267,7 @@ struct LyricsView<NowPlaying: View>: View {
         case .found(let found):
             if found.lyrics.isSynced, let follower {
                 ForEach(found.lyrics.lines) { line in
-                    LyricLine(line: line, position: follower.position, extras: extras(for: line))
+                    LyricLine(line: line, position: follower.position, extras: extras(for: line), style: .pane)
                         .contentShape(Rectangle())
                         .onTapGesture { if let time = line.time { app.player.seek(to: follower.playbackTime(for: time)) } }
                         .listRowSeparator(.hidden)
@@ -301,24 +392,37 @@ private struct TimingControl: View {
     }
 }
 
+enum LyricsStyle { case pane, full }
+
 private struct LyricLine: View {
     let line: Lyrics.Line
-    let position: LyricsPosition
+    /// Where playback is; nil for unsynced lyrics, every line shown alike.
+    let position: LyricsPosition?
     /// Romanization and translation, under the line.
     var extras: [String] = []
+    var style: LyricsStyle
 
     var body: some View {
-        let current = position.line == line.id
-        VStack(alignment: .leading, spacing: 2) {
-            text(current: current).font(.title3.weight(current ? .bold : .regular))
+        let current = position == nil || position?.line == line.id
+        VStack(alignment: .leading, spacing: style == .full ? 4 : 2) {
+            text(current: current).font(lineFont(current: current))
             ForEach(extras, id: \.self) { extra in
-                Text(verbatim: extra).font(.callout).foregroundStyle(current ? .primary : .secondary)
+                Text(verbatim: extra).font(style == .full ? .title3.weight(.semibold) : .callout)
+                    .foregroundStyle(current ? .primary : .secondary)
             }
         }
-        .opacity(current || position.line.map { line.id > $0 } ?? true ? 1 : 0.55)
+        .opacity(current || position?.line.map { line.id > $0 } ?? true ? 1 : (style == .full ? 0.4 : 0.55))
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.easeOut(duration: 0.2), value: current)
         .help(line.time.map { "Play from \(TimeFormat.minutes(Int($0.components.seconds)))" } ?? "")
+    }
+
+    private func lineFont(current: Bool) -> Font {
+        switch style {
+        case .pane: .title3.weight(current ? .bold : .regular)
+        // As in Apple Music: every line bold, the one being sung lit.
+        case .full: .system(size: 30, weight: .bold)
+        }
     }
 
     @ViewBuilder
@@ -326,10 +430,10 @@ private struct LyricLine: View {
         Group {
             if line.text.isEmpty {
                 Text("♪").foregroundStyle(current ? .primary : .tertiary)
-            } else if current, !line.words.isEmpty {
+            } else if current, position != nil, !line.words.isEmpty {
                 // Sung words lit; the rest still to come.
                 line.words.enumerated().reduce(Text(verbatim: "")) { text, item in
-                    let sung = item.offset <= (position.word ?? -1)
+                    let sung = item.offset <= (position?.word ?? -1)
                     return Text("\(text)\(Text(verbatim: item.element.text).foregroundStyle(sung ? .primary : .secondary))")
                 }
             } else {

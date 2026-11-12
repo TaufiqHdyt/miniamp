@@ -42,6 +42,10 @@ final class AppState {
         didSet { UserDefaults.standard.set(inspectorPane.rawValue, forKey: "inspectorPane") }
     }
 
+    /// The lyrics filling the library area, big, on the playing song's cover. Not remembered:
+    /// each launch opens on the library.
+    var showsFullLyrics = false
+
     /// Ask LRCLIB for lyrics when a song has none of its own. Off until turned on: it sends
     /// what's playing (title, artist, album, duration) to lrclib.net.
     var looksUpLyricsOnline = UserDefaults.standard.bool(forKey: "looksUpLyricsOnline") {
@@ -215,8 +219,21 @@ final class AppState {
         if isShowing(pane) {
             showsNowPlaying = false
         } else {
+            // Lyrics in the inspector take over from the full-size ones.
+            if pane == .lyrics { showsFullLyrics = false }
             inspectorPane = pane
             showsNowPlaying = true
+        }
+    }
+
+    /// Opens the full-size lyrics (while something is playing) or goes back to the library.
+    /// The inspector moves off Lyrics meanwhile: the same lyrics twice would be one too many.
+    func toggleFullLyrics() {
+        if showsFullLyrics {
+            showsFullLyrics = false
+        } else if player.queue.current != nil {
+            if inspectorPane == .lyrics { inspectorPane = .upNext }
+            showsFullLyrics = true
         }
     }
 

@@ -120,7 +120,7 @@ struct NowPlayingView: View {
 }
 
 /// A queue entry: cover, title over artist and album, and its length. The song playing is
-/// marked with a speaker and its format.
+/// marked with the playing bars and its format.
 private struct QueueRow: View {
     let entry: QueueEntry
     let artwork: ArtworkCache?
@@ -142,8 +142,7 @@ private struct QueueRow: View {
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 1) {
                 if isCurrent {
-                    Image(systemName: state == .playing ? "speaker.wave.2.fill" : "speaker.fill")
-                        .foregroundStyle(Color.accentColor)
+                    PlayingBars(isPlaying: state == .playing)
                         .help(state == .playing ? "Playing" : "Paused")
                 } else if let ms = entry.durationMs, ms > 0 {
                     Text(TimeFormat.minutes(ms / 1000)).monospacedDigit()

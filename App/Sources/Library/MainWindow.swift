@@ -49,6 +49,10 @@ struct MainWindow: View {
             Text(app.error ?? "")
         }
         .onChange(of: app.library?.revision) { app.libraryChanged() }
+        // Anything chosen in the sidebar, or searched for, goes back from the full-size lyrics.
+        .onChange(of: selection) { app.showsFullLyrics = false }
+        .onChange(of: app.searchText) { if app.isSearching { app.showsFullLyrics = false } }
+        .onChange(of: app.player.queue.current == nil) { if app.player.queue.current == nil { app.showsFullLyrics = false } }
         .onChange(of: app.sidebarRequest) {
             guard let item = app.sidebarRequest else { return }
             app.searchText = ""
@@ -65,7 +69,9 @@ struct MainWindow: View {
 
     @ViewBuilder
     private var detail: some View {
-        if let library = app.library, app.isSearching {
+        if app.showsFullLyrics, let url = app.player.queue.current {
+            FullLyricsView(app: app, url: url)
+        } else if let library = app.library, app.isSearching {
             SearchResultsView(app: app, library: library, query: app.searchText)
         } else if let library = app.library {
             switch selection {

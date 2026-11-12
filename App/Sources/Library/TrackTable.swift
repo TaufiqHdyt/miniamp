@@ -128,7 +128,7 @@ struct TrackTable: NSViewRepresentable {
                 let rows = IndexSet(tracks.indices.filter { selected.contains(tracks[$0].id) })
                 if rows != table.selectedRowIndexes { table.selectRowIndexes(rows, byExtendingSelection: false) }
             } else {
-                // Only the rows whose speaker or download state changed.
+                // Only the rows whose playing bars or download state changed.
                 var changed = IndexSet()
                 if playing != self.playing || isPlaying != self.isPlaying {
                     for path in [self.playing, playing].compactMap({ $0 }) { changed.formUnion(rows(at: path)) }
@@ -459,7 +459,7 @@ struct TrackTable: NSViewRepresentable {
     }
 }
 
-/// One cell: a text field, plus a speaker (title), a cloud, or a spinner (quality) when needed.
+/// One cell: a text field, plus the playing bars, a cloud, or a spinner (quality) when needed.
 ///
 /// Laid out by frame, not Auto Layout: a screenful of constraint-based cells took ~40 ms to
 /// create and as long again to solve.
@@ -467,6 +467,8 @@ private final class TrackCell: NSTableCellView {
     private let label = NSTextField(labelWithString: "")
     private let icon = NSImageView()
     private var spinner: NSProgressIndicator?
+    /// The playing column's bars, made the first time this cell shows the song playing.
+    private var bars: PlayingBarsView?
     private var showsIcon = false
 
     private let column: TrackColumn
@@ -496,6 +498,8 @@ private final class TrackCell: NSTableCellView {
             let side: CGFloat = 14
             icon.frame = NSRect(x: ((bounds.width - side) / 2).rounded(), y: ((bounds.height - side) / 2).rounded(),
                                 width: side, height: side)
+            bars?.frame = NSRect(x: ((bounds.width - side) / 2).rounded(), y: ((bounds.height - 12) / 2).rounded(),
+                                 width: side, height: 12)
             label.frame = .zero
             return
         }
@@ -519,9 +523,16 @@ private final class TrackCell: NSTableCellView {
         switch column {
         case .playing:
             if isCurrent {
-                symbol = isPlaying ? "speaker.wave.2.fill" : "speaker.fill"
                 help = isPlaying ? "Now playing" : "Paused"
+                if bars == nil {
+                    let bars = PlayingBarsView()
+                    addSubview(bars)
+                    self.bars = bars
+                    needsLayout = true
+                }
             }
+            bars?.isHidden = !isCurrent
+            bars?.isPlaying = isCurrent && isPlaying
         case .quality:
             if isWaiting {
                 text = "Downloading…"

@@ -100,25 +100,40 @@ private struct NowPlayingSummary: View {
 
 struct TransportButtons: View {
     let app: AppState
+    /// Clicks, each bouncing its arrows as in Apple Music.
+    @State private var previousClicks = 0
+    @State private var nextClicks = 0
 
     var body: some View {
         let player = app.player
         HStack(spacing: 18) {
             Toggle(isOn: Binding(get: { player.isShuffled }, set: { player.setShuffle($0) })) {
                 Image(systemName: "shuffle")
+                    .symbolEffect(.bounce, value: player.isShuffled)
             }
             .toggleStyle(.button)
             .help("Shuffle")
-            Button { app.perform { try await player.previous() } } label: { Image(systemName: "backward.fill") }
+            Button {
+                previousClicks += 1
+                app.perform { try await player.previous() }
+            } label: {
+                Image(systemName: "backward.fill").symbolEffect(.bounce.down, value: previousClicks)
+            }
                 .help("Previous")
             Button { app.perform { try await player.togglePlayPause() } } label: {
                 Image(systemName: player.state == .playing ? "pause.fill" : "play.fill")
+                    .contentTransition(.symbolEffect(.replace))
                     .font(.title2)
                     .frame(width: 24)
             }
             .help(player.state == .playing ? "Pause" : "Play")
             .disabled(player.queue.isEmpty)
-            Button { app.perform { try await player.next() } } label: { Image(systemName: "forward.fill") }
+            Button {
+                nextClicks += 1
+                app.perform { try await player.next() }
+            } label: {
+                Image(systemName: "forward.fill").symbolEffect(.bounce.down, value: nextClicks)
+            }
                 .help("Next")
             RepeatButton(player: player)
         }
@@ -135,6 +150,8 @@ struct RepeatButton: View {
         let mode = player.repeatMode
         Toggle(isOn: Binding(get: { mode != .off }, set: { _ in player.repeatMode = mode.next })) {
             Image(systemName: mode == .one ? "repeat.1" : "repeat")
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: mode != .off)
         }
         .toggleStyle(.button)
         .help(mode.help)
@@ -181,6 +198,7 @@ private struct PaneButton: View {
         }
         Toggle(isOn: Binding(get: { app.isShowing(pane) }, set: { _ in app.toggle(pane) })) {
             Label(name, systemImage: symbol)
+                .symbolEffect(.bounce, value: app.isShowing(pane))
         }
         .toggleStyle(.button)
         .buttonStyle(.borderless)

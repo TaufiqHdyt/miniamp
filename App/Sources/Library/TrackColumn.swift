@@ -3,7 +3,7 @@ import MiniAmpKit
 
 /// The table's columns. The raw value is the column identifier and the sort key.
 enum TrackColumn: String, CaseIterable {
-    /// The now-playing speaker. Always first and always shown; it has no header and doesn't sort.
+    /// The now-playing bars. Always first and always shown; it has no header and doesn't sort.
     case playing
     case number, title, artist, album, year, genre, time, quality, added
 
