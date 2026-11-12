@@ -1,5 +1,6 @@
 import Accelerate
 import AVFoundation
+import os
 
 /// Crossfading from one track into the next, in DSP mode.
 ///
@@ -34,20 +35,21 @@ enum Crossfade {
 
     // MARK: Planning
 
-    /// Decides the fade from the outgoing track's last stretch (`tail`) and the incoming one's
-    /// first (`head`), both mono. Frames in the plan are indexes into those arrays.
-    static func plan(tail: [Float], head: [Float], sampleRate: Double, duration: Double, matchesBeats: Bool) -> Plan {
-        let end = lastAudible(tail, sampleRate: sampleRate) ?? 0
-        let start = firstAudible(head, sampleRate: sampleRate) ?? 0
-        var length = min(Int(duration * sampleRate), end, head.count - start)
+    /// Decides the fade from the energy of the outgoing track's last stretch (`tail`) and the
+    /// incoming one's first (`head`). Frames in the plan count from the start of each stretch.
+    static func plan(tail: Envelope, head: Envelope, sampleRate: Double, duration: Double, matchesBeats: Bool) -> Plan {
+        let end = lastAudible(tail) ?? 0
+        let start = firstAudible(head) ?? 0
+        var length = min(Int(duration * sampleRate), end, head.frames - start)
         var plan = Plan(outStart: AVAudioFramePosition(end - max(length, 0)), inStart: AVAudioFramePosition(start),
                         length: AVAudioFramePosition(max(length, 0)), isBeatMatched: false)
-        guard matchesBeats, length > 0, let beats = BeatTracker.analyze(Array(tail[..<end]), sampleRate: sampleRate)
+        guard matchesBeats, length > 0,
+              let beats = BeatTracker.analyze(tail.prefix(hops: end / tail.hop), sampleRate: sampleRate)
         else { return plan }
 
         // Whole beats that fit (a twentieth of a beat over is fine: the tempo is an estimate),
         // rounded down to whole bars of four when that loses at most a quarter of them.
-        let room = min(end, head.count - start)
+        let room = min(end, head.frames - start)
         var count = Int(Double(length) / beats.period + 0.05)
         if count >= 8 { count -= count % 4 }
         while count > 0, Double(count) * beats.period > Double(room) { count -= count > 4 ? 4 : 1 }
@@ -59,49 +61,41 @@ enum Crossfade {
         plan.isBeatMatched = true
 
         // Bring the incoming track in on its first beat, if it has a clear one soon enough.
-        let window = Array(head[start..<min(head.count, start + Int((maximumLeadIn + 8) * sampleRate))])
+        let window = head.slice(fromHop: start / head.hop, hops: Int((maximumLeadIn + 8) * Envelope.hopsPerSecond))
         if let incoming = BeatTracker.analyze(window, sampleRate: sampleRate),
-           let beat = incoming.positions(before: Double(window.count)).first(where: { $0 >= 0 }),
+           let beat = incoming.positions(before: Double(window.frames)).first(where: { $0 >= 0 }),
            beat <= maximumLeadIn * sampleRate,
-           start + Int(beat.rounded()) + length <= head.count {
+           start + Int(beat.rounded()) + length <= head.frames {
             plan.inStart = AVAudioFramePosition(start + Int(beat.rounded()))
         }
-        if Int(plan.inStart) + length > head.count { plan.inStart = AVAudioFramePosition(max(head.count - length, 0)) }
+        if Int(plan.inStart) + length > head.frames { plan.inStart = AVAudioFramePosition(max(head.frames - length, 0)) }
         return plan
     }
 
+    /// The same from samples (mono), for tests.
+    static func plan(tail: [Float], head: [Float], sampleRate: Double, duration: Double, matchesBeats: Bool) -> Plan {
+        plan(tail: Envelope(samples: tail, sampleRate: sampleRate), head: Envelope(samples: head, sampleRate: sampleRate),
+             sampleRate: sampleRate, duration: duration, matchesBeats: matchesBeats)
+    }
+
     /// The end of the last 10 ms above the silence threshold, or nil when it's all silence.
-    static func lastAudible(_ samples: [Float], sampleRate: Double) -> Int? {
-        let hop = max(Int(sampleRate / 100), 1)
-        var block = (samples.count - 1) / hop
-        while block >= 0 {
-            if isAudible(samples, from: block * hop, count: min(hop, samples.count - block * hop)) {
-                return min((block + 1) * hop, samples.count)
-            }
-            block -= 1
-        }
-        return nil
+    static func lastAudible(_ envelope: Envelope) -> Int? {
+        guard let hop = envelope.meanSquares.lastIndex(where: isAudible) else { return nil }
+        return min((hop + 1) * envelope.hop, envelope.frames)
     }
 
     /// The start of the first 10 ms above the silence threshold, less 10 ms for a soft attack.
-    static func firstAudible(_ samples: [Float], sampleRate: Double) -> Int? {
-        let hop = max(Int(sampleRate / 100), 1)
-        var block = 0
-        while block * hop < samples.count {
-            if isAudible(samples, from: block * hop, count: min(hop, samples.count - block * hop)) {
-                return max((block - 1) * hop, 0)
-            }
-            block += 1
-        }
-        return nil
+    static func firstAudible(_ envelope: Envelope) -> Int? {
+        guard let hop = envelope.meanSquares.firstIndex(where: isAudible) else { return nil }
+        return max(hop - 1, 0) * envelope.hop
     }
 
-    private static func isAudible(_ samples: [Float], from start: Int, count: Int) -> Bool {
-        guard count > 0 else { return false }
-        var squares: Float = 0
-        samples.withUnsafeBufferPointer { vDSP_svesq($0.baseAddress! + start, 1, &squares, vDSP_Length(count)) }
-        let rms = (squares / Float(count)).squareRoot()
-        return 20 * log10(max(rms, 1e-10)) > silenceThreshold
+    static func firstAudible(_ samples: [Float], sampleRate: Double) -> Int? {
+        firstAudible(Envelope(samples: samples, sampleRate: sampleRate))
+    }
+
+    private static func isAudible(_ meanSquare: Float) -> Bool {
+        10 * log10(max(meanSquare, 1e-20)) > silenceThreshold
     }
 
     // MARK: Mixing
@@ -110,24 +104,61 @@ enum Crossfade {
     /// track's analysed stretch begins; the plan's outgoing frame is absolute in that track.
     /// `outgoingGain` scales the outgoing track in the mix: the incoming track's ReplayGain
     /// takes over at the fade's start, so this makes up the difference.
+    ///
+    /// The analysis needs only each 10 ms's energy, so the tracks stream through one small
+    /// buffer, and only the overlap itself is read in full, straight into the fade. (Decoding
+    /// both stretches whole took about 90 MB at 96 kHz, which malloc then kept.)
     static func prepare(outgoing: URL, from tailStart: AVAudioFramePosition, incoming: URL,
                         duration: Double, matchesBeats: Bool, outgoingGain: Float) throws -> Prepared? {
+        // An interval in Instruments' Points of Interest.
+        let signposter = OSSignposter(subsystem: "dev.miniamp", category: .pointsOfInterest)
+        let interval = signposter.beginInterval("Crossfade", "into \(incoming.lastPathComponent, privacy: .public)")
+        defer { signposter.endInterval("Crossfade", interval) }
         let a = try AVAudioFile(forReading: outgoing)
         let b = try AVAudioFile(forReading: incoming)
         let format = a.processingFormat
         guard format == b.processingFormat, format.commonFormat == .pcmFormatFloat32, !format.isInterleaved,
               tailStart < a.length else { return nil }
         let rate = format.sampleRate
-        a.framePosition = tailStart
-        let tail = try read(a, frames: a.length - tailStart)
-        let head = try read(b, frames: min(b.length, AVAudioFramePosition((duration + maximumLeadIn + 10) * rate)))
+        let hop = Envelope.hop(for: rate)
+        guard let chunk = mappedBuffer(format: format, frames: AVAudioFrameCount(hop * 100)) else { return nil }
 
-        let plan = Self.plan(tail: mono(tail), head: mono(head), sampleRate: rate, duration: duration,
-                             matchesBeats: matchesBeats)
-        guard plan.length > 0, let mixed = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(plan.length))
+        let tail = try Envelope(reading: a, from: tailStart, frames: a.length - tailStart, hop: hop, through: chunk)
+        let headFrames = min(b.length, AVAudioFramePosition((duration + maximumLeadIn + 10) * rate))
+        let head = try Envelope(reading: b, from: 0, frames: headFrames, hop: hop, through: chunk)
+        let plan = Self.plan(tail: tail, head: head, sampleRate: rate, duration: duration, matchesBeats: matchesBeats)
+        guard plan.length > 0, let mixed = mappedBuffer(format: format, frames: AVAudioFrameCount(plan.length))
         else { return nil }
-        mixed.frameLength = AVAudioFrameCount(plan.length)
-        mix(tail, from: Int(plan.outStart), head, from: Int(plan.inStart), into: mixed, outgoingGain: outgoingGain)
+
+        // The outgoing track's part, read into the fade itself and turned down; then the
+        // incoming track's, a chunk at a time, turned up and added in.
+        // (In chunks: AVAudioFile decodes a big read through a temporary buffer as big.)
+        let n = Int(plan.length)
+        a.framePosition = tailStart + plan.outStart
+        mixed.frameLength = AVAudioFrameCount(n)
+        var copied = 0
+        while copied < n {
+            try a.read(into: chunk, frameCount: AVAudioFrameCount(min(Int(chunk.frameCapacity), n - copied)))
+            let frames = Int(chunk.frameLength)
+            guard frames > 0 else { return nil }
+            for ch in 0..<Int(format.channelCount) {
+                memcpy(mixed.floatChannelData![ch] + copied, chunk.floatChannelData![ch], frames * MemoryLayout<Float>.size)
+            }
+            copied += frames
+        }
+        for offset in stride(from: 0, to: n, by: Int(chunk.frameCapacity)) {
+            applyRamp(down: true, gain: outgoingGain, to: mixed, at: offset,
+                      frames: min(Int(chunk.frameCapacity), n - offset), of: n, adding: nil)
+        }
+        b.framePosition = plan.inStart
+        var done = 0
+        while done < n {
+            try b.read(into: chunk, frameCount: AVAudioFrameCount(min(Int(chunk.frameCapacity), n - done)))
+            let frames = Int(chunk.frameLength)
+            guard frames > 0 else { break }
+            applyRamp(down: false, gain: 1, to: mixed, at: done, frames: frames, of: n, adding: chunk)
+            done += frames
+        }
         var absolute = plan
         absolute.outStart += tailStart
         return Prepared(plan: absolute, buffer: mixed)
@@ -139,34 +170,148 @@ enum Crossfade {
                     into out: AVAudioPCMBuffer, outgoingGain: Float) {
         let n = Int(out.frameLength)
         guard n > 0 else { return }
-        var down = [Float](repeating: 0, count: n), up = [Float](repeating: 0, count: n)
-        for i in 0..<n {
-            let t = (Float(i) + 0.5) / Float(n) * .pi / 2
-            down[i] = cos(t) * outgoingGain
-            up[i] = sin(t)
+        for ch in 0..<Int(out.format.channelCount) {
+            memcpy(out.floatChannelData![ch], a.floatChannelData![ch] + aStart, n * MemoryLayout<Float>.size)
+        }
+        applyRamp(down: true, gain: outgoingGain, to: out, at: 0, frames: n, of: n, adding: nil)
+        guard let source = AVAudioPCMBuffer(pcmFormat: b.format, frameCapacity: AVAudioFrameCount(n)) else { return }
+        source.frameLength = AVAudioFrameCount(n)
+        for ch in 0..<Int(b.format.channelCount) {
+            memcpy(source.floatChannelData![ch], b.floatChannelData![ch] + bStart, n * MemoryLayout<Float>.size)
+        }
+        applyRamp(down: false, gain: 1, to: out, at: 0, frames: n, of: n, adding: source)
+    }
+
+    /// Frames `offset ..< offset + frames` of a fade `total` long: scales `out` in place by the
+    /// falling gain (`down`), or adds `source` (from its first frame) times the rising one.
+    private static func applyRamp(down: Bool, gain: Float, to out: AVAudioPCMBuffer, at offset: Int, frames: Int,
+                                  of total: Int, adding source: AVAudioPCMBuffer?) {
+        guard frames > 0 else { return }
+        var ramp = [Float](repeating: 0, count: frames)
+        var first = (Float(offset) + 0.5) / Float(total) * .pi / 2, step = Float.pi / 2 / Float(total)
+        vDSP_vramp(&first, &step, &ramp, 1, vDSP_Length(frames))
+        var count = Int32(frames)
+        if down { vvcosf(&ramp, ramp, &count) } else { vvsinf(&ramp, ramp, &count) }
+        if gain != 1 {
+            var g = gain
+            vDSP_vsmul(ramp, 1, &g, &ramp, 1, vDSP_Length(frames))
         }
         for ch in 0..<Int(out.format.channelCount) {
-            let x = a.floatChannelData![ch] + aStart, y = b.floatChannelData![ch] + bStart, z = out.floatChannelData![ch]
-            vDSP_vmul(x, 1, down, 1, z, 1, vDSP_Length(n))
-            vDSP_vma(y, 1, up, 1, z, 1, z, 1, vDSP_Length(n))
+            let z = out.floatChannelData![ch] + offset
+            if let source {
+                vDSP_vma(source.floatChannelData![ch], 1, ramp, 1, z, 1, z, 1, vDSP_Length(frames))
+            } else {
+                vDSP_vmul(z, 1, ramp, 1, z, 1, vDSP_Length(frames))
+            }
         }
     }
 
-    private static func read(_ file: AVAudioFile, frames: AVAudioFramePosition) throws -> AVAudioPCMBuffer {
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(max(frames, 1)))
-        else { throw CoreAudioError(status: kAudio_MemFullError, operation: "Crossfade buffer") }
-        try file.read(into: buffer, frameCount: AVAudioFrameCount(max(frames, 0)))
+    /// A buffer in memory of its own, given back to the system as soon as it's freed. From
+    /// malloc, a fade's megabytes would stay with the app after it had played.
+    static func mappedBuffer(format: AVAudioFormat, frames: AVAudioFrameCount) -> AVAudioPCMBuffer? {
+        let channels = Int(format.channelCount)
+        let bytesPerChannel = Int(frames) * MemoryLayout<Float>.size
+        let size = max(bytesPerChannel * channels, 1)
+        guard channels > 0, !format.isInterleaved, format.commonFormat == .pcmFormatFloat32,
+              let memory = mmap(nil, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0),
+              memory != MAP_FAILED else { return nil }
+        let list = AudioBufferList.allocate(maximumBuffers: channels)
+        for ch in 0..<channels {
+            list[ch] = AudioBuffer(mNumberChannels: 1, mDataByteSize: UInt32(bytesPerChannel),
+                                   mData: memory + ch * bytesPerChannel)
+        }
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: list.unsafePointer) { _ in
+            munmap(memory, size)
+            free(list.unsafeMutablePointer)
+        }
+        if buffer == nil {
+            munmap(memory, size)
+            free(list.unsafeMutablePointer)
+        }
+        buffer?.frameLength = 0
         return buffer
     }
+}
 
-    /// The channels averaged, for analysis.
-    static func mono(_ buffer: AVAudioPCMBuffer) -> [Float] {
-        let n = Int(buffer.frameLength), channels = Int(buffer.format.channelCount)
-        var out = [Float](repeating: 0, count: n)
-        guard n > 0, channels > 0, let data = buffer.floatChannelData else { return out }
-        for ch in 0..<channels { vDSP_vadd(out, 1, data[ch], 1, &out, 1, vDSP_Length(n)) }
-        var scale = 1 / Float(channels)
-        vDSP_vsmul(out, 1, &scale, &out, 1, vDSP_Length(n))
+/// How loud each 10 ms of a stretch of audio is: what the silence detection and the beat
+/// tracker work from.
+struct Envelope: Sendable {
+    static let hopsPerSecond = 100.0
+
+    /// Frames per 10 ms.
+    let hop: Int
+    /// The mean square of each hop's samples, over every channel.
+    private(set) var meanSquares: [Float] = []
+    /// Frames covered (the last hop may be short).
+    private(set) var frames = 0
+    private var partialSum: Float = 0
+    private var partialCount = 0
+
+    static func hop(for sampleRate: Double) -> Int { max(Int(sampleRate / hopsPerSecond), 1) }
+
+    init(hop: Int) {
+        self.hop = hop
+    }
+
+    init(samples: [Float], sampleRate: Double) {
+        hop = Self.hop(for: sampleRate)
+        samples.withUnsafeBufferPointer { if let base = $0.baseAddress { append([base], frames: samples.count) } }
+        finish()
+    }
+
+    /// Reads `frames` frames of `file` from `start`, through `chunk`.
+    init(reading file: AVAudioFile, from start: AVAudioFramePosition, frames total: AVAudioFramePosition, hop: Int,
+         through chunk: AVAudioPCMBuffer) throws {
+        self.hop = hop
+        file.framePosition = start
+        var left = total
+        while left > 0 {
+            try file.read(into: chunk, frameCount: AVAudioFrameCount(min(AVAudioFramePosition(chunk.frameCapacity), left)))
+            let n = Int(chunk.frameLength)
+            guard n > 0, let data = chunk.floatChannelData else { break }
+            append((0..<Int(chunk.format.channelCount)).map { UnsafePointer(data[$0]) }, frames: n)
+            left -= AVAudioFramePosition(n)
+        }
+        finish()
+    }
+
+    private mutating func append(_ channels: [UnsafePointer<Float>], frames n: Int) {
+        var i = 0
+        while i < n {
+            let take = min(hop - partialCount, n - i)
+            for channel in channels {
+                var sum: Float = 0
+                vDSP_svesq(channel + i, 1, &sum, vDSP_Length(take))
+                partialSum += sum
+            }
+            partialCount += take
+            i += take
+            if partialCount == hop { flush(channels: channels.count) }
+        }
+        frames += n
+        channelCount = channels.count
+    }
+
+    private var channelCount = 1
+
+    private mutating func flush(channels: Int) {
+        guard partialCount > 0 else { return }
+        meanSquares.append(partialSum / Float(partialCount * max(channels, 1)))
+        partialSum = 0
+        partialCount = 0
+    }
+
+    private mutating func finish() { flush(channels: channelCount) }
+
+    /// The first `hops` hops.
+    func prefix(hops: Int) -> Envelope { slice(fromHop: 0, hops: hops) }
+
+    /// `hops` hops from `first`.
+    func slice(fromHop first: Int, hops: Int) -> Envelope {
+        var out = Envelope(hop: hop)
+        let from = min(max(first, 0), meanSquares.count), to = min(from + max(hops, 0), meanSquares.count)
+        out.meanSquares = Array(meanSquares[from..<to])
+        out.frames = min(to * hop, frames) - from * hop
         return out
     }
 }
@@ -197,21 +342,19 @@ enum BeatTracker {
 
     /// The beat of `samples` (mono), or nil when there's no clear one (ambient, speech, silence).
     static func analyze(_ samples: [Float], sampleRate: Double) -> Beats? {
-        let hop = max(Int(sampleRate / frameRate), 1)
-        let frames = samples.count / hop
+        analyze(Envelope(samples: samples, sampleRate: sampleRate), sampleRate: sampleRate)
+    }
+
+    /// The beat of the audio `envelope` describes, or nil when there's no clear one.
+    static func analyze(_ envelope: Envelope, sampleRate: Double) -> Beats? {
+        let hop = envelope.hop
+        let frames = envelope.meanSquares.count
         guard frames > Int(frameRate * 3) else { return nil }
 
         // Onset strength: how far the level rises from one 10 ms frame to the next, in dB,
         // past half a dB (a steady tone's energy ripples by less from frame to frame), and at
         // most 20 dB (sound starting out of silence would otherwise outweigh every beat).
-        var level = [Float](repeating: 0, count: frames)
-        samples.withUnsafeBufferPointer { s in
-            for k in 0..<frames {
-                var e: Float = 0
-                vDSP_svesq(s.baseAddress! + k * hop, 1, &e, vDSP_Length(hop))
-                level[k] = 10 * log10(e / Float(hop) + 1e-10)
-            }
-        }
+        let level = envelope.meanSquares.map { 10 * log10($0 + 1e-10) }
         var onset = [Double](repeating: 0, count: frames)
         for k in 1..<frames { onset[k] = Double(min(max(level[k] - level[k - 1] - 0.5, 0), 20)) }
         let mean = onset.reduce(0, +) / Double(frames)

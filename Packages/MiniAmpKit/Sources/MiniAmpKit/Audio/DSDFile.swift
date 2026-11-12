@@ -57,6 +57,11 @@ public final class DSDFile: Sendable {
     public init(url: URL) throws {
         self.url = url
         let data = try Data(contentsOf: url, options: .alwaysMapped)
+        // Playback reads it front to back: let the kernel read ahead rather than fault in
+        // each page as it's reached.
+        data.withUnsafeBytes { raw in
+            if let base = raw.baseAddress { madvise(UnsafeMutableRawPointer(mutating: base), raw.count, MADV_SEQUENTIAL) }
+        }
         self.data = data
         guard data.count >= 16 else { throw FileError.notDSD }
         switch data.fourCC(at: 0) {

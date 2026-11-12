@@ -90,6 +90,7 @@ extension Player {
         // part of the mix keeps its own.
         let gain = Float(pow(10, (replayGainDB(for: outgoing) - replayGainDB(for: url)) / 20))
         let id = playID
+        let began = ContinuousClock.now
         crossfadeTask = Task { [weak self] in
             let prepared = await Task.detached(priority: .userInitiated) {
                 try? Crossfade.prepare(outgoing: outgoing, from: start, incoming: url, duration: duration,
@@ -97,12 +98,12 @@ extension Player {
             }.value
             guard let self, !Task.isCancelled else { return }
             self.crossfadeTask = nil
-            self.applyCrossfade(prepared, from: tail, into: next, item: item, id: id)
+            self.applyCrossfade(prepared, from: tail, into: next, item: item, id: id, took: ContinuousClock.now - began)
         }
     }
 
     private func applyCrossfade(_ prepared: Crossfade.Prepared?, from tail: ReservedTail, into next: TrackFile,
-                                item: Int, id: Int) {
+                                item: Int, id: Int, took: Duration) {
         guard reservedTail?.file === tail.file, reservedTail?.start == tail.start else { return }
         guard let prepared else {
             Self.log.debug("[\(id)] no crossfade (nothing audible to fade); joining gaplessly")
@@ -116,7 +117,7 @@ extension Player {
         reservedTail = nil
         preloadedItem = item
         let seconds = Double(plan.length) / next.sampleRate
-        Self.log.info("[\(id)] crossfade of \(String(format: "%.2f", seconds), privacy: .public) s into \(next.url.lastPathComponent, privacy: .public)\(plan.isBeatMatched ? ", on the beat" : "", privacy: .public)")
+        Self.log.info("[\(id)] crossfade of \(String(format: "%.2f", seconds), privacy: .public) s into \(next.url.lastPathComponent, privacy: .public)\(plan.isBeatMatched ? ", on the beat" : "", privacy: .public); prepared in \(took.formatted(.units(allowed: [.milliseconds])), privacy: .public)")
     }
 
     /// The ReplayGain applied to `url` in DSP mode, dB (the preamp included; the EQ's isn't).

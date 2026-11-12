@@ -1,4 +1,5 @@
 import AVFoundation
+import os
 
 /// Feeds a player node audio it can't read from a file itself (DSD), as buffers scheduled a
 /// second or so ahead of what's rendering. It works on its own queue and refills from the
@@ -16,6 +17,8 @@ final class BufferPump: @unchecked Sendable {
     }
 
     static let chunkFrames: AVAudioFrameCount = 16_384
+    /// Each chunk decoded is an interval in Instruments' Points of Interest.
+    static let signposter = OSSignposter(subsystem: "dev.miniamp", category: .pointsOfInterest)
     static let aheadSeconds = 1.0
 
     private let node: AVAudioPlayerNode
@@ -71,11 +74,13 @@ final class BufferPump: @unchecked Sendable {
             }
             job.decoder.framePosition = next
             job.decoder.markerOffset = emitted - next
+            let interval = Self.signposter.beginInterval("DSD chunk", "\(frames) frames")
             do {
                 try job.decoder.read(into: buffer, frameCount: frames)
             } catch {
                 buffer.frameLength = 0
             }
+            Self.signposter.endInterval("DSD chunk", interval)
             if buffer.frameLength == 0 {
                 // Unreadable: end the job here rather than spin.
                 next = job.end

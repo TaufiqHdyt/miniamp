@@ -47,3 +47,39 @@ CHANNELS=1 encode 44100 16 "tone-44k1-mono.flac" -f flac -d flac
 wav 44100 16 "$WORK/src.wav"
 lame --quiet -b 192 "$WORK/src.wav" "$OUT/tone-44k1.mp3"
 echo "  $OUT/tone-44k1.mp3"
+
+# dsf <multiple> <path>: stereo DSD (DSD64 = 64 × 44.1 kHz), a 441 Hz tone from a second-order
+# sigma-delta modulator (441 Hz repeats every 6,400 bits at DSD64, so one cycle is tiled), or
+# DSD silence at TONE_LEVEL=0.
+dsf() {
+  python3 -I - "$1" "$SECONDS_LEN" "$2" "${TONE_LEVEL:-0.1}" <<'PY2'
+import math, struct, sys
+multiple, secs, path, level = int(sys.argv[1]), float(sys.argv[2]), sys.argv[3], float(sys.argv[4])
+rate = 44100 * multiple
+bits = rate // 441  # one cycle
+if level == 0:
+    cycle = bytes([0x96]) * (bits // 8)  # 0x69, stored LSB-first
+else:
+    out = bytearray(bits // 8); i1 = i2 = y = 0.0
+    for _ in range(2):  # the second pass starts from a settled modulator
+        for n in range(bits):
+            x = level * math.sin(2 * math.pi * n / bits)
+            i1 += x - y; i2 += i1 - y; y = 1.0 if i2 >= 0 else -1.0
+            if y > 0: out[n // 8] |= 1 << (n % 8)  # LSB-first
+            else: out[n // 8] &= ~(1 << (n % 8)) & 0xFF
+    cycle = bytes(out)
+per_channel = int(rate * secs) // 8
+block = 4096
+blocks = (per_channel + block - 1) // block
+data = (cycle * (blocks * block // len(cycle) + 1))[:blocks * block]
+body = b"".join(data[b * block:(b + 1) * block] * 2 for b in range(blocks))
+with open(path, "wb") as f:
+    f.write(b"DSD " + struct.pack("<QQQ", 28, 28 + 52 + 12 + len(body), 0))
+    f.write(b"fmt " + struct.pack("<QIIIIIIQII", 52, 1, 0, 2, 2, rate, 1, per_channel * 8, block, 0))
+    f.write(b"data" + struct.pack("<Q", 12 + len(body)))
+    f.write(body)
+PY2
+  echo "  $2"
+}
+dsf 64 "$OUT/tone-dsd64.dsf"
+dsf 128 "$OUT/tone-dsd128.dsf"

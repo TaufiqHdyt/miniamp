@@ -10,7 +10,7 @@ DIR="${BENCH_DIR:-/tmp/miniamp-bench}"
 CTL=Packages/MiniAmpKit/.build/release/miniampctl
 
 if pgrep -xq miniamp; then echo "Quit miniamp first." >&2; exit 1; fi
-[ -f "$DIR/tone-44k1-16.flac" ] || TONE_LEVEL=0 scripts/make-fixtures.sh "$DIR" 60 >/dev/null
+[ -f "$DIR/tone-dsd64.dsf" ] || TONE_LEVEL=0 scripts/make-fixtures.sh "$DIR" 60 >/dev/null
 swift build -c release --package-path Packages/MiniAmpKit --product miniampctl >/dev/null
 
 # sample <label> <pid>: top samples once a second; the first CPU sample is meaningless, so drop it.
@@ -46,3 +46,7 @@ run "ALAC 88.2/24"          "$DIR/tone-88k2-24.m4a"
 run "AAC 48"                "$DIR/tone-48k-aac.m4a"
 run "MP3 44.1"              "$DIR/tone-44k1.mp3"
 run "FLAC 96/24 hog"        --hog "$DIR/tone-96k-24.flac"
+run "FLAC 96/24 DSP"         --dsp "$DIR/tone-96k-24.flac"
+run "DSD64 → PCM 88.2"       "$DIR/tone-dsd64.dsf"
+run "DSD128 → PCM 88.2"      "$DIR/tone-dsd128.dsf"
+run "DSD64 → PCM, DSP"       --dsp "$DIR/tone-dsd64.dsf"
