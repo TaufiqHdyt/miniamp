@@ -19,6 +19,7 @@ Other targets:
 | `make doctor`  | Checks that Xcode and XcodeGen are present           |
 | `make project` | Regenerates `MiniAmp.xcodeproj` from `project.yml`   |
 | `make build`   | Builds the app from the command line                 |
+| `make release` | A Release build zipped to `build/release/miniamp-<version>-<arch>.zip`, plus a local `v<version>` tag if missing; nothing is pushed. Apple silicon by default (`ARCH=x86_64` or `ARCH=universal`) |
 | `make clean`   | Deletes the app's `build/` and the Kit's `.build` (`make clean build` builds from scratch) |
 | `make run`     | Builds, launches the app, and streams its trace logs here (`VERBOSE=1` adds system messages) |
 | `make test`    | Runs the `MiniAmpKit` tests (needs Xcode)            |

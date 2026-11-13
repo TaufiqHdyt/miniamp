@@ -1,4 +1,4 @@
-.PHONY: bootstrap doctor project open build clean run test fixtures ctl bench app-bench library-bench
+.PHONY: bootstrap doctor project open build release clean run test fixtures ctl bench app-bench library-bench
 
 bootstrap: doctor
 	brew bundle --file=Brewfile
@@ -19,6 +19,24 @@ open: project
 
 build: project
 	xcodebuild -project MiniAmp.xcodeproj -scheme miniamp -configuration Debug -destination "platform=macOS,arch=$(shell uname -m)" -derivedDataPath build -quiet build
+
+# A Release build, zipped to build/release/miniamp-<version>-<arch>.zip, and a local
+# v<version> tag if there isn't one. Nothing is pushed. ARCH=arm64 (default), x86_64 or universal.
+ARCH ?= arm64
+VERSION := $(shell awk '/MARKETING_VERSION:/ {print $$2; exit}' project.yml)
+RELEASE_ZIP := build/release/miniamp-$(VERSION)-$(ARCH).zip
+release: project
+	@case "$(ARCH)" in arm64|x86_64|universal) ;; *) echo "ARCH must be arm64, x86_64 or universal"; exit 1;; esac
+	xcodebuild -project MiniAmp.xcodeproj -scheme miniamp -configuration Release -destination "generic/platform=macOS" \
+	  -derivedDataPath build -quiet ONLY_ACTIVE_ARCH=NO ARCHS="$(if $(filter universal,$(ARCH)),arm64 x86_64,$(ARCH))" build
+	codesign --verify --deep --strict build/Build/Products/Release/miniamp.app
+	@mkdir -p build/release
+	ditto -c -k --keepParent build/Build/Products/Release/miniamp.app $(RELEASE_ZIP).tmp
+	@mv -f $(RELEASE_ZIP).tmp $(RELEASE_ZIP)
+	@git rev-parse -q --verify refs/tags/v$(VERSION) >/dev/null \
+	  && echo "Tag v$(VERSION) exists; left as is" \
+	  || { git tag -a v$(VERSION) -m "miniamp $(VERSION)" && echo "Tagged v$(VERSION) (local only)"; }
+	@echo "$$(lipo -archs build/Build/Products/Release/miniamp.app/Contents/MacOS/miniamp): $(RELEASE_ZIP)"
 
 # Removes the app's build and the Kit's (both rebuild from scratch, vendored C/C++ included).
 clean:
