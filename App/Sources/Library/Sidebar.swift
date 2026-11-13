@@ -46,29 +46,31 @@ struct Sidebar: View {
                 Label("Listening Stats", systemImage: "chart.bar.xaxis").tag(SidebarItem.stats)
                 Label("Duplicates", systemImage: "square.on.square").tag(SidebarItem.duplicates)
             }
-            Section {
-                ForEach(app.playlists) { playlist in
-                    PlaylistRow(app: app, playlist: playlist)
-                        .tag(SidebarItem.playlist(playlist.id))
-                        .contextMenu {
-                            Button("Play") { app.play(playlist: playlist.id) }
-                            Button("Shuffle") { app.play(playlist: playlist.id, shuffled: true) }
-                            Button("Play Next") { app.play(playlist: playlist.id, enqueueNext: true) }
-                            Button("Play Last") { app.play(playlist: playlist.id, enqueueNext: false) }
-                            Divider()
-                            Button("Rename") { app.renamingPlaylist = playlist.id }
-                            Button("Export as M3U8…") { app.exportPlaylist(playlist) }
-                            Divider()
-                            Button("Delete Playlist…", role: .destructive) { deleting = playlist }
-                        }
-                }
-                // Always last: makes a playlist, by click or by dropping songs on it.
-                if library != nil {
+            // Only once there's a playlist: make the first with File › New Playlist (⌘N) or a
+            // song's Add to Playlist menu.
+            if !app.playlists.isEmpty {
+                Section {
+                    ForEach(app.playlists) { playlist in
+                        PlaylistRow(app: app, playlist: playlist)
+                            .tag(SidebarItem.playlist(playlist.id))
+                            .contextMenu {
+                                Button("Play") { app.play(playlist: playlist.id) }
+                                Button("Shuffle") { app.play(playlist: playlist.id, shuffled: true) }
+                                Button("Play Next") { app.play(playlist: playlist.id, enqueueNext: true) }
+                                Button("Play Last") { app.play(playlist: playlist.id, enqueueNext: false) }
+                                Divider()
+                                Button("Rename") { app.renamingPlaylist = playlist.id }
+                                Button("Export as M3U8…") { app.exportPlaylist(playlist) }
+                                Divider()
+                                Button("Delete Playlist…", role: .destructive) { deleting = playlist }
+                            }
+                    }
+                    // Always last: makes another, by click or by dropping songs on it.
                     NewPlaylistRow(app: app)
                         .selectionDisabled()
+                } header: {
+                    Text("Playlists")
                 }
-            } header: {
-                Text("Playlists")
             }
         }
         .listStyle(.sidebar)
