@@ -107,7 +107,7 @@ private struct LibrarySettings: View {
         if let p = library.progress {
             return p.phase == .listing ? "Looking for changes…" : "Reading tags: \(p.filesRead) of \(p.filesToRead)"
         }
-        var text = "\(library.trackCount) songs"
+        var text = CountFormat.songs(library.trackCount)
         if let scan = library.lastScan {
             text += ". Last scan: \(scan.added) added, \(scan.updated) updated, \(scan.removed) removed"
             if scan.offloaded > 0 { text += ", \(scan.offloaded) only in iCloud" }

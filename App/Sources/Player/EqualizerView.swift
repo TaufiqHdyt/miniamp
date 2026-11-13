@@ -54,7 +54,8 @@ struct EqualizerView: View {
     /// A vertical slider with its value above and its band below. Double-click the value to reset it.
     private func band(value: Binding<Float>, label: String) -> some View {
         VStack(spacing: 4) {
-            Text(String(format: "%+.0f", value.wrappedValue))
+            // "0", never "+0" or "−0".
+            Text(value.wrappedValue.rounded() == 0 ? "0" : String(format: "%+.0f", value.wrappedValue))
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .onTapGesture(count: 2) { value.wrappedValue = 0 }
@@ -69,7 +70,7 @@ struct EqualizerView: View {
                 .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(label == "Pre" ? "Preamp" : "\(label) Hz band")
+        .accessibilityLabel(label == "Pre" ? "Preamp" : label.hasSuffix("k") ? "\(label.dropLast()) kHz band" : "\(label) Hz band")
     }
 
     /// Boosts past what the preamp takes back can clip a loud track.

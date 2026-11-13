@@ -19,6 +19,11 @@ enum TrackFormat {
     }
 }
 
+enum CountFormat {
+    /// "1 song", "12,345 songs".
+    static func songs(_ count: Int) -> String { count == 1 ? "1 song" : "\(count.formatted()) songs" }
+}
+
 enum TimeFormat {
     /// "3:07", "1:02:03".
     static func minutes(_ seconds: Int) -> String {

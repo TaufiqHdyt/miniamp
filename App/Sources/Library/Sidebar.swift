@@ -146,7 +146,7 @@ private struct LibraryStatus: View {
             } else if library.folders.isEmpty {
                 Button("Add Music Folder…") { openSettings() }
             } else {
-                Text("^[\(library.trackCount) song](inflect: true)")
+                Text(CountFormat.songs(library.trackCount))
             }
             if let message = library.lastError {
                 Label(message, systemImage: "exclamationmark.triangle")

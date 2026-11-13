@@ -113,7 +113,7 @@ struct TagEditor: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(tracks.count == 1 ? tracks[0].track.title : "\(tracks.count) songs")
+            Text(tracks.count == 1 ? tracks[0].track.title : CountFormat.songs(tracks.count))
                 .font(.headline)
                 .lineLimit(1)
             Text(tracks.count == 1 ? tracks[0].track.url.lastPathComponent : "Fields marked Mixed differ between them.")

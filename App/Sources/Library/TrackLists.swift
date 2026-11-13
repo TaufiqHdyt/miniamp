@@ -43,15 +43,19 @@ struct TrackListView: View {
                    sort: Binding(get: { sort }, set: { sort = $0 }))
             .overlay {
                 if loaded && tracks.isEmpty {
-                    ContentUnavailableView(library.folders.isEmpty ? "No music yet" : "Nothing here",
-                                           systemImage: "music.note",
-                                           description: Text(library.folders.isEmpty
-                                               ? "Add a music folder in Settings."
-                                               : "No tracks match."))
+                    if library.folders.isEmpty {
+                        ContentUnavailableView("No Music Yet", systemImage: "music.note",
+                                               description: Text("Add a music folder with File › Add Music Folder…"))
+                    } else if inPlaylist {
+                        ContentUnavailableView("Empty Playlist", systemImage: "music.note.list",
+                                               description: Text("Right-click songs and choose Add to Playlist."))
+                    } else {
+                        ContentUnavailableView("No Songs", systemImage: "music.note")
+                    }
                 }
             }
             .navigationTitle(title)
-            .navigationSubtitle(tracks.isEmpty ? "" : "\(tracks.count) songs")
+            .navigationSubtitle(tracks.isEmpty ? "" : CountFormat.songs(tracks.count))
             .task(id: TrackQuery(scope: scope, sort: sort, revision: library.revision)) {
                 await load()
             }
@@ -134,9 +138,8 @@ struct SearchResultsView: View {
     private var subtitle: String {
         switch results.count {
         case 0: ""
-        case 1: "1 song"
-        case Self.limit: "First \(Self.limit) songs"
-        default: "\(results.count) songs"
+        case Self.limit: "First \(CountFormat.songs(Self.limit))"
+        default: CountFormat.songs(results.count)
         }
     }
 

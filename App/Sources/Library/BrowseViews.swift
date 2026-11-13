@@ -6,6 +6,7 @@ struct ArtistsView: View {
     let app: AppState
     let library: Library
     @State private var artists: [ArtistSummary] = []
+    @State private var loaded = false
     @SceneStorage("selectedArtist") private var selectedID: Int = 0
 
     var body: some View {
@@ -23,22 +24,26 @@ struct ArtistsView: View {
                 TrackListView(app: app, library: library, scope: .artist(artist.id), title: artist.name)
                     .frame(minWidth: 400)
             } else {
-                ContentUnavailableView(artists.isEmpty ? "No artists" : "Choose an artist", systemImage: "music.microphone")
-                    .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
-                    .navigationTitle("Artists")
+                // Nothing until the list is read, rather than a flash of "No Artists".
+                Group {
+                    if loaded { ContentUnavailableView(artists.isEmpty ? "No Artists" : "Choose an Artist", systemImage: "music.microphone") }
+                }
+                .frame(minWidth: 400, maxWidth: .infinity, maxHeight: .infinity)
+                .navigationTitle("Artists")
             }
         }
         .task(id: library.revision) {
             artists = (try? await library.artists()) ?? []
+            loaded = true
         }
     }
 
     private func counts(_ artist: ArtistSummary) -> String {
-        let songs = artist.trackCount == 1 ? "1 song" : "\(artist.trackCount) songs"
+        let songs = CountFormat.songs(artist.trackCount)
         switch artist.albumCount {
         case 0: return songs
         case 1: return "1 album, \(songs)"
-        default: return "\(artist.albumCount) albums, \(songs)"
+        default: return "\(artist.albumCount.formatted()) albums, \(songs)"
         }
     }
 }
@@ -48,6 +53,7 @@ struct AlbumsView: View {
     let app: AppState
     let library: Library
     @State private var albums: [AlbumSummary] = []
+    @State private var loaded = false
     @State private var path: [AlbumSummary] = []
 
     var body: some View {
@@ -68,7 +74,7 @@ struct AlbumsView: View {
                 .padding(20)
             }
             .overlay {
-                if albums.isEmpty { ContentUnavailableView("No albums", systemImage: "square.stack") }
+                if loaded && albums.isEmpty { ContentUnavailableView("No Albums", systemImage: "square.stack") }
             }
             .navigationTitle("Albums")
             .navigationDestination(for: AlbumSummary.self) { album in
@@ -77,6 +83,7 @@ struct AlbumsView: View {
         }
         .task(id: library.revision) {
             albums = (try? await library.albums()) ?? []
+            loaded = true
         }
     }
 
@@ -141,7 +148,7 @@ private struct AlbumDetail: View {
     private var details: String {
         var parts: [String] = []
         if let year = album.year { parts.append(String(year)) }
-        parts.append(album.trackCount == 1 ? "1 song" : "\(album.trackCount) songs")
+        parts.append(CountFormat.songs(album.trackCount))
         parts.append(TimeFormat.minutes(album.durationMs / 1000))
         return parts.joined(separator: " · ")
     }

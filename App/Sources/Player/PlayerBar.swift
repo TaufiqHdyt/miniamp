@@ -113,14 +113,16 @@ struct TransportButtons: View {
                     .symbolEffect(.bounce, value: player.isShuffled)
             }
             .toggleStyle(.button)
-            .help("Shuffle")
+            .help(player.isShuffled ? "Shuffle is on" : "Shuffle is off")
+            .accessibilityLabel("Shuffle")
             Button {
                 previousClicks += 1
                 app.perform { try await player.previous() }
             } label: {
                 Image(systemName: "backward.fill").symbolEffect(.bounce.down, value: previousClicks)
             }
-                .help("Previous")
+            .help("Previous")
+            .disabled(player.queue.isEmpty)
             Button { app.perform { try await player.togglePlayPause() } } label: {
                 Image(systemName: player.state == .playing ? "pause.fill" : "play.fill")
                     .contentTransition(.symbolEffect(.replace))
@@ -135,7 +137,8 @@ struct TransportButtons: View {
             } label: {
                 Image(systemName: "forward.fill").symbolEffect(.bounce.down, value: nextClicks)
             }
-                .help("Next")
+            .help("Next")
+            .disabled(player.queue.isEmpty)
             RepeatButton(player: player)
         }
         .buttonStyle(.borderless)
@@ -230,7 +233,7 @@ private struct VisualizerButton: View {
     var body: some View {
         let showing = app.showsVisualizer
         Toggle(isOn: Binding(get: { showing }, set: { _ in app.toggleVisualizer() })) {
-            Label("Visualizer", systemImage: "chart.bar.xaxis")
+            Label("Visualizer", systemImage: "waveform")
                 .symbolEffect(.bounce, value: showing)
         }
         .toggleStyle(.button)

@@ -68,8 +68,10 @@ struct AppCommands: Commands {
             Divider()
             Button("Next") { app.perform { try await player.next() } }
                 .keyboardShortcut(.rightArrow)
+                .disabled(player.queue.isEmpty)
             Button("Previous") { app.perform { try await player.previous() } }
                 .keyboardShortcut(.leftArrow)
+                .disabled(player.queue.isEmpty)
             Divider()
             Toggle("Shuffle", isOn: Binding(get: { player.isShuffled }, set: { player.setShuffle($0) }))
             Picker("Repeat", selection: Binding(get: { player.repeatMode }, set: { player.repeatMode = $0 })) {
