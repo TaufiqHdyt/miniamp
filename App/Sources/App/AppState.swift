@@ -170,6 +170,14 @@ final class AppState {
 
     var waitingToPlayID: TrackInfo.ID? { waitingToPlay?.id }
 
+    /// Adds songs to Up Next: right after the one playing (`next`), or at the end. Songs only
+    /// in iCloud are left out, as when playing a list. With nothing queued, they play.
+    func enqueue(_ list: [TrackInfo], next: Bool) {
+        let urls = list.filter { !$0.track.isEvicted }.map(\.track.url)
+        guard !urls.isEmpty else { return }
+        perform { [player] in try await player.enqueue(urls, next: next) }
+    }
+
     /// Called when the library changes: plays the track being waited on if it's now downloaded.
     func libraryChanged() {
         guard let waiting = waitingToPlay, let library else { return }

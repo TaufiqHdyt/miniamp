@@ -75,10 +75,21 @@ struct NowPlayingView: View {
                 ForEach(upcoming, id: \.self) { row in
                     QueueRow(entry: entries[row.url] ?? QueueEntry(fileName: row.url), artwork: artwork)
                         .contentShape(Rectangle())
-                        .onTapGesture(count: 2) {
-                            // Only if it's still that song: the queue may have changed under the row.
-                            guard player.queue.items.indices.contains(row.item), player.queue.items[row.item] == row.url else { return }
-                            app.perform { try await player.jump(toItem: row.item) }
+                        .onTapGesture(count: 2) { play(row) }
+                        .contextMenu {
+                            Button("Play Now") { play(row) }
+                            Button("Play Next") {
+                                guard let position = stillThere(row), position != (player.queue.position ?? -1) + 1 else { return }
+                                Task { await player.playNext(fromPosition: position) }
+                            }
+                            .disabled(row.position == (player.queue.position ?? -1) + 1)
+                            Divider()
+                            Button("Remove from Up Next") {
+                                guard let position = stillThere(row) else { return }
+                                Task { await player.removeFromQueue(atPosition: position) }
+                            }
+                            Divider()
+                            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([row.url]) }
                         }
                 }
                 let remaining = remainingCount(player.queue, shown: upcoming.count)
@@ -102,6 +113,20 @@ struct NowPlayingView: View {
             }
         }
         .listStyle(.inset)
+    }
+
+    /// Where the row's song is in the play order now, if the queue still has it there: it may
+    /// have changed under the row.
+    private func stillThere(_ row: Row) -> Int? {
+        let queue = app.player.queue
+        guard queue.order.indices.contains(row.position), queue.order[row.position] == row.item,
+              queue.items[row.item] == row.url else { return nil }
+        return row.position
+    }
+
+    private func play(_ row: Row) {
+        guard stillThere(row) != nil else { return }
+        app.perform { [player = app.player] in try await player.jump(toItem: row.item) }
     }
 
     private struct Row: Hashable {

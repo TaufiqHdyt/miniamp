@@ -5,16 +5,24 @@ public struct PlayQueue<Item: Sendable & Equatable>: Sendable, Equatable {
     }
 
     public private(set) var items: [Item]
-    /// Play order: indices into `items`. Natural order unless shuffled.
+    /// Play order: indices into `items`. Natural order (with any edits) unless shuffled.
     public private(set) var order: [Int]
     /// Index into `order` of the current item; nil when empty.
     public private(set) var position: Int?
     public private(set) var isShuffled = false
     public var repeatMode: Repeat = .off
+    /// The order unshuffled: what `order` goes back to when shuffle is turned off. Songs added
+    /// or moved later are where they were put; removed ones are gone.
+    ///
+    /// An item keeps its index in `items` for as long as the queue lasts (the player tags
+    /// what it has scheduled by it), so adding appends to `items` and removing only takes the
+    /// index out of the orders.
+    private var natural: [Int]
 
     public init(_ items: [Item] = [], startAt index: Int = 0) {
         self.items = items
         order = Array(items.indices)
+        natural = order
         position = items.isEmpty ? nil : min(max(index, 0), items.count - 1)
     }
 
@@ -77,18 +85,61 @@ public struct PlayQueue<Item: Sendable & Equatable>: Sendable, Equatable {
         isShuffled = on
         let current = currentIndex
         if on {
-            var rest = items.indices.filter { $0 != current }
+            var rest = natural.filter { $0 != current }
             rest.shuffle(using: &rng)
             order = (current.map { [$0] } ?? []) + rest
             position = order.isEmpty ? nil : 0
         } else {
-            order = Array(items.indices)
-            position = current
+            order = natural
+            position = current.flatMap { order.firstIndex(of: $0) }
         }
     }
 
     public mutating func setShuffle(_ on: Bool) {
         var rng = SystemRandomNumberGenerator()
         setShuffle(on, using: &rng)
+    }
+
+    // MARK: Editing
+
+    /// Adds `new` right after the current item (Play Next) or at the end (Play Last), in the
+    /// order given, shuffled or not. An empty queue starts at the first of them.
+    public mutating func insert(_ new: [Item], next: Bool) {
+        guard !new.isEmpty else { return }
+        let added = Array(items.count ..< items.count + new.count)
+        items += new
+        guard let position else {
+            order = added
+            natural = added
+            self.position = 0
+            return
+        }
+        if next {
+            let current = order[position]
+            order.insert(contentsOf: added, at: position + 1)
+            natural.insert(contentsOf: added, at: (natural.firstIndex(of: current) ?? natural.count - 1) + 1)
+        } else {
+            order += added
+            natural += added
+        }
+    }
+
+    /// Takes the item at an order position out of the queue. The current item stays.
+    public mutating func remove(atPosition p: Int) {
+        guard let position, order.indices.contains(p), p != position else { return }
+        let item = order.remove(at: p)
+        natural.removeAll { $0 == item }
+        if p < position { self.position = position - 1 }
+    }
+
+    /// Moves the item at an order position to play right after the current one.
+    public mutating func moveToNext(fromPosition p: Int) {
+        guard let position, order.indices.contains(p), p != position else { return }
+        let item = order[p]
+        remove(atPosition: p)
+        guard let now = self.position else { return }
+        let current = order[now]
+        order.insert(item, at: now + 1)
+        natural.insert(item, at: (natural.firstIndex(of: current) ?? natural.count - 1) + 1)
     }
 }

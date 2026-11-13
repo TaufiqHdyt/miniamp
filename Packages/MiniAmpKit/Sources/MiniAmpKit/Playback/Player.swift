@@ -283,6 +283,28 @@ public final class Player {
         try await start(position: position, frame: 0, autoplay: state != .paused)
     }
 
+    /// Adds songs right after the one playing (`next`) or at the end of the queue. With
+    /// nothing queued, plays them.
+    public func enqueue(_ urls: [URL], next: Bool) async throws {
+        guard !urls.isEmpty else { return }
+        guard queue.position != nil else { return try await setQueue(urls) }
+        scopedURLs += urls.filter { $0.startAccessingSecurityScopedResource() }
+        queue.insert(urls, next: next)
+        await queueChanged()
+    }
+
+    /// Takes a song out of Up Next, by its order position. Not the one playing.
+    public func removeFromQueue(atPosition p: Int) async {
+        queue.remove(atPosition: p)
+        await queueChanged()
+    }
+
+    /// Moves a song in Up Next to play after the current one.
+    public func playNext(fromPosition p: Int) async {
+        queue.moveToNext(fromPosition: p)
+        await queueChanged()
+    }
+
     public func jump(toItem index: Int) async throws {
         guard let position = queue.order.firstIndex(of: index) else { return }
         try await start(position: position, frame: 0, autoplay: true)
@@ -654,7 +676,7 @@ public final class Player {
         }
     }
 
-    /// Shuffle or repeat changed: if the wrong track is already scheduled next, reschedule.
+    /// Shuffle, repeat or Up Next changed: if the wrong track is already scheduled next, reschedule.
     private func queueChanged() async {
         if crossfadeTask != nil {
             // Worked out for the old next track; do it again for the new one.

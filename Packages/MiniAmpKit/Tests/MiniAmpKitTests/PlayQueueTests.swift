@@ -87,4 +87,68 @@ import Testing
         q.jump(toItem: 2)
         #expect(q.current == "c")
     }
+
+    // MARK: Play Next, Play Last, Up Next edits
+
+    static func upcoming(_ q: PlayQueue<String>) -> [String] {
+        guard let p = q.position else { return [] }
+        return q.order[(p + 1)...].map { q.items[$0] }
+    }
+
+    @Test func playNextGoesAfterCurrentAndPlayLastAtTheEnd() {
+        var q = PlayQueue(["a", "b", "c"], startAt: 0)
+        q.insert(["x", "y"], next: true)
+        q.insert(["z"], next: false)
+        #expect(q.current == "a")
+        #expect(Self.upcoming(q) == ["x", "y", "b", "c", "z"])
+        // Items already there keep their indices.
+        #expect(Array(q.items.prefix(3)) == ["a", "b", "c"])
+    }
+
+    @Test func insertingIntoAnEmptyQueueStartsIt() {
+        var q = PlayQueue<String>()
+        q.insert(["a", "b"], next: true)
+        #expect(q.current == "a")
+        #expect(Self.upcoming(q) == ["b"])
+    }
+
+    @Test func editsSurviveShuffleOnAndOff() {
+        var q = PlayQueue(["a", "b", "c", "d"], startAt: 1)
+        q.insert(["x"], next: true)
+        q.remove(atPosition: 3) // "c"
+        var rng = SeededGenerator(state: 7)
+        q.setShuffle(true, using: &rng)
+        #expect(q.current == "b")
+        #expect(Set(Self.upcoming(q)) == ["x", "d", "a"].reduce(into: Set()) { $0.insert($1) })
+        q.setShuffle(false)
+        #expect(q.current == "b")
+        #expect(q.order.map { q.items[$0] } == ["a", "b", "x", "d"])
+    }
+
+    @Test func playNextWhileShuffledComesNext() {
+        var q = PlayQueue(["a", "b", "c", "d"], startAt: 0)
+        var rng = SeededGenerator(state: 3)
+        q.setShuffle(true, using: &rng)
+        q.insert(["x"], next: true)
+        #expect(Self.upcoming(q).first == "x")
+    }
+
+    @Test func removeKeepsTheCurrentItem() {
+        var q = PlayQueue(["a", "b", "c"], startAt: 1)
+        q.remove(atPosition: 1)
+        #expect(q.current == "b")
+        q.remove(atPosition: 0)
+        #expect(q.current == "b")
+        #expect(q.position == 0)
+        #expect(Self.upcoming(q) == ["c"])
+    }
+
+    @Test func moveToNext() {
+        var q = PlayQueue(["a", "b", "c", "d"], startAt: 0)
+        q.moveToNext(fromPosition: 3)
+        #expect(Self.upcoming(q) == ["d", "b", "c"])
+        q.setShuffle(true)
+        q.setShuffle(false)
+        #expect(q.order.map { q.items[$0] } == ["a", "d", "b", "c"])
+    }
 }

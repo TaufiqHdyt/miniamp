@@ -62,12 +62,15 @@ struct AlbumsView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 20)], spacing: 22) {
                     ForEach(albums) { album in
                         NavigationLink(value: album) {
-                            AlbumTile(album: album, artwork: library.artwork)
+                            AlbumTile(album: album, artwork: library.artwork) { play(album, shuffled: false) }
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
                             Button("Play") { play(album, shuffled: false) }
                             Button("Shuffle") { play(album, shuffled: true) }
+                            Divider()
+                            Button("Play Next") { enqueue(album, next: true) }
+                            Button("Play Last") { enqueue(album, next: false) }
                         }
                     }
                 }
@@ -93,20 +96,51 @@ struct AlbumsView: View {
             app.play(tracks, from: nil, shuffled: shuffled)
         }
     }
+
+    private func enqueue(_ album: AlbumSummary, next: Bool) {
+        Task {
+            guard let tracks = try? await library.tracks(in: .album(album.id)) else { return }
+            app.enqueue(tracks, next: next)
+        }
+    }
 }
 
+/// A cover with the album's title and artist. Hovering dims the cover a little and shows a
+/// play button on it, as in Apple Music; clicking elsewhere opens the album.
 private struct AlbumTile: View {
     let album: AlbumSummary
     let artwork: ArtworkCache?
+    let play: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             ArtworkView(key: album.artworkKey, artwork: artwork, cornerRadius: 6)
-                .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6).fill(.black.opacity(hovering ? 0.18 : 0))
+                }
+                .overlay(alignment: .bottomLeading) {
+                    if hovering {
+                        Button(action: play) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 30, height: 30)
+                                .background(.black.opacity(0.55), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(8)
+                        .help("Play \(album.title)")
+                        .transition(.opacity)
+                    }
+                }
+                .shadow(color: .black.opacity(hovering ? 0.25 : 0.15), radius: hovering ? 4 : 2, y: 1)
             Text(album.title).lineLimit(1).padding(.top, 3)
             Text(album.artistName ?? "Unknown Artist").lineLimit(1).font(.callout).foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
     }
 }
 

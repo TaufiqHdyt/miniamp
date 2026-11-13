@@ -37,6 +37,7 @@ This carries most of the technical risk, so it comes first.
 ### M2: Playback core
 
 - [x] Queue with next, previous, shuffle, and repeat
+- [x] Play Next and Play Last from a song or album, and Up Next edits (play now, play next, remove)
 - [x] Seek and position reporting
 - [x] Gapless transitions between tracks with the same format
 - [x] Output device selection, and handling for device changes (unplugged headphones, DAC connected)

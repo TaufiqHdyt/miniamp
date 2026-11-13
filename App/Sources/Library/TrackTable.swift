@@ -319,6 +319,12 @@ struct TrackTable: NSViewRepresentable {
             guard !chosen.isEmpty else { return }
             menu.addItem(item("Play") { [self] in config?.app.play(chosen.count > 1 ? chosen : tracks, from: chosen.first?.id) })
             menu.addItem(item("Shuffle") { [self] in config?.app.play(chosen.count > 1 ? chosen : tracks, from: nil, shuffled: true) })
+            let playable = !chosen.allSatisfy(\.track.isEvicted)
+            for (title, next) in [("Play Next", true), ("Play Last", false)] {
+                let entry = item(title) { [self] in config?.app.enqueue(chosen, next: next) }
+                if !playable { entry.action = nil }
+                menu.addItem(entry)
+            }
             menu.addItem(.separator())
             if let app = config?.app, app.library != nil {
                 let local = chosen.filter { !$0.track.isEvicted }
