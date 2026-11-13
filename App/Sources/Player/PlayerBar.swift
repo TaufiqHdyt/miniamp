@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The strip along the bottom of the window, in three parts: what's playing on the left,
 /// transport and position in the middle (centred on the window), and quality, Up Next,
-/// Lyrics, sleep timer, volume and output device on the right.
+/// Lyrics, the visualizer, sleep timer, volume and output device on the right.
 struct PlayerBar: View {
     let app: AppState
     @State private var current: QueueEntry?
@@ -26,6 +26,7 @@ struct PlayerBar: View {
                 SignalSummary(player: player)
                 PaneButton(app: app, pane: .upNext)
                 PaneButton(app: app, pane: .lyrics)
+                VisualizerButton(app: app)
                 SleepTimerButton(timer: app.sleepTimer)
                 VolumeButton(player: player)
                 OutputButton(player: player)
@@ -219,5 +220,24 @@ private struct SignalSummary: View {
         if let warning = player.deviceWarning {
             Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).help(warning)
         }
+    }
+}
+
+/// Opens the full-size visualizer in the library area, or goes back to the library.
+private struct VisualizerButton: View {
+    let app: AppState
+
+    var body: some View {
+        let showing = app.showsVisualizer
+        Toggle(isOn: Binding(get: { showing }, set: { _ in app.toggleVisualizer() })) {
+            Label("Visualizer", systemImage: "chart.bar.xaxis")
+                .symbolEffect(.bounce, value: showing)
+        }
+        .toggleStyle(.button)
+        .buttonStyle(.borderless)
+        .labelStyle(.iconOnly)
+        .imageScale(.large)
+        .disabled(!showing && app.currentURL == nil)
+        .help("\(showing ? "Hide" : "Show") Visualizer (⇧⌥⌘V)")
     }
 }
