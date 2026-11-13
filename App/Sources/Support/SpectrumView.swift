@@ -46,8 +46,6 @@ final class SpectrumNSView: NSView {
 
     private let tap: SampleTap?
     private var analyzer: SpectrumAnalyzer?
-    private var link: CADisplayLink?
-    private var lastTimestamp: CFTimeInterval?
     /// Whether this view counts among the tap's users.
     private var capturing = false
     private var windowVisible = false
@@ -103,7 +101,7 @@ final class SpectrumNSView: NSView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     isolated deinit {
-        link?.invalidate()
+        timer?.cancel()
         if capturing { tap?.setActive(false) }
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         NSWorkspace.shared.notificationCenter.removeObserver(self)
@@ -214,6 +212,9 @@ final class SpectrumNSView: NSView {
 
     // MARK: Running
 
+    /// Frames a second (a few under Reduce Motion).
+    static let frameRate = 30.0
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
@@ -224,22 +225,18 @@ final class SpectrumNSView: NSView {
             ) { [weak self] _ in
                 MainActor.assumeIsolated { self?.update() }
             }
-            if link == nil {
-                let link = displayLink(target: self, selector: #selector(tick))
-                link.add(to: .main, forMode: .common)
-                self.link = link
-            }
-        } else {
-            link?.invalidate()
-            link = nil
         }
         update()
     }
 
     @objc private func reduceMotionChanged() { update() }
 
-    /// Runs the display link while there's something to draw that can be seen: playing, or
-    /// the bars still falling after a pause. The tap captures only while this is playing.
+    /// Runs the frames while there's something to draw that can be seen: playing, or the bars
+    /// still falling after a pause. The tap captures only while this is playing.
+    ///
+    /// A plain timer and an explicit transaction rather than a display link: an NSView's
+    /// display link runs AppKit's whole display cycle each frame (animations, tracking areas,
+    /// the window's update), which cost more than the visualizer itself.
     private func update() {
         let visible = window?.occlusionState.contains(.visible) ?? false
         let wantsCapture = visible && isPlaying
@@ -247,17 +244,36 @@ final class SpectrumNSView: NSView {
             capturing = wantsCapture
             tap?.setActive(wantsCapture)
         }
-        let rate: Float = reducesMotion ? 10 : 60
-        link?.preferredFrameRateRange = CAFrameRateRange(minimum: min(rate, 30), maximum: rate, preferred: rate)
         let running = visible && (isPlaying || !(analyzer?.isSettled ?? true))
-        if running, link?.isPaused == true { lastTimestamp = nil }
-        link?.isPaused = !running
+        run(running ? (reducesMotion ? 10 : Self.frameRate) : nil)
     }
 
-    @objc private func tick(_ link: CADisplayLink) {
+    private var timer: DispatchSourceTimer?
+    private var timerRate: Double?
+    private var lastTick: CFTimeInterval?
+
+    /// Ticks `rate` times a second, or stops.
+    private func run(_ rate: Double?) {
+        guard rate != timerRate else { return }
+        timer?.cancel()
+        timer = nil
+        timerRate = rate
+        lastTick = nil
+        guard let rate else { return }
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now(), repeating: 1 / rate, leeway: .milliseconds(4))
+        timer.setEventHandler { [weak self] in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+        timer.resume()
+        self.timer = timer
+    }
+
+    private func tick() {
         guard let analyzer else { return }
-        let dt = lastTimestamp.map { min(max(link.timestamp - $0, 0), 0.1) } ?? link.duration
-        lastTimestamp = link.timestamp
+        let now = CACurrentMediaTime()
+        let dt = lastTick.map { min(max(now - $0, 0), 0.1) } ?? 1 / (timerRate ?? Self.frameRate)
+        lastTick = now
         if let tap, capturing {
             analyzer.update(from: tap, dt: dt)
         } else {
@@ -267,6 +283,6 @@ final class SpectrumNSView: NSView {
         CATransaction.setDisableActions(true)
         draw()
         CATransaction.commit()
-        if !isPlaying, analyzer.isSettled { link.isPaused = true }
+        if !isPlaying, analyzer.isSettled { run(nil) }
     }
 }

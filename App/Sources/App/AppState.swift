@@ -35,8 +35,10 @@ final class AppState {
     var miniPlayerOpen = false { didSet { updatePositionUpdates() } }
     private func updatePositionUpdates() { player.updatesPosition = mainWindowVisible || miniPlayerOpen }
 
-    /// The now-playing inspector. Remembered across launches.
-    var showsNowPlaying = UserDefaults.standard.object(forKey: "showsNowPlaying") as? Bool ?? true {
+    /// The now-playing inspector. Remembered across launches. Read with bool(forKey:), not
+    /// `as? Bool`: a launch argument (-showsNowPlaying NO) arrives as a string.
+    var showsNowPlaying = UserDefaults.standard.object(forKey: "showsNowPlaying") == nil
+        ? true : UserDefaults.standard.bool(forKey: "showsNowPlaying") {
         didSet { UserDefaults.standard.set(showsNowPlaying, forKey: "showsNowPlaying") }
     }
 
