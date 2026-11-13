@@ -46,15 +46,10 @@ struct StatsView: View {
                 Color.clear
             }
         }
-        .navigationTitle(period.year.map { "\(String($0)) in Music" } ?? "Listening Stats")
+        .navigationTitle("Listening Stats")
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                Picker("Period", selection: $period) {
-                    Text("All Time").tag(Period.allTime)
-                    Divider()
-                    ForEach(yearChoices, id: \.self) { Text(String($0)).tag(Period.year($0)) }
-                }
-                .help("Show a year, or all time")
+                PeriodControl(period: $period, years: yearChoices)
             }
         }
         .task(id: LoadKey(period: period, trackStarts: app.player.trackStarts, revision: library.revision)) {
@@ -79,6 +74,46 @@ struct StatsView: View {
         all.insert(Calendar.current.component(.year, from: Date()))
         if let year = period.year { all.insert(year) }
         return all.sorted(by: >)
+    }
+}
+
+/// The year shown, stepped through with the arrows (older on the left), or chosen from the
+/// menu between them, which also has All Time.
+private struct PeriodControl: View {
+    @Binding var period: StatsView.Period
+    /// Newest first.
+    let years: [Int]
+
+    var body: some View {
+        let index = period.year.flatMap { years.firstIndex(of: $0) }
+        ControlGroup {
+            Button { step(to: index.map { $0 + 1 }) } label: { Label("Previous Year", systemImage: "chevron.left") }
+                .disabled(index.map { $0 + 1 >= years.count } ?? true)
+                .help(index.flatMap { years.indices.contains($0 + 1) ? "Show \(String(years[$0 + 1]))" : nil } ?? "Previous year")
+            Menu {
+                Picker("Period", selection: $period) {
+                    Text("All Time").tag(StatsView.Period.allTime)
+                    Divider()
+                    ForEach(years, id: \.self) { Text(String($0)).tag(StatsView.Period.year($0)) }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } label: {
+                Text(period.year.map { String($0) } ?? "All Time")
+                    .monospacedDigit()
+                    .frame(minWidth: 64)
+            }
+            .help("Show a year, or all time")
+            Button { step(to: index.map { $0 - 1 }) } label: { Label("Next Year", systemImage: "chevron.right") }
+                .disabled(index.map { $0 == 0 } ?? true)
+                .help(index.flatMap { $0 > 0 ? "Show \(String(years[$0 - 1]))" : nil } ?? "Next year")
+        }
+        .controlGroupStyle(.navigation)
+    }
+
+    private func step(to index: Int?) {
+        guard let index, years.indices.contains(index) else { return }
+        period = .year(years[index])
     }
 }
 
@@ -139,7 +174,7 @@ private struct StatsContent: View {
                 StatTile(value: new.formatted(), label: new == 1 ? "New artist" : "New artists")
                     .help("Artists first played this year")
             }
-            StatTile(value: stats.longestStreak.formatted(), label: stats.longestStreak == 1 ? "Day streak" : "Days in a row")
+            StatTile(value: stats.longestStreak.formatted(), label: "Day streak")
                 .help("The most days in a row with something played")
         }
     }
@@ -177,7 +212,7 @@ private struct StatTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value).font(.title2.bold().monospacedDigit()).lineLimit(1).minimumScaleFactor(0.6)
-            Text(label).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+            Text(label).font(.callout).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
