@@ -51,8 +51,8 @@ struct VolumeButton: View {
         .foregroundStyle(.secondary)
         .disabled(player.isSendingDoP)
         .help(player.isSendingDoP ? Self.dopHelp : volume >= 1
-              ? "Volume: 100%. Scroll to change it."
-              : "Volume: \(percent(volume)). Scroll to change it. Below 100% playback isn't bit-perfect; the device's own volume is in the output menu.")
+              ? "Volume: 100%. Scroll or press ⌘↑ ⌘↓ to change it; ⌥⌘↓ mutes."
+              : "Volume: \(percent(volume)). Scroll or press ⌘↑ ⌘↓ to change it; ⌥⌘↓ mutes. Below 100% playback isn't bit-perfect; the device's own volume is in the output menu.")
         .accessibilityLabel("Volume")
         .accessibilityValue(percent(volume))
         .popover(isPresented: $showsSlider, arrowEdge: .top) {

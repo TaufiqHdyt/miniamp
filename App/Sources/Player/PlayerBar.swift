@@ -113,7 +113,7 @@ struct TransportButtons: View {
                     .symbolEffect(.bounce, value: player.isShuffled)
             }
             .toggleStyle(.button)
-            .help(player.isShuffled ? "Shuffle is on" : "Shuffle is off")
+            .help(player.isShuffled ? "Shuffle is on (⌥⌘S)" : "Shuffle is off (⌥⌘S)")
             .accessibilityLabel("Shuffle")
             Button {
                 previousClicks += 1
@@ -121,7 +121,7 @@ struct TransportButtons: View {
             } label: {
                 Image(systemName: "backward.fill").symbolEffect(.bounce.down, value: previousClicks)
             }
-            .help("Previous")
+            .help("Previous (⌘←)")
             .disabled(player.queue.isEmpty)
             Button { app.perform { try await player.togglePlayPause() } } label: {
                 Image(systemName: player.state == .playing ? "pause.fill" : "play.fill")
@@ -129,7 +129,7 @@ struct TransportButtons: View {
                     .font(.title2)
                     .frame(width: 24)
             }
-            .help(player.state == .playing ? "Pause" : "Play")
+            .help(player.state == .playing ? "Pause (Space)" : "Play (Space)")
             .disabled(player.queue.isEmpty)
             Button {
                 nextClicks += 1
@@ -137,7 +137,7 @@ struct TransportButtons: View {
             } label: {
                 Image(systemName: "forward.fill").symbolEffect(.bounce.down, value: nextClicks)
             }
-            .help("Next")
+            .help("Next (⌘→)")
             .disabled(player.queue.isEmpty)
             RepeatButton(player: player)
         }
@@ -158,7 +158,7 @@ struct RepeatButton: View {
                 .symbolEffect(.bounce, value: mode != .off)
         }
         .toggleStyle(.button)
-        .help(mode.help)
+        .help("\(mode.help) (⌥⌘R)")
         .accessibilityLabel("Repeat")
         .accessibilityValue(mode.label)
     }

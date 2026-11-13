@@ -57,7 +57,9 @@ struct AppCommands: Commands {
         }
         CommandMenu("Controls") {
             let player = app.player
-            // Space also plays and pauses, unless a text field has focus.
+            let seekable = player.state == .playing || player.state == .paused
+            // Space plays and pauses too, unless a text field has focus. (Not shown here: as a
+            // menu shortcut it would take the space from every text field.)
             Button(player.state == .playing ? "Pause" : "Play") {
                 app.perform { try await player.togglePlayPause() }
             }
@@ -72,11 +74,21 @@ struct AppCommands: Commands {
             Button("Previous") { app.perform { try await player.previous() } }
                 .keyboardShortcut(.leftArrow)
                 .disabled(player.queue.isEmpty)
+            Button("Skip Forward \(Int(AppState.skipStep)) Seconds") { app.skip(by: AppState.skipStep) }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                .disabled(!seekable)
+            Button("Skip Back \(Int(AppState.skipStep)) Seconds") { app.skip(by: -AppState.skipStep) }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                .disabled(!seekable)
             Divider()
             Toggle("Shuffle", isOn: Binding(get: { player.isShuffled }, set: { player.setShuffle($0) }))
+                .keyboardShortcut("s", modifiers: [.command, .option])
             Picker("Repeat", selection: Binding(get: { player.repeatMode }, set: { player.repeatMode = $0 })) {
                 ForEach(PlayQueue<URL>.Repeat.allCases, id: \.self) { Text($0.label).tag($0) }
             }
+            // The player bar's repeat button, from the keyboard: off → all → one → off.
+            Button("Change Repeat to \(player.repeatMode.next.label)") { player.repeatMode = player.repeatMode.next }
+                .keyboardShortcut("r", modifiers: [.command, .option])
             Divider()
             Menu("Sleep Timer") { SleepTimerChoices(timer: app.sleepTimer) }
             Divider()
@@ -89,10 +101,13 @@ struct AppCommands: Commands {
             Divider()
             Button("Volume Up") { player.appVolume += 0.0625 }
                 .keyboardShortcut(.upArrow)
-                .disabled(player.appVolume >= 1)
+                .disabled(player.appVolume >= 1 || player.isSendingDoP)
             Button("Volume Down") { player.appVolume -= 0.0625 }
                 .keyboardShortcut(.downArrow)
-                .disabled(player.appVolume <= 0)
+                .disabled(player.appVolume <= 0 || player.isSendingDoP)
+            Button(app.isMuted ? "Unmute" : "Mute") { app.toggleMute() }
+                .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                .disabled(player.isSendingDoP)
         }
     }
 }

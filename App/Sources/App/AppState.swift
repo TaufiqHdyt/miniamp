@@ -272,6 +272,31 @@ final class AppState {
         }
     }
 
+    /// How far ⌥⌘← and ⌥⌘→ move within the song.
+    static let skipStep = 10.0
+
+    /// Moves the playhead `seconds` on (or back), within the song.
+    func skip(by seconds: Double) {
+        let total = player.duration.seconds
+        guard total > 0 else { return }
+        player.seek(to: .seconds(min(max(player.currentTime.seconds + seconds, 0), max(total - 1, 0))))
+    }
+
+    /// The volume before Mute, to go back to.
+    @ObservationIgnored private var volumeBeforeMute: Float = 1
+
+    var isMuted: Bool { player.appVolume <= 0 }
+
+    /// Silences miniamp, or brings back the volume it had.
+    func toggleMute() {
+        if isMuted {
+            player.appVolume = volumeBeforeMute > 0 ? volumeBeforeMute : 1
+        } else {
+            volumeBeforeMute = player.appVolume
+            player.appVolume = 0
+        }
+    }
+
     /// Every song's synced lyrics held back this much, for speakers that play the sound late
     /// (Bluetooth): the player's clock is where the audio is rendered, ahead of what's heard.
     /// Settings › Lyrics.
