@@ -62,16 +62,13 @@ struct Sidebar: View {
                             Button("Delete Playlist…", role: .destructive) { deleting = playlist }
                         }
                 }
-                if app.playlists.isEmpty, library != nil {
+                // Always last: makes a playlist, by click or by dropping songs on it.
+                if library != nil {
                     NewPlaylistRow(app: app)
                         .selectionDisabled()
                 }
             } header: {
-                HStack {
-                    Text("Playlists")
-                    Spacer()
-                    NewPlaylistButton(app: app)
-                }
+                Text("Playlists")
             }
         }
         .listStyle(.sidebar)
@@ -95,28 +92,7 @@ struct Sidebar: View {
     }
 }
 
-/// The Playlists header's +: a new playlist; songs dropped on it make one of them.
-private struct NewPlaylistButton: View {
-    let app: AppState
-    @State private var targeted = false
-
-    var body: some View {
-        Button { app.newPlaylist() } label: {
-            Image(systemName: "plus")
-                .fontWeight(.medium)
-                .frame(width: 18, height: 18)
-                .background(targeted ? AnyShapeStyle(.tint.opacity(0.25)) : AnyShapeStyle(.clear), in: Circle())
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .help("New Playlist (⌘N). Drop songs here to make one of them.")
-        .accessibilityLabel("New Playlist")
-        .disabled(app.library == nil)
-        .onDrop(of: [.fileURL], isTargeted: $targeted) { app.dropTracks($0, onPlaylist: nil) }
-    }
-}
-
-/// In place of the playlists while there are none: makes one, by click or by dropping songs.
+/// The last row of the playlists: makes one, by click (or ⌘N) or by dropping songs on it.
 private struct NewPlaylistRow: View {
     let app: AppState
     @State private var targeted = false
@@ -129,7 +105,7 @@ private struct NewPlaylistRow: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(targeted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-        .help("Make a playlist, or drop songs here to make one of them")
+        .help("New Playlist (⌘N). Drop songs here to make one of them.")
         .onDrop(of: [.fileURL], isTargeted: $targeted) { app.dropTracks($0, onPlaylist: nil) }
     }
 }
