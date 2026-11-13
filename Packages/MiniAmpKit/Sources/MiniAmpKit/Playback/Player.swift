@@ -299,6 +299,12 @@ public final class Player {
         await queueChanged()
     }
 
+    /// Moves songs in Up Next (order positions after the current one) to before position `to`.
+    public func moveInQueue(fromPositions from: [Int], toPosition to: Int) async {
+        queue.move(fromPositions: from, toPosition: to)
+        await queueChanged()
+    }
+
     /// Moves a song in Up Next to play after the current one.
     public func playNext(fromPosition p: Int) async {
         queue.moveToNext(fromPosition: p)

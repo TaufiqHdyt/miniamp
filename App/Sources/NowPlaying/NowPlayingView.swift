@@ -72,7 +72,9 @@ struct NowPlayingView: View {
             Section {
                 // Each row keeps the file it shows: SwiftUI can still be drawing a row from the
                 // queue before (one just replaced by a shorter one), so never index the queue here.
-                ForEach(upcoming, id: \.self) { row in
+                // Identified by the item, whose index lasts as long as the queue, so a dragged row
+                // moves rather than being redrawn as a new one.
+                ForEach(upcoming, id: \.item) { row in
                     QueueRow(entry: entries[row.url] ?? QueueEntry(fileName: row.url), artwork: artwork)
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { play(row) }
@@ -92,6 +94,8 @@ struct NowPlayingView: View {
                             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([row.url]) }
                         }
                 }
+                // Drag to reorder what plays next.
+                .onMove { offsets, destination in move(offsets, to: destination, in: upcoming) }
                 let remaining = remainingCount(player.queue, shown: upcoming.count)
                 if remaining > 0 {
                     Text("and \(remaining) more").foregroundStyle(.secondary).font(.callout)
@@ -122,6 +126,16 @@ struct NowPlayingView: View {
         guard queue.order.indices.contains(row.position), queue.order[row.position] == row.item,
               queue.items[row.item] == row.url else { return nil }
         return row.position
+    }
+
+    /// Rows dragged from `offsets` to before `destination` (offsets into `upcoming`), as order
+    /// positions. Nothing moves if the queue changed under the rows.
+    private func move(_ offsets: IndexSet, to destination: Int, in upcoming: [Row]) {
+        let rows = offsets.map { upcoming[$0] }
+        guard rows.allSatisfy({ stillThere($0) != nil }) else { return }
+        let to = destination < upcoming.count ? upcoming[destination].position
+            : (upcoming.last.map { $0.position + 1 } ?? 0)
+        Task { await app.player.moveInQueue(fromPositions: rows.map(\.position), toPosition: to) }
     }
 
     private func play(_ row: Row) {

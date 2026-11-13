@@ -132,6 +132,20 @@ public struct PlayQueue<Item: Sendable & Equatable>: Sendable, Equatable {
         if p < position { self.position = position - 1 }
     }
 
+    /// Moves the items at order positions `from` (those after the current one) to just before
+    /// position `to`, as a dragged list does. Unshuffled, the natural order follows; shuffled,
+    /// only this shuffle's order changes.
+    public mutating func move(fromPositions from: [Int], toPosition to: Int) {
+        guard let position else { return }
+        let moving = Set(from.filter { $0 > position && $0 < order.count }).sorted()
+        guard !moving.isEmpty else { return }
+        let to = min(max(to, position + 1), order.count)
+        let moved = moving.map { order[$0] }
+        for p in moving.reversed() { order.remove(at: p) }
+        order.insert(contentsOf: moved, at: to - moving.filter { $0 < to }.count)
+        if !isShuffled { natural = order }
+    }
+
     /// Moves the item at an order position to play right after the current one.
     public mutating func moveToNext(fromPosition p: Int) {
         guard let position, order.indices.contains(p), p != position else { return }

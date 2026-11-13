@@ -151,4 +151,24 @@ import Testing
         q.setShuffle(false)
         #expect(q.order.map { q.items[$0] } == ["a", "d", "b", "c"])
     }
+
+    @Test func dragReorders() {
+        var q = PlayQueue(["a", "b", "c", "d", "e"], startAt: 1)
+        // "e" up to before "c".
+        q.move(fromPositions: [4], toPosition: 2)
+        #expect(Self.upcoming(q) == ["e", "c", "d"])
+        // "e" and "c" down to the end.
+        q.move(fromPositions: [2, 3], toPosition: 5)
+        #expect(Self.upcoming(q) == ["d", "e", "c"])
+        // The current song and those before it don't move, and nothing goes before it.
+        q.move(fromPositions: [0, 1], toPosition: 4)
+        q.move(fromPositions: [4], toPosition: 0)
+        #expect(q.current == "b")
+        #expect(q.order.map { q.items[$0] } == ["a", "b", "c", "d", "e"])
+        // Unshuffled, the new order stays when shuffle goes on and off.
+        q.move(fromPositions: [4], toPosition: 2)
+        q.setShuffle(true)
+        q.setShuffle(false)
+        #expect(q.order.map { q.items[$0] } == ["a", "b", "e", "c", "d"])
+    }
 }
