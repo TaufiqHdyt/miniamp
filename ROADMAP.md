@@ -105,7 +105,7 @@ Unordered. Pick these up as interest dictates.
 
 - [x] Duplicate review, by tags and duration
 - [x] Duplicate review by Chromaprint fingerprints
-- [x] Menu bar mini player and a WidgetKit widget
+- [x] A WidgetKit widget (a menu bar mini player came with it, since removed)
 - [x] Crossfade with beat detection (DSP mode only)
 - [x] DSD playback (DSF, DFF) over DoP to compatible DACs, converted to PCM for everything else
 - [x] Backup and restore of the database and settings

@@ -43,7 +43,7 @@ App/Sources/              SwiftUI app target (thin; UI only)
   App/                    Entry point, shared state, menus, settings, preferences
   Library/                Main window, sidebar, browsing, the track table, Get Info, listening stats, duplicates
   NowPlaying/             The inspector (Up Next with the song playing, Lyrics), full-size lyrics, the visualizer
-  Player/                 Player bar, menu bar mini player, seek bar, app volume, output picker, equalizer, Control Center
+  Player/                 Player bar, seek bar, app volume, output picker, equalizer, Control Center
   Support/                Artwork, formatting, the spectrum view, window visibility, hang logging, the widget's data
 Shared/                   Compiled into the app and the widget: the now-playing snapshot, playback intents
 Widget/                   The Now Playing widget (WidgetKit extension)

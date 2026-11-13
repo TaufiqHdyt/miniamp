@@ -25,15 +25,8 @@ final class AppState {
     /// Bumped by Edit › Find to move focus to the search field.
     var searchFocusRequests = 0
 
-    /// A small player in the menu bar. Remembered across launches.
-    var showsMenuBarPlayer = UserDefaults.standard.bool(forKey: "showsMenuBarPlayer") {
-        didSet { UserDefaults.standard.set(showsMenuBarPlayer, forKey: "showsMenuBarPlayer") }
-    }
-    /// Whether the main window is on screen, and whether the menu bar player is open: the
-    /// position is only updated while one of them shows it.
-    var mainWindowVisible = true { didSet { updatePositionUpdates() } }
-    var miniPlayerOpen = false { didSet { updatePositionUpdates() } }
-    private func updatePositionUpdates() { player.updatesPosition = mainWindowVisible || miniPlayerOpen }
+    /// Whether the main window is on screen: the position is only updated while it shows.
+    var mainWindowVisible = true { didSet { player.updatesPosition = mainWindowVisible } }
 
     /// The now-playing inspector. Remembered across launches. Read with bool(forKey:), not
     /// `as? Bool`: a launch argument (-showsNowPlaying NO) arrives as a string.

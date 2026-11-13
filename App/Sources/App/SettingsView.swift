@@ -239,10 +239,6 @@ private struct PlaybackSettings: View {
 
     var body: some View {
         Form {
-            Toggle(isOn: $app.showsMenuBarPlayer) {
-                Text("Show a mini player in the menu bar")
-                Text("Controls and what's playing, a click away when the window is closed.")
-            }
             Picker("Output device", selection: Binding(get: { player.preferredDeviceUID },
                                                        set: { Preferences.setOutputDevice($0, on: player) })) {
                 Text("System default").tag(String?.none)
