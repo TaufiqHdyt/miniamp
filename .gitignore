@@ -9,3 +9,5 @@ build/
 DerivedData/
 xcuserdata/
 /Fixtures/
+# This Mac's signing team (see Signing.xcconfig)
+Local.xcconfig

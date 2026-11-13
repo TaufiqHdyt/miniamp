@@ -1,0 +1,13 @@
+// Signing for every target. Ad-hoc by default, which builds and runs, but recent macOS won't
+// let an ad-hoc app write to the app group, so the widget stays on "Not Playing".
+//
+// To sign with your team, make Local.xcconfig beside this file (it's git-ignored):
+//
+//   DEVELOPMENT_TEAM = <your Team ID>
+//   CODE_SIGN_IDENTITY = Apple Development
+//
+// The app group then becomes <Team ID>.dev.miniamp.
+CODE_SIGN_IDENTITY = -
+CODE_SIGN_STYLE = Manual
+
+#include? "Local.xcconfig"
