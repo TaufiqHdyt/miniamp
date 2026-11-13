@@ -1,8 +1,8 @@
 import MiniAmpKit
 import SwiftUI
 
-/// The menu bar mini player: the cover, what's playing, the transport, and the position,
-/// in a small window under the menu bar icon.
+/// The menu bar mini player: the cover, what's playing, a spectrum visualizer, the transport,
+/// and the position, in a small window under the menu bar icon.
 struct MiniPlayer: View {
     let app: AppState
     @State private var current: QueueEntry?
@@ -24,6 +24,11 @@ struct MiniPlayer: View {
                 }
                 .lineLimit(1)
                 Spacer(minLength: 0)
+            }
+            if !player.isSendingDoP {
+                SpectrumView(player: player, bars: 24)
+                    .frame(height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             TransportButtons(app: app)
             SeekBar(player: player)

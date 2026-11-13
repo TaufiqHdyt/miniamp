@@ -35,6 +35,8 @@ final class HALOutput: @unchecked Sendable {
     private let rendering = Atomic<Bool>(false)
     private let boundDevice = Atomic<UInt32>(kAudioObjectUnknown)
     private var deviceWatch: [ListenerRegistration] = []
+    /// What's rendered, for a visualizer: after the EQ and the rest, before the app volume.
+    let tap = SampleTap()
 
     init() throws {
         var description = AudioComponentDescription(
@@ -101,6 +103,7 @@ final class HALOutput: @unchecked Sendable {
                   "Set render callback")
         try check(AudioUnitInitialize(unit), "Initialize output unit")
         watch(device)
+        tap.configure(sampleRate: format.sampleRate, latency: Self.presentationLatency(of: device))
         Self.log.debug("bound to \(device.name, privacy: .public): \(format, privacy: .public), channel map \(channelMap, privacy: .public)")
     }
 
@@ -172,7 +175,7 @@ final class HALOutput: @unchecked Sendable {
 
     /// Called on the I/O thread.
     fileprivate func renderInto(_ frames: UInt32, _ data: UnsafeMutablePointer<AudioBufferList>,
-                                _ flags: UnsafeMutablePointer<AudioUnitRenderActionFlags>) {
+                                _ flags: UnsafeMutablePointer<AudioUnitRenderActionFlags>, hostTime: UInt64) {
         if !muted.load(ordering: .acquiring) {
             // Announce the render before checking `holding`; `hold` sets it before checking
             // `rendering`. Either this sees the hold, or `hold` waits for this render.
@@ -184,6 +187,7 @@ final class HALOutput: @unchecked Sendable {
                     Self.misdirectedRenders.add(1, ordering: .relaxed)
                 }
                 if let render, render(frames, data) {
+                    if tap.isCapturing { tap.write(data, frames: Int(frames), hostTime: hostTime) }
                     let target = Float(bitPattern: gainBits.load(ordering: .relaxed))
                     Self.applyGain(from: appliedGain, to: target, data)
                     appliedGain = target
@@ -196,6 +200,21 @@ final class HALOutput: @unchecked Sendable {
             if let bytes = buffer.mData { memset(bytes, 0, Int(buffer.mDataByteSize)) }
         }
         flags.pointee.insert(.unitRenderAction_OutputIsSilence)
+    }
+
+    /// Seconds from the time a render is stamped with to its sound leaving `device`: the
+    /// device's latency and safety offset, and its stream's latency (large for Bluetooth).
+    static func presentationLatency(of device: AudioDevice) -> Double {
+        func frames(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector,
+                    _ scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeOutput) -> UInt32 {
+            (try? HAL.get(object, .init(selector, scope), initial: UInt32(0))) ?? 0
+        }
+        var total = frames(device.id, kAudioDevicePropertyLatency) + frames(device.id, kAudioDevicePropertySafetyOffset)
+        if let stream = try? device.outputStreams().first {
+            total += frames(stream, kAudioStreamPropertyLatency, kAudioObjectPropertyScopeGlobal)
+        }
+        guard let rate = try? device.nominalSampleRate(), rate > 0 else { return 0 }
+        return Double(total) / rate
     }
 
     /// Scales what's rendered from now on: the app volume. Takes effect on the next render,
@@ -249,7 +268,7 @@ private func halRenderCallback(
     data: UnsafeMutablePointer<AudioBufferList>?
 ) -> OSStatus {
     guard let data else { return noErr }
-    Unmanaged<HALOutput>.fromOpaque(refCon).takeUnretainedValue().renderInto(frames, data, flags)
+    Unmanaged<HALOutput>.fromOpaque(refCon).takeUnretainedValue().renderInto(frames, data, flags, hostTime: timestamp.pointee.mHostTime)
     return noErr
 }
 

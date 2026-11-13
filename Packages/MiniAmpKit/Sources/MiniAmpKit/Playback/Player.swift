@@ -167,6 +167,9 @@ public final class Player {
     /// The hardware output, owned by us and bound to one device. Nil only if Core Audio
     /// can't create an output unit at all.
     @ObservationIgnored let output = try? HALOutput()
+
+    /// What's going out, for a visualizer (see SampleTap). Nil without an output.
+    public var visualizerTap: SampleTap? { output?.tap }
     /// The device rate playback was set up for; a different rate means someone else changed it.
     @ObservationIgnored var expectedDeviceRate: Double = 0
     @ObservationIgnored var activeDeviceWatcher: Task<Void, Never>?

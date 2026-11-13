@@ -31,7 +31,7 @@ Other targets:
 | `make ctl ARGS="fingerprint <file> [<other>]"` | A file's Chromaprint fingerprint, or how alike two files sound |
 | `make library-bench` | Generates a 10,000-track fake library in `/tmp/miniamp-library` (`TRACKS=N`), then scans it cold and again with nothing changed |
 | `make bench`   | Measures CPU, energy impact, wakeups, and memory while playing silent files in each format (`SECS=N` per case, default 30). Quit miniamp first |
-| `make app-bench` | The same for the app: idle, then playing with Up Next, Lyrics, and the inspector closed, on a scratch library in its container (`SECS=N`, `CONFIG=Release`). Quit miniamp first |
+| `make app-bench` | The same for the app: idle, then playing with Up Next, Lyrics, the inspector closed, and the visualizer, on a scratch library in its container (`SECS=N`, `CONFIG=Release`). Needs the screen on: a covered window or a locked screen draws nothing. Quit miniamp first |
 
 `MiniAmp.xcodeproj` is generated and not committed. Edit `project.yml` and run `make project` instead of changing build settings in Xcode.
 
@@ -41,9 +41,9 @@ Other targets:
 App/Sources/              SwiftUI app target (thin; UI only)
   App/                    Entry point, shared state, menus, settings, preferences
   Library/                Main window, sidebar, browsing, the track table, Get Info, listening stats, duplicates
-  NowPlaying/             The inspector: Up Next (with the song playing) and Lyrics
+  NowPlaying/             The inspector (Up Next with the song playing, Lyrics), full-size lyrics, the visualizer
   Player/                 Player bar, menu bar mini player, seek bar, app volume, output picker, equalizer, Control Center
-  Support/                Artwork, formatting, window visibility, hang logging, the widget's data
+  Support/                Artwork, formatting, the spectrum view, window visibility, hang logging, the widget's data
 Shared/                   Compiled into the app and the widget: the now-playing snapshot, playback intents
 Widget/                   The Now Playing widget (WidgetKit extension)
 Packages/MiniAmpKit/      Everything testable: playback, library, database
@@ -52,8 +52,8 @@ Packages/MiniAmpKit/      Everything testable: playback, library, database
   Sources/CChromaprint    Chromaprint (audio fingerprints, for duplicates), vendored unmodified; see VENDORED.txt
   Sources/CDSD            DSD playback's inner loops (DoP packing, the PCM filter), optimized in Debug too
   Sources/MiniAmpKit/
-    Audio/                Core Audio: devices, the hardware output, format selection, DSD files
-    Playback/             Player, queue, gapless scheduling, crossfade, DSP mode and EQ, sleep timer, play history
+    Audio/                Core Audio: devices, the hardware output (and its tap for the visualizer), format selection, DSD files
+    Playback/             Player, queue, gapless scheduling, crossfade, the spectrum analyser, DSP mode and EQ, sleep timer, play history
     Library/              Database records, scanning, tag reading and writing, ReplayGain and loudness analysis, playlists, M3U8, artwork, folders
     Support/              Small shared extensions
   Sources/miniampctl      Developer CLI for the device and playback

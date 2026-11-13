@@ -204,6 +204,7 @@ extension Player {
         let renderBlock = engine.manualRenderingBlock
         // DoP goes out unscaled; anything else at the app volume, from its first frame.
         output.resetGain(file.kind == .dop ? 1 : Self.gain(forVolume: appVolume))
+        output.tap.setSuppressed(file.kind == .dop)
         let map = OutputUnit.channelMap(sourceChannels: Int(channels), deviceChannels: device.outputChannelCount)
         try output.configure(device: device, format: renderFormat, channelMap: map) { frames, data in
             renderBlock(frames, data, nil) == .success

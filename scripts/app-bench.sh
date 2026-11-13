@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Measures the app's CPU, energy impact, wakeups, and memory: idle, then playing with each
-# inspector pane and with it closed. Uses a scratch library in the app's container
+# inspector pane, with it closed, and with the visualizer. Uses a scratch library in the app's container
 # (-libraryDatabase), never the real one, and plays silent files. Quit miniamp first.
 # Usage: scripts/app-bench.sh [seconds-per-case]   (default 30; CONFIG=Release for a Release build)
 set -euo pipefail
@@ -56,4 +56,5 @@ run "idle, window open"               -showsNowPlaying YES -inspectorPane upNext
 run "playing 96/24, Up Next"          -showsNowPlaying YES -inspectorPane upNext -autoplay "$SONG"
 run "playing 96/24, Lyrics (synced)"  -showsNowPlaying YES -inspectorPane lyrics -autoplay "$SONG"
 run "playing 96/24, inspector closed" -showsNowPlaying NO -autoplay "$SONG"
+run "playing 96/24, visualizer"      -showsNowPlaying NO -autoplay "$SONG" -fullView visualizer
 rm -rf "$DATA/db"

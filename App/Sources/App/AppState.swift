@@ -45,9 +45,19 @@ final class AppState {
         didSet { UserDefaults.standard.set(inspectorPane.rawValue, forKey: "inspectorPane") }
     }
 
-    /// The lyrics filling the library area, big, on the playing song's cover. Not remembered:
-    /// each launch opens on the library.
-    var showsFullLyrics = false
+    /// What fills the library area in place of the library, on the playing song's cover: the
+    /// lyrics, big, or the visualizer. Not remembered: each launch opens on the library.
+    var fullView: FullView?
+
+    var showsFullLyrics: Bool {
+        get { fullView == .lyrics }
+        set { if newValue { fullView = .lyrics } else if fullView == .lyrics { fullView = nil } }
+    }
+
+    var showsVisualizer: Bool {
+        get { fullView == .visualizer }
+        set { if newValue { fullView = .visualizer } else if fullView == .visualizer { fullView = nil } }
+    }
 
     /// Ask LRCLIB for lyrics when a song has none of its own. Off until turned on: it sends
     /// what's playing (title, artist, album, duration) to lrclib.net.
@@ -257,6 +267,16 @@ final class AppState {
         }
     }
 
+    /// Opens the spectrum visualizer in the library area (while something is playing), or
+    /// goes back to the library.
+    func toggleVisualizer() {
+        if showsVisualizer {
+            showsVisualizer = false
+        } else if player.queue.current != nil {
+            showsVisualizer = true
+        }
+    }
+
     /// Every song's synced lyrics held back this much, for speakers that play the sound late
     /// (Bluetooth): the player's clock is where the audio is rendered, ahead of what's heard.
     /// Settings › Lyrics.
@@ -413,6 +433,10 @@ final class AppState {
 
 enum InspectorPane: String {
     case upNext, lyrics
+}
+
+enum FullView {
+    case lyrics, visualizer
 }
 
 /// The song a lyrics editor edits, and its lyrics as they were.

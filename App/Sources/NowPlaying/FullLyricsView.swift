@@ -11,15 +11,26 @@ struct FullLyricsView: View {
     var body: some View {
         let entry = entry?.url == url ? entry : nil
         LyricsView(app: app, url: url, style: .full) {
-            heading(entry ?? QueueEntry(fileName: url))
+            FullViewHeading(app: app, entry: entry ?? QueueEntry(fileName: url))
         }
         .id(url)
-        .background { background(entry) }
+        .background { CoverWash(app: app, entry: entry) }
         // Light text on the dark wash, whatever the system appearance.
         .environment(\.colorScheme, .dark)
-        .task(id: TagsKey(url: url, revision: app.library?.revision ?? 0)) {
+        .modifier(FullViewEntry(app: app, url: url, entry: $entry))
+    }
+}
+
+/// The playing song's tags, kept up to date with the library (a retagged file).
+struct FullViewEntry: ViewModifier {
+    let app: AppState
+    let url: URL
+    @Binding var entry: QueueEntry?
+
+    func body(content: Content) -> some View {
+        content.task(id: TagsKey(url: url, revision: app.library?.revision ?? 0)) {
             let loaded = await QueueEntry.load([url], from: app.library)[url]
-            if !Task.isCancelled { self.entry = loaded }
+            if !Task.isCancelled { entry = loaded }
         }
     }
 
@@ -27,8 +38,14 @@ struct FullLyricsView: View {
         var url: URL
         var revision: Int
     }
+}
 
-    private func heading(_ entry: QueueEntry) -> some View {
+/// The song named at the top of a full view: its cover, title and artist.
+struct FullViewHeading: View {
+    let app: AppState
+    let entry: QueueEntry
+
+    var body: some View {
         HStack(spacing: 12) {
             ArtworkView(key: entry.artworkKey, artwork: app.library?.artwork,
                         fileURL: entry.inLibrary ? nil : entry.url, size: .small, cornerRadius: 6)
@@ -43,10 +60,15 @@ struct FullLyricsView: View {
             .lineLimit(1)
         }
     }
+}
 
-    /// The cover, blown up and blurred, darkened so the words read; the cover's colour
-    /// beneath it, for the moment before it loads (or a song without one).
-    private func background(_ entry: QueueEntry?) -> some View {
+/// Behind a full view: the cover, blown up and blurred, darkened so what's on it reads; the
+/// cover's colour beneath it, for the moment before it loads (or a song without one).
+struct CoverWash: View {
+    let app: AppState
+    let entry: QueueEntry?
+
+    var body: some View {
         ZStack {
             (app.artworkTint?.color ?? Color(white: 0.18))
             if let entry, entry.artworkKey != nil || !entry.inLibrary {

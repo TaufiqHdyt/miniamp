@@ -50,9 +50,9 @@ struct MainWindow: View {
         }
         .onChange(of: app.library?.revision) { app.libraryChanged() }
         // Anything chosen in the sidebar, or searched for, goes back from the full-size lyrics.
-        .onChange(of: selection) { app.showsFullLyrics = false }
-        .onChange(of: app.searchText) { if app.isSearching { app.showsFullLyrics = false } }
-        .onChange(of: app.player.queue.current == nil) { if app.player.queue.current == nil { app.showsFullLyrics = false } }
+        .onChange(of: selection) { app.fullView = nil }
+        .onChange(of: app.searchText) { if app.isSearching { app.fullView = nil } }
+        .onChange(of: app.player.queue.current == nil) { if app.player.queue.current == nil { app.fullView = nil } }
         .onChange(of: app.sidebarRequest) {
             guard let item = app.sidebarRequest else { return }
             app.searchText = ""
@@ -72,8 +72,11 @@ struct MainWindow: View {
 
     @ViewBuilder
     private var detail: some View {
-        if app.showsFullLyrics, let url = app.player.queue.current {
-            FullLyricsView(app: app, url: url)
+        if let full = app.fullView, let url = app.player.queue.current {
+            switch full {
+            case .lyrics: FullLyricsView(app: app, url: url)
+            case .visualizer: FullVisualizerView(app: app, url: url)
+            }
         } else if let library = app.library, app.isSearching {
             SearchResultsView(app: app, library: library, query: app.searchText)
         } else if let library = app.library {
@@ -122,6 +125,12 @@ struct MainWindow: View {
             if defaults.object(forKey: "hog") != nil { app.player.hogMode = defaults.bool(forKey: "hog") }
             app.perform {
                 try await app.player.setQueue(paths.map { URL(fileURLWithPath: $0) })
+                //   ... -fullView visualizer   (or lyrics)
+                switch defaults.string(forKey: "fullView") {
+                case "visualizer": app.fullView = .visualizer
+                case "lyrics": app.fullView = .lyrics
+                default: break
+                }
                 if defaults.bool(forKey: "sleepAtEndOfTrack") { app.sleepTimer.stopAtEndOfTrack() }
             }
         }

@@ -35,6 +35,9 @@ struct AppCommands: Commands {
             Button(app.showsFullLyrics ? "Hide Full Lyrics" : "Show Full Lyrics") { app.toggleFullLyrics() }
                 .keyboardShortcut("l", modifiers: [.command, .option, .shift])
                 .disabled(!app.showsFullLyrics && app.currentURL == nil)
+            Button(app.showsVisualizer ? "Hide Visualizer" : "Show Visualizer") { app.toggleVisualizer() }
+                .keyboardShortcut("v", modifiers: [.command, .option, .shift])
+                .disabled(!app.showsVisualizer && app.currentURL == nil)
             Button("Edit Lyrics…") { app.editLyrics() }
                 .disabled(app.currentURL == nil || app.library == nil)
             Menu("Lyrics Timing") {
