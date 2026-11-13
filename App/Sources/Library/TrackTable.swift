@@ -12,8 +12,9 @@ import SwiftUI
 /// Info. Clicking a header sorts by it (the rows arrive sorted from the database). The header's
 /// menu shows and hides columns, and the layout is saved.
 ///
-/// In a playlist, rows can be dragged into a new order (while it's sorted by its own order),
-/// and Delete removes them from the playlist.
+/// Rows can be dragged onto a playlist in the sidebar to add them. In a playlist, they can
+/// also be dragged into a new order (while it's sorted by its own order), and Delete removes
+/// them from the playlist.
 struct TrackTable: NSViewRepresentable {
     let app: AppState
     let rows: TrackRows
@@ -48,7 +49,9 @@ struct TrackTable: NSViewRepresentable {
         table.onDelete = { [weak coordinator] in coordinator?.removeSelectionFromPlaylist() }
         table.onGetInfo = { [weak coordinator] in coordinator?.getInfoForSelection() }
         table.registerForDraggedTypes([Coordinator.rowType])
-        table.setDraggingSourceOperationMask(.move, forLocal: true)
+        // Within the window: reordering a playlist, or adding to one in the sidebar. Not out of it.
+        table.setDraggingSourceOperationMask([.move, .copy], forLocal: true)
+        table.setDraggingSourceOperationMask([], forLocal: false)
 
         let rowMenu = NSMenu()
         rowMenu.delegate = coordinator
@@ -144,6 +147,10 @@ struct TrackTable: NSViewRepresentable {
                 for row in changed { refill(row: row, in: table) }
             }
 
+            // Dragging up or down a playlist in its own order moves rows; elsewhere it selects
+            // them, and a drag sideways (to a playlist in the sidebar) carries them.
+            if table.verticalMotionCanBeginDrag != canReorder { table.verticalMotionCanBeginDrag = canReorder }
+
             let descriptors = TrackColumn.sortDescriptors(for: config.sort)
             if table.sortDescriptors != descriptors {
                 settingSort = true
@@ -224,22 +231,36 @@ struct TrackTable: NSViewRepresentable {
 
         // MARK: Playlist order
 
-        /// Rows can be dragged only where the drop means something: in a playlist shown in its own order.
+        /// Rows can be dropped back into the table only where that means something: in a
+        /// playlist shown in its own order.
         private var canReorder: Bool {
             guard let config, config.inPlaylist else { return false }
             return config.sort == TrackSort(.playlistOrder)
         }
 
+        /// Any row can be dragged to a playlist in the sidebar (as its file); in a playlist in
+        /// its own order, also within the table.
         func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
-            guard canReorder, let item = tracks[row].playlistItemId else { return nil }
             let entry = NSPasteboardItem()
-            entry.setString(String(item), forType: Self.rowType)
+            entry.setString(tracks[row].track.url.absoluteString, forType: .fileURL)
+            if canReorder, let item = tracks[row].playlistItemId { entry.setString(String(item), forType: Self.rowType) }
             return entry
+        }
+
+        func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession,
+                       willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+            config?.app.draggedTracks = rowIndexes.map { tracks[$0] }
+        }
+
+        func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession,
+                       endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+            config?.app.draggedTracks = nil
         }
 
         func tableView(_ tableView: NSTableView, validateDrop info: any NSDraggingInfo, proposedRow row: Int,
                        proposedDropOperation operation: NSTableView.DropOperation) -> NSDragOperation {
-            guard canReorder, info.draggingSource as? NSTableView === tableView else { return [] }
+            guard canReorder, info.draggingSource as? NSTableView === tableView,
+                  info.draggingPasteboard.availableType(from: [Self.rowType]) != nil else { return [] }
             if operation == .on { tableView.setDropRow(row, dropOperation: .above) }
             return .move
         }

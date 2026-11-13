@@ -225,6 +225,54 @@ final class AppState {
         perform { try await library.addToPlaylist(id, trackIds: tracks.compactMap(\.track.id)) }
     }
 
+    /// The songs being dragged out of a track list, while the drag lasts: a drop in the
+    /// sidebar takes these, in their order, rather than looking the files up.
+    @ObservationIgnored var draggedTracks: [TrackInfo]?
+
+    /// Songs dropped on a playlist in the sidebar, or on its + (`playlist` nil: a new playlist
+    /// of them). From a track list, or files from the Finder that are in the library.
+    func dropTracks(_ providers: [NSItemProvider], onPlaylist playlist: Int64?) -> Bool {
+        guard let library else { return false }
+        let finish: ([TrackInfo]) -> Void = { [self] tracks in
+            guard !tracks.isEmpty else { return }
+            if let playlist { add(tracks, toPlaylist: playlist) } else { newPlaylist(with: tracks) }
+        }
+        if let dragged = draggedTracks {
+            finish(dragged)
+            return true
+        }
+        let loads = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
+        guard !loads.isEmpty else { return false }
+        Task { [self] in
+            // One at a time, so the songs keep the order they were dropped in.
+            var wanted: [URL] = []
+            for provider in loads {
+                let text: String? = await withCheckedContinuation { done in
+                    _ = provider.loadObject(ofClass: NSURL.self) { object, _ in
+                        done.resume(returning: (object as? NSURL)?.absoluteString)
+                    }
+                }
+                if let url = text.flatMap(URL.init(string:)) { wanted.append(url) }
+            }
+            do {
+                let found = try await library.tracks(at: wanted)
+                finish(wanted.compactMap { found[$0] })
+            } catch {
+                self.error = "\(error)"
+            }
+        }
+        return true
+    }
+
+    /// Plays a playlist, or adds it to Up Next.
+    func play(playlist id: Int64, shuffled: Bool = false, enqueueNext: Bool? = nil) {
+        guard let library else { return }
+        perform { [self] in
+            let tracks = try await library.tracks(in: .playlist(id), sort: TrackSort(.playlistOrder))
+            if let enqueueNext { enqueue(tracks, next: enqueueNext) } else { play(tracks, from: nil, shuffled: shuffled) }
+        }
+    }
+
     /// Asks where to save, then writes the playlist there as M3U8.
     func exportPlaylist(_ playlist: PlaylistSummary) {
         guard let library else { return }

@@ -74,7 +74,7 @@ This carries most of the technical risk, so it comes first.
 ### M5: System integration and library tools
 
 - [x] Media keys and Control Center through `MPRemoteCommandCenter` and `MPNowPlayingInfoCenter`
-- [x] Playlist create, edit, and reorder
+- [x] Playlist create, edit, and reorder; drag songs onto a playlist (or its +) in the sidebar
 - [x] M3U8 export
 - [x] Metadata editing with TagLib, followed by a rescan of the edited file
 - [x] Play history recording with the 30-second rule

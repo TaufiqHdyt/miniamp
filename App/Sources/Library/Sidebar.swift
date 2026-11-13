@@ -51,24 +51,26 @@ struct Sidebar: View {
                     PlaylistRow(app: app, playlist: playlist)
                         .tag(SidebarItem.playlist(playlist.id))
                         .contextMenu {
+                            Button("Play") { app.play(playlist: playlist.id) }
+                            Button("Shuffle") { app.play(playlist: playlist.id, shuffled: true) }
+                            Button("Play Next") { app.play(playlist: playlist.id, enqueueNext: true) }
+                            Button("Play Last") { app.play(playlist: playlist.id, enqueueNext: false) }
+                            Divider()
                             Button("Rename") { app.renamingPlaylist = playlist.id }
                             Button("Export as M3U8…") { app.exportPlaylist(playlist) }
                             Divider()
                             Button("Delete Playlist…", role: .destructive) { deleting = playlist }
                         }
                 }
-                if app.playlists.isEmpty {
-                    Text("No playlists yet").foregroundStyle(.secondary)
+                if app.playlists.isEmpty, library != nil {
+                    NewPlaylistRow(app: app)
                         .selectionDisabled()
                 }
             } header: {
                 HStack {
                     Text("Playlists")
                     Spacer()
-                    Button { app.newPlaylist() } label: { Image(systemName: "plus") }
-                        .buttonStyle(.borderless)
-                        .help("New playlist")
-                        .disabled(library == nil)
+                    NewPlaylistButton(app: app)
                 }
             }
         }
@@ -93,12 +95,53 @@ struct Sidebar: View {
     }
 }
 
+/// The Playlists header's +: a new playlist; songs dropped on it make one of them.
+private struct NewPlaylistButton: View {
+    let app: AppState
+    @State private var targeted = false
+
+    var body: some View {
+        Button { app.newPlaylist() } label: {
+            Image(systemName: "plus")
+                .fontWeight(.medium)
+                .frame(width: 18, height: 18)
+                .background(targeted ? AnyShapeStyle(.tint.opacity(0.25)) : AnyShapeStyle(.clear), in: Circle())
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help("New Playlist (⌘N). Drop songs here to make one of them.")
+        .accessibilityLabel("New Playlist")
+        .disabled(app.library == nil)
+        .onDrop(of: [.fileURL], isTargeted: $targeted) { app.dropTracks($0, onPlaylist: nil) }
+    }
+}
+
+/// In place of the playlists while there are none: makes one, by click or by dropping songs.
+private struct NewPlaylistRow: View {
+    let app: AppState
+    @State private var targeted = false
+
+    var body: some View {
+        Button { app.newPlaylist() } label: {
+            Label("New Playlist", systemImage: "plus.circle")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(targeted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+        .help("Make a playlist, or drop songs here to make one of them")
+        .onDrop(of: [.fileURL], isTargeted: $targeted) { app.dropTracks($0, onPlaylist: nil) }
+    }
+}
+
 /// A playlist in the sidebar, or a field for its name while it's being renamed.
 private struct PlaylistRow: View {
     let app: AppState
     let playlist: PlaylistSummary
     @State private var name = ""
     @FocusState private var focused: Bool
+    /// Songs are being dragged over it.
+    @State private var targeted = false
 
     var body: some View {
         if app.renamingPlaylist == playlist.id {
@@ -114,6 +157,15 @@ private struct PlaylistRow: View {
         } else {
             Label(playlist.name, systemImage: "music.note.list")
                 .badge(playlist.trackCount)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .background {
+                    RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(.tint, lineWidth: 2)
+                        .padding(-3)
+                        .opacity(targeted ? 1 : 0)
+                }
+                .onDrop(of: [.fileURL], isTargeted: $targeted) { app.dropTracks($0, onPlaylist: playlist.id) }
         }
     }
 
