@@ -26,11 +26,18 @@ struct FullVisualizerView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
                 .overlay {
-                    if app.player.isSendingDoP {
-                        Text("The visualizer is off while DSD goes to the DAC as DoP")
-                            .foregroundStyle(.secondary)
+                    Group {
+                        if app.player.isSendingDoP {
+                            Text("The visualizer is off while DSD goes to the DAC as DoP")
+                        } else if app.player.state == .paused {
+                            Text("Paused")
+                        }
                     }
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .transition(.opacity)
                 }
+                .animation(.easeInOut(duration: 0.2), value: app.player.state == .paused)
                 .frame(maxHeight: 520)
             Spacer(minLength: 0)
         }

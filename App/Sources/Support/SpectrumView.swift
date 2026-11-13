@@ -18,7 +18,7 @@ struct SpectrumView: View {
         SpectrumRepresentable(tap: player.visualizerTap, bars: bars, isPlaying: player.state == .playing)
             .accessibilityElement()
             .accessibilityLabel("Spectrum visualizer")
-            .accessibilityHidden(true)
+            .accessibilityAddTraits(.isImage)
     }
 }
 
@@ -119,11 +119,21 @@ final class SpectrumNSView: NSView {
         return min(max(Int(plot.width / 18), 32), 64)
     }
 
-    /// Each bar's left edge and width.
+    /// Each bar's left edge and width, on whole points so every bar and gap is as wide as the
+    /// next and their edges are sharp; what's left over is split between the two sides.
     private func barFrame(_ index: Int, of count: Int) -> (x: CGFloat, width: CGFloat) {
         let gap = max((plot.width / CGFloat(count) * 0.22).rounded(), 1)
-        let width = (plot.width - gap * CGFloat(count - 1)) / CGFloat(count)
-        return (plot.minX + CGFloat(index) * (width + gap), width)
+        let width = max(((plot.width - gap * CGFloat(count - 1)) / CGFloat(count)).rounded(.down), 1)
+        let spare = plot.width - width * CGFloat(count) - gap * CGFloat(count - 1)
+        return ((plot.minX + max(spare, 0) / 2).rounded(.down) + CGFloat(index) * (width + gap), width)
+    }
+
+    /// Shape layers drawn at the screen's scale, so the segment gaps and grid dots are sharp
+    /// on Retina (layers added by hand start at 1×).
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        let scale = window?.backingScaleFactor ?? 2
+        for sublayer in [grid, gradient, barMask, segments, capLayer] { sublayer.contentsScale = scale }
     }
 
     override func layout() {
@@ -202,10 +212,12 @@ final class SpectrumNSView: NSView {
             // Only what moved: an unchanged layer still costs the commit.
             let bar = CGRect(x: frame.x - plot.minX, y: 0, width: frame.width, height: level)
             if bars[index].frame != bar { bars[index].frame = bar }
-            let peak = CGFloat(analyzer.peaks[index]) * height
-            let hidden = reducesMotion || peak <= 0
+            // The cap in the segment just above its peak, lined up with the bar's segments.
+            let peak = (CGFloat(analyzer.peaks[index]) * height / pitch).rounded() * pitch
+            let hidden = reducesMotion || analyzer.peaks[index] <= 0
             if caps[index].isHidden != hidden { caps[index].isHidden = hidden }
-            let cap = CGRect(x: frame.x, y: plot.minY + min(peak, height - 2).rounded(), width: frame.width, height: 2)
+            let top = ((height - Self.segment) / pitch).rounded(.down) * pitch
+            let cap = CGRect(x: frame.x, y: plot.minY + min(peak, top), width: frame.width, height: 2)
             if !hidden, caps[index].frame != cap { caps[index].frame = cap }
         }
     }
