@@ -20,7 +20,10 @@ struct MainWindow: View {
                             .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
                     }
             }
-            .searchable(text: $app.searchText, placement: .toolbar, prompt: "Songs, artists, albums, genres")
+            // As in Apple Music: search at the top of the sidebar (in the toolbar while the
+            // sidebar is hidden), and no window title in the toolbar; each page names itself.
+            .searchable(text: $app.searchText, placement: .sidebar, prompt: "Search")
+            .toolbar(removing: .title)
             .searchFocused($searchFocused)
             .onChange(of: app.searchFocusRequests) { searchFocused = true }
             Divider()

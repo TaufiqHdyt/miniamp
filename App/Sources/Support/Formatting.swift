@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import MiniAmpKit
 
 /// How tracks' formats and times are written everywhere in the app.
@@ -41,5 +42,43 @@ extension ReplayGain.Mode {
         case .track: "Track"
         case .album: "Album"
         }
+    }
+}
+
+/// A page's name, large at the top of the page as in Apple Music, its count beside it, and
+/// the page's own controls at the trailing edge. (The toolbar carries no title.)
+struct PageHeader<Accessory: View>: View {
+    let title: String
+    var subtitle = ""
+    @ViewBuilder var accessory: Accessory
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(title)
+                    .font(.largeTitle.bold())
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .accessibilityAddTraits(.isHeader)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .layoutPriority(-1)
+                }
+            }
+            Spacer(minLength: 12)
+            accessory
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 4)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+extension PageHeader where Accessory == EmptyView {
+    init(title: String, subtitle: String = "") {
+        self.init(title: title, subtitle: subtitle) { EmptyView() }
     }
 }

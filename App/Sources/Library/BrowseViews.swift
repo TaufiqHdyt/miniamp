@@ -59,6 +59,8 @@ struct AlbumsView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
+                PageHeader(title: "Albums", subtitle: albums.isEmpty ? "" : albumCount)
+                    .padding(.top, 2)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 20)], spacing: 22) {
                     ForEach(albums) { album in
                         NavigationLink(value: album) {
@@ -74,7 +76,8 @@ struct AlbumsView: View {
                         }
                     }
                 }
-                .padding(20)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
             }
             .overlay {
                 if loaded && albums.isEmpty { ContentUnavailableView("No Albums", systemImage: "square.stack") }
@@ -88,6 +91,10 @@ struct AlbumsView: View {
             albums = (try? await library.albums()) ?? []
             loaded = true
         }
+    }
+
+    private var albumCount: String {
+        albums.count == 1 ? "1 album" : "\(albums.count.formatted()) albums"
     }
 
     private func play(_ album: AlbumSummary, shuffled: Bool) {
@@ -171,7 +178,7 @@ private struct AlbumDetail: View {
                 Spacer()
             }
             .padding(20)
-            TrackListView(app: app, library: library, scope: .album(album.id), title: album.title)
+            TrackListView(app: app, library: library, scope: .album(album.id), title: album.title, showsHeader: false)
         }
         .navigationTitle(album.title)
         .task(id: library.revision) {

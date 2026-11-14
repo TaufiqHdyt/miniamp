@@ -17,6 +17,8 @@ struct FullLyricsView: View {
         .background { CoverWash(app: app, entry: entry) }
         // Light text on the dark wash, whatever the system appearance.
         .environment(\.colorScheme, .dark)
+        // The wash runs up under the toolbar, as in Apple Music, rather than stopping at a grey bar.
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .modifier(FullViewEntry(app: app, url: url, entry: $entry))
     }
 }

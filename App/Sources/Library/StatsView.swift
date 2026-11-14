@@ -26,11 +26,31 @@ struct StatsView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            // Lined up with the page below, centred in a wide window.
+            PageHeader(title: "Listening Stats") {
+                PeriodControl(period: $period, years: yearChoices)
+            }
+            .padding(.horizontal, 4)
+            .frame(maxWidth: 980)
+            .frame(maxWidth: .infinity)
+            content
+        }
+        .navigationTitle("Listening Stats")
+        .task(id: LoadKey(period: period, trackStarts: app.player.trackStarts, revision: library.revision)) {
+            await load()
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         Group {
             if let stats, !stats.isEmpty {
                 ScrollView {
                     StatsContent(app: app, library: library, stats: stats)
-                        .padding(24)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 4)
+                        .padding(.bottom, 24)
                         .frame(maxWidth: 980)
                         .frame(maxWidth: .infinity)
                 }
@@ -46,25 +66,21 @@ struct StatsView: View {
                 Color.clear
             }
         }
-        .navigationTitle("Listening Stats")
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                PeriodControl(period: $period, years: yearChoices)
+        .frame(maxHeight: .infinity)
+    }
+
+    private func load() async {
+        do {
+            let wanted = period
+            let (years, stats) = try await library.database.writer.read { db in
+                (try ListeningStats.years(db), try ListeningStats.compute(year: wanted.year, db))
             }
-        }
-        .task(id: LoadKey(period: period, trackStarts: app.player.trackStarts, revision: library.revision)) {
-            do {
-                let wanted = period
-                let (years, stats) = try await library.database.writer.read { db in
-                    (try ListeningStats.years(db), try ListeningStats.compute(year: wanted.year, db))
-                }
-                guard !Task.isCancelled else { return }
-                self.years = years
-                self.stats = stats
-                error = nil
-            } catch {
-                self.error = "\(error)"
-            }
+            guard !Task.isCancelled else { return }
+            self.years = years
+            self.stats = stats
+            error = nil
+        } catch {
+            self.error = "\(error)"
         }
     }
 
@@ -151,7 +167,7 @@ private struct StatsContent: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(stats.year.map { "In \(String($0)), you listened for \(Listening.long(stats.listened))." }
                  ?? "You've listened for \(Listening.long(stats.listened)).")
-                .font(.title.bold())
+                .font(.title2.bold())
             Group {
                 if let top = stats.topArtists.first, let song = stats.topTracks.first {
                     Text("Mostly \(top.item), and \(song.item.track.title) more than any other song.")

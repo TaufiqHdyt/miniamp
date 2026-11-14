@@ -8,6 +8,8 @@ struct TrackListView: View {
     let library: Library
     let scope: TrackScope
     let title: String
+    /// Off where the page already has a header of its own (an album).
+    var showsHeader = true
     @State private var rows = TrackRows()
     private var tracks: [TrackInfo] { rows.tracks }
     @State private var loaded = false
@@ -39,6 +41,20 @@ struct TrackListView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            if showsHeader {
+                PageHeader(title: title, subtitle: tracks.isEmpty ? "" : CountFormat.songs(tracks.count))
+            }
+            table
+        }
+        .navigationTitle(title)
+        .task(id: TrackQuery(scope: scope, sort: sort, revision: library.revision)) {
+            await load()
+        }
+        .task { await cycleSortsIfAsked() }
+    }
+
+    private var table: some View {
         TrackTable(app: app, rows: rows, playlist: playlist,
                    sort: Binding(get: { sort }, set: { sort = $0 }))
             .overlay {
@@ -54,12 +70,6 @@ struct TrackListView: View {
                     }
                 }
             }
-            .navigationTitle(title)
-            .navigationSubtitle(tracks.isEmpty ? "" : CountFormat.songs(tracks.count))
-            .task(id: TrackQuery(scope: scope, sort: sort, revision: library.revision)) {
-                await load()
-            }
-            .task { await cycleSortsIfAsked() }
     }
 
     /// For performance checks (`-perfCycleSort YES -logHangs YES`): re-sorts Songs a few
@@ -112,15 +122,17 @@ struct SearchResultsView: View {
     static let limit = 1000
 
     var body: some View {
-        TrackTable(app: app, rows: rows, sort: $sort)
-            .overlay {
-                if searched && results.isEmpty {
-                    ContentUnavailableView.search(text: query)
+        VStack(spacing: 0) {
+            PageHeader(title: "Search", subtitle: subtitle)
+            TrackTable(app: app, rows: rows, sort: $sort)
+                .overlay {
+                    if searched && results.isEmpty {
+                        ContentUnavailableView.search(text: query)
+                    }
                 }
-            }
-            .navigationTitle("Search")
-            .navigationSubtitle(subtitle)
-            .task(id: SearchQuery(text: query, sort: sort, revision: library.revision)) {
+        }
+        .navigationTitle("Search")
+        .task(id: SearchQuery(text: query, sort: sort, revision: library.revision)) {
                 // Wait for a pause in typing.
                 try? await Task.sleep(for: .milliseconds(120))
                 guard !Task.isCancelled else { return }

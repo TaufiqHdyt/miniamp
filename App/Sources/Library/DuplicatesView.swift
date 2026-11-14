@@ -34,21 +34,21 @@ struct DuplicatesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if mode == .sound { fingerprintBar }
-            content
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
+            PageHeader(title: "Duplicates",
+                       subtitle: groups.map { $0.isEmpty ? "" : "\($0.count.formatted()) group\($0.count == 1 ? "" : "s")" } ?? "") {
                 Picker("Find", selection: $mode) {
                     Text("By Tags").tag(Mode.tags)
                     Text("By Sound").tag(Mode.sound)
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
                 .help("By tags: same title, artist, and length. By sound: the same audio, whatever the tags say.")
             }
+            if mode == .sound { fingerprintBar }
+            content
         }
         .navigationTitle("Duplicates")
-        .navigationSubtitle(groups.map { $0.isEmpty ? "" : "\($0.count) group\($0.count == 1 ? "" : "s")" } ?? "")
         .task(id: LoadKey(revision: library.revision, mode: mode, fingerprinting: library.fingerprintProgress != nil)) {
             await reload()
         }
