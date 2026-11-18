@@ -20,7 +20,7 @@ A native macOS music player for a local library. It plays FLAC, MP3, ALAC, and A
 
 ## Milestones
 
-M1 to M8 are done.
+M1 to M8 are done. M9 is next.
 
 ### M1: Playback proof of concept
 
@@ -114,6 +114,16 @@ Unordered. Pick these up as interest dictates.
 - [x] Lyrics editing and timing, saved in the song's tags, with duet voices (`v1:`, `v2:`)
 - [x] Artwork-based tinting
 - [x] Build TagLib from source and embed it in the app
+
+### M9: Lyrics and listening, continued
+
+Gaps found by comparing with other local-library players.
+
+- [ ] More lyrics providers, tried in an order you set, after the file's own lyrics (#53)
+- [ ] Autoplay: when Up Next runs out, keep playing similar songs from the library, picked on the Mac (#54)
+- [ ] Share up to five lyric lines as a card tinted with the cover colour (#55)
+
+**Done when:** a song LRCLIB doesn't have gets lyrics from another provider, an album ending with autoplay on keeps playing, and a lyrics card can be shared from the Lyrics pane.
 
 ## Out of scope
 
