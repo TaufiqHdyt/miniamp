@@ -78,9 +78,9 @@ enum Theme {
 
     /// The black laid over the blurred cover behind full lyrics and the visualizer, so white
     /// text reads on it. A cover with little colour (no tint) can be light grey or white
-    /// blurred, so it gets more; so does a light tint.
+    /// blurred, so it gets most (enough for the dimmed lines too); a light tint gets more.
     static func washDarkness(for tint: ArtworkTint?) -> Double {
-        guard let tint else { return 0.6 }
+        guard let tint else { return 0.75 }
         let luminance = 0.2126 * tint.red + 0.7152 * tint.green + 0.0722 * tint.blue
         return 0.35 + max(0, luminance - 0.5) * 0.5
     }

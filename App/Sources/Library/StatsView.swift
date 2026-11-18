@@ -206,11 +206,14 @@ enum Listening {
             : duration.formatted(.units(allowed: [.hours, .minutes], width: .abbreviated))
     }
 
-    /// "120 h" or "45 min", for a tile. Rounded as `long` rounds, so the two agree
-    /// (14 h 59 min 40 s is "15 hr" there and "15 h" here).
+    /// "15.6 h", "120 h" or "45 min", for a tile: tenths of an hour below 100, so it agrees
+    /// with `long` beside it ("15 hr, 34 min"), where whole hours would round to 16.
     static func short(_ duration: Duration) -> String {
         let minutes = (duration.components.seconds + 30) / 60
-        return minutes >= 60 ? "\((minutes + 30) / 60) h" : "\(minutes) min"
+        guard minutes >= 60 else { return "\(minutes) min" }
+        let tenths = (minutes * 10 + 30) / 60
+        if tenths >= 1000 { return "\((tenths + 5) / 10) h" }
+        return tenths % 10 == 0 ? "\(tenths / 10) h" : (Double(tenths) / 10).formatted(.number.precision(.fractionLength(1))) + " h"
     }
 
     /// Hours when there's a lot, minutes otherwise; the chart's unit.

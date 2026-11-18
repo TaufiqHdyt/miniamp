@@ -453,6 +453,8 @@ struct TrackTable: NSViewRepresentable {
         }
 
         /// Every shown column fits its contents, and Title takes whatever width is left.
+        static let textColumnFitLimit: CGFloat = 260
+
         private func fitAllColumns(in table: NSTableView, unlessUnchanged: Bool = false) {
             let shown = table.tableColumns.filter { !$0.isHidden }.map(\.identifier.rawValue)
             let key = (count: tracks.count, idSum: tracks.reduce(Int64(0)) { $0 &+ $1.id }, columns: shown)
@@ -467,15 +469,18 @@ struct TrackTable: NSViewRepresentable {
                 guard let kind = TrackColumn(rawValue: tableColumn.identifier.rawValue) else { continue }
                 if kind == .title { title = tableColumn; continue }
                 if kind != .playing {
-                    let width = ColumnFitter.width(kind, tableColumn, tracks: tracks, positions: positions)
+                    var width = ColumnFitter.width(kind, tableColumn, tracks: tracks, positions: positions)
+                    // One long credit ("A, B, C & D") shouldn't take Title's room.
+                    if [.artist, .album, .genre].contains(kind) { width = min(width, Self.textColumnFitLimit) }
                     if abs(width - tableColumn.width) > 0.5 { tableColumn.width = width }
                 }
                 used += tableColumn.width + table.intercellSpacing.width
             }
             guard let title else { return }
             let available = (table.enclosingScrollView?.contentSize.width ?? table.bounds.width) - table.intercellSpacing.width
-            let fitted = ColumnFitter.width(.title, title, tracks: tracks, positions: positions)
-            let width = min(max(available - used, fitted, title.minWidth), title.maxWidth)
+            // Title takes what's left and truncates, rather than growing to its longest title: one
+            // long one ("… (feat. …) (Album Version)") pushed every other column out of view.
+            let width = min(max(available - used, title.minWidth), title.maxWidth)
             if abs(width - title.width) > 0.5 { title.width = width }
         }
 
