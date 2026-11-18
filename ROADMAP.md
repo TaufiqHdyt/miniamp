@@ -20,7 +20,7 @@ A native macOS music player for a local library. It plays FLAC, MP3, ALAC, and A
 
 ## Milestones
 
-M1 to M8 are done. M9 and M10 are next.
+M1 to M9 are done. M10 is next.
 
 ### M1: Playback proof of concept
 
