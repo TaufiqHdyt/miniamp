@@ -24,6 +24,8 @@ struct LyricsView<NowPlaying: View>: View {
     @State private var translated: [Int: String] = [:]
     @State private var translation: TranslationSession.Configuration?
     @State private var translationError: String?
+    /// The lines being made into a card, while the share sheet is open.
+    @State private var sharing: LyricsShareTarget?
 
     enum LoadState: Equatable {
         case loading
@@ -61,6 +63,7 @@ struct LyricsView<NowPlaying: View>: View {
             await load(app.looksUpLyricsOnline ? .automatic : .cachedOnly)
         }
         .onChange(of: app.totalLyricsOffset(for: url)) { follower?.offset = app.totalLyricsOffset(for: url) }
+        .sheet(item: $sharing) { LyricsShareSheet(app: app, target: $0) }
         .onChange(of: app.showsLyricsTranslation) { updateTranslation() }
         .translationTask(translation) { session in
             guard case .found(let found) = state else { return }
@@ -95,6 +98,7 @@ struct LyricsView<NowPlaying: View>: View {
                     if case .found(let found) = state, !found.lyrics.isInstrumental {
                         if found.lyrics.isSynced { TimingControl(app: app, url: url) }
                         extrasMenu
+                        shareButton
                     }
                     if case .found = state {
                         editButton
@@ -148,6 +152,7 @@ struct LyricsView<NowPlaying: View>: View {
             if case .found(let found) = state, !found.lyrics.isInstrumental {
                 if found.lyrics.isSynced { TimingControl(app: app, url: url) }
                 extrasMenu
+                shareButton
             }
             if case .found = state {
                 editButton
@@ -176,11 +181,33 @@ struct LyricsView<NowPlaying: View>: View {
                     .onTapGesture {
                         if synced, let time = line.time, let follower { app.player.seek(to: follower.playbackTime(for: time)) }
                     }
+                    .contextMenu { shareMenuItem(from: line) }
             }
             sourceNotes(found).font(.callout).padding(.top, 24)
         default:
             rows.font(.title3)
         }
+    }
+
+    private var shareButton: some View {
+        Button { share(from: follower?.position.line) } label: { Image(systemName: "square.and.arrow.up") }
+            .buttonStyle(.borderless)
+            .help("Share up to five lines as an image")
+    }
+
+    private func shareMenuItem(from line: Lyrics.Line?) -> some View {
+        Button("Share Lyrics…") { share(from: line?.id) }
+    }
+
+    /// Opens the share sheet on the lyrics shown, with `line` chosen to start with.
+    private func share(from line: Int?) {
+        guard case .found(let found) = state, !found.lyrics.isInstrumental else { return }
+        var shown: [Int: [String]] = [:]
+        for line in found.lyrics.lines {
+            let extras = extras(for: line)
+            if !extras.isEmpty { shown[line.id] = extras }
+        }
+        sharing = LyricsShareTarget(url: url, lyrics: found.lyrics, extras: shown, startLine: line)
     }
 
     private var editButton: some View {
@@ -285,6 +312,7 @@ struct LyricsView<NowPlaying: View>: View {
                     LyricLine(line: line, position: follower.position, extras: extras(for: line), style: .pane)
                         .contentShape(Rectangle())
                         .onTapGesture { if let time = line.time { app.player.seek(to: follower.playbackTime(for: time)) } }
+                        .contextMenu { shareMenuItem(from: line) }
                         .listRowSeparator(.hidden)
                 }
             } else if found.lyrics.hasVoices || found.lyrics.lines.contains(where: { !extras(for: $0).isEmpty }) {
@@ -298,6 +326,7 @@ struct LyricsView<NowPlaying: View>: View {
                     .multilineTextAlignment(side.textAlignment)
                     .frame(maxWidth: .infinity, alignment: side.frameAlignment)
                     .textSelection(.enabled)
+                    .contextMenu { shareMenuItem(from: line) }
                     .listRowSeparator(.hidden)
                 }
             } else {
@@ -305,6 +334,7 @@ struct LyricsView<NowPlaying: View>: View {
                     .lineSpacing(4)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .contextMenu { shareMenuItem(from: nil) }
                     .listRowSeparator(.hidden)
             }
         case .none(let searched):

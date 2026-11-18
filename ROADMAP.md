@@ -121,7 +121,7 @@ Gaps found by comparing with other local-library players.
 
 - [x] More lyrics providers (LRCLIB, NetEase Cloud Music, Lyrics.ovh), tried in an order you set, after the file's own lyrics (#53)
 - [x] Autoplay: when Up Next runs out, keep playing similar songs from the library, picked on the Mac (#54)
-- [ ] Share up to five lyric lines as a card tinted with the cover colour (#55)
+- [x] Share up to five lyric lines as a card tinted with the cover colour (#55)
 
 **Done when:** a song LRCLIB doesn't have gets lyrics from another provider, an album ending with autoplay on keeps playing, and a lyrics card can be shared from the Lyrics pane.
 
