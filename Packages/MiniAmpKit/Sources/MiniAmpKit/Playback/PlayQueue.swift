@@ -124,6 +124,28 @@ public struct PlayQueue<Item: Sendable & Equatable>: Sendable, Equatable {
         }
     }
 
+    /// As `insert(_:next:)`, but songs added at the end go before the first of `held` (items,
+    /// by index) still to come: what autoplay added stays after what was chosen. Returns the
+    /// new items' indices.
+    @discardableResult
+    public mutating func insert(_ new: [Item], next: Bool, before held: Set<Int>) -> Range<Int> {
+        let added = items.count ..< items.count + new.count
+        insert(new, next: next)
+        if !next, let position, !new.isEmpty,
+           let first = order.indices.first(where: { $0 > position && held.contains(order[$0]) }) {
+            move(fromPositions: Array(order.count - new.count ..< order.count), toPosition: first)
+        }
+        return added
+    }
+
+    /// Takes the items (by index) that are still to come out of the queue.
+    public mutating func removeUpcoming(_ removing: Set<Int>) {
+        guard let position else { return }
+        for p in order.indices.reversed() where p > position && removing.contains(order[p]) {
+            remove(atPosition: p)
+        }
+    }
+
     /// Takes the item at an order position out of the queue. The current item stays.
     public mutating func remove(atPosition p: Int) {
         guard let position, order.indices.contains(p), p != position else { return }

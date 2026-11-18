@@ -93,6 +93,11 @@ public final class Player {
 
     public var isShuffled: Bool { queue.isShuffled }
 
+    /// Queue items (by index in `queue.items`) that autoplay added when the queue ran out, as
+    /// opposed to songs chosen. Up Next shows them apart, and songs added with Play Last go
+    /// before them.
+    public private(set) var autoplayItems: Set<Int> = []
+
     /// Send DSD to the device as DoP (DSD over PCM), for DACs that play it. Takes effect in
     /// bit-perfect mode on devices that can run at the DoP rate; elsewhere, and with this off,
     /// DSD is converted to PCM. Off by default: a DAC that doesn't know DoP plays it as noise.
@@ -256,6 +261,7 @@ public final class Player {
         let repeatMode = queue.repeatMode
         let shuffle = queue.isShuffled
         queue = PlayQueue(urls, startAt: index)
+        autoplayItems = []
         queue.repeatMode = repeatMode
         if shuffle { queue.setShuffle(true) }
 
@@ -283,13 +289,20 @@ public final class Player {
         try await start(position: position, frame: 0, autoplay: state != .paused)
     }
 
-    /// Adds songs right after the one playing (`next`) or at the end of the queue. With
-    /// nothing queued, plays them.
-    public func enqueue(_ urls: [URL], next: Bool) async throws {
+    /// Adds songs right after the one playing (`next`) or at the end of the queue: before
+    /// what autoplay added, unless they're `autoplay`'s own. With nothing queued, plays them.
+    public func enqueue(_ urls: [URL], next: Bool, autoplay: Bool = false) async throws {
         guard !urls.isEmpty else { return }
         guard queue.position != nil else { return try await setQueue(urls) }
         scopedURLs += urls.filter { $0.startAccessingSecurityScopedResource() }
-        queue.insert(urls, next: next)
+        let added = queue.insert(urls, next: next, before: autoplay ? [] : autoplayItems)
+        if autoplay { autoplayItems.formUnion(added) }
+        await queueChanged()
+    }
+
+    /// Takes what autoplay added out of Up Next. The song playing stays.
+    public func clearAutoplay() async {
+        queue.removeUpcoming(autoplayItems)
         await queueChanged()
     }
 

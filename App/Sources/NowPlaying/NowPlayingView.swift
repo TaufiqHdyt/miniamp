@@ -65,43 +65,22 @@ struct NowPlayingView: View {
     private func upNext(current: QueueEntry, upcoming: [Row]) -> some View {
         let player = app.player
         let artwork = app.library?.artwork
+        let chosen = upcoming.filter { !player.autoplayItems.contains($0.item) }
+        let autoplayed = upcoming.filter { player.autoplayItems.contains($0.item) }
+        let remaining = remainingCount(player.queue, shown: upcoming.count)
         return List {
             Section("Now Playing") {
                 QueueRow(entry: current, artwork: artwork, isCurrent: true, state: player.state)
             }
             Section {
-                // Each row keeps the file it shows: SwiftUI can still be drawing a row from the
-                // queue before (one just replaced by a shorter one), so never index the queue here.
-                // Identified by the item, whose index lasts as long as the queue, so a dragged row
-                // moves rather than being redrawn as a new one.
-                ForEach(upcoming, id: \.item) { row in
-                    QueueRow(entry: entries[row.url] ?? QueueEntry(fileName: row.url), artwork: artwork)
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2) { play(row) }
-                        .contextMenu {
-                            Button("Play Now") { play(row) }
-                            Button("Play Next") {
-                                guard let position = stillThere(row), position != (player.queue.position ?? -1) + 1 else { return }
-                                Task { await player.playNext(fromPosition: position) }
-                            }
-                            .disabled(row.position == (player.queue.position ?? -1) + 1)
-                            Divider()
-                            Button("Remove from Up Next") {
-                                guard let position = stillThere(row) else { return }
-                                Task { await player.removeFromQueue(atPosition: position) }
-                            }
-                            Divider()
-                            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([row.url]) }
-                        }
-                }
-                // Drag to reorder what plays next.
-                .onMove { offsets, destination in move(offsets, to: destination, in: upcoming) }
-                let remaining = remainingCount(player.queue, shown: upcoming.count)
-                if remaining > 0 {
+                rows(chosen)
+                if remaining > 0, autoplayed.isEmpty {
                     Text("and \(remaining) more").foregroundStyle(.secondary).font(.callout)
                 }
                 if upcoming.isEmpty {
-                    Text(player.repeatMode == .off ? "This is the last song." : "The queue starts over.")
+                    Text(player.repeatMode != .off ? "The queue starts over."
+                         : app.autoplays ? "Autoplay adds songs like this one."
+                         : "This is the last song.")
                         .foregroundStyle(.secondary).font(.callout)
                 }
             } header: {
@@ -113,10 +92,58 @@ struct NowPlayingView: View {
                         Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
                             .help(player.repeatMode == .one ? "Repeating one" : "Repeating all")
                     }
+                    AutoplayToggle(app: app)
+                }
+            }
+            if !autoplayed.isEmpty {
+                Section {
+                    rows(autoplayed)
+                    if remaining > 0 {
+                        Text("and \(remaining) more").foregroundStyle(.secondary).font(.callout)
+                    }
+                } header: {
+                    HStack {
+                        Text("Autoplay")
+                        Spacer()
+                        Button("Clear") { Task { await player.clearAutoplay() } }
+                            .buttonStyle(.link)
+                            .help("Take autoplay's songs out of Up Next")
+                    }
                 }
             }
         }
         .listStyle(.inset)
+    }
+
+    /// Up Next's rows for `section`, which can be dragged to reorder what plays next.
+    private func rows(_ section: [Row]) -> some View {
+        let player = app.player
+        let artwork = app.library?.artwork
+        // Each row keeps the file it shows: SwiftUI can still be drawing a row from the
+        // queue before (one just replaced by a shorter one), so never index the queue here.
+        // Identified by the item, whose index lasts as long as the queue, so a dragged row
+        // moves rather than being redrawn as a new one.
+        return ForEach(section, id: \.item) { row in
+            QueueRow(entry: entries[row.url] ?? QueueEntry(fileName: row.url), artwork: artwork)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { play(row) }
+                .contextMenu {
+                    Button("Play Now") { play(row) }
+                    Button("Play Next") {
+                        guard let position = stillThere(row), position != (player.queue.position ?? -1) + 1 else { return }
+                        Task { await player.playNext(fromPosition: position) }
+                    }
+                    .disabled(row.position == (player.queue.position ?? -1) + 1)
+                    Divider()
+                    Button("Remove from Up Next") {
+                        guard let position = stillThere(row) else { return }
+                        Task { await player.removeFromQueue(atPosition: position) }
+                    }
+                    Divider()
+                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([row.url]) }
+                }
+        }
+        .onMove { offsets, destination in move(offsets, to: destination, in: section) }
     }
 
     /// Where the row's song is in the play order now, if the queue still has it there: it may
@@ -200,5 +227,20 @@ private struct QueueRow: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// Turns autoplay on and off from Up Next's header, as in Settings › Playback.
+private struct AutoplayToggle: View {
+    @Bindable var app: AppState
+
+    var body: some View {
+        Toggle(isOn: $app.autoplays) { Image(systemName: "infinity") }
+            .toggleStyle(.button)
+            .buttonStyle(.borderless)
+            .disabled(app.library == nil)
+            .help(app.autoplays ? "Autoplay is on: when Up Next runs out, songs like the last ones keep playing"
+                                : "Turn on autoplay: when Up Next runs out, keep playing songs like the last ones")
+            .accessibilityLabel("Autoplay")
     }
 }

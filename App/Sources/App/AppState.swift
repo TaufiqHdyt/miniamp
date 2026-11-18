@@ -62,6 +62,18 @@ final class AppState {
 
     /// Ask the lyrics providers that are on when a song has no lyrics of its own. Off until
     /// turned on: it sends what's playing (title, artist, album, duration) to each.
+    /// When Up Next runs out (repeat off), keep playing songs like the last ones, picked from
+    /// the library on this Mac. Off by default; turning it off takes out what it added.
+    var autoplays = UserDefaults.standard.bool(forKey: "autoplaysWhenQueueEnds") {
+        didSet {
+            UserDefaults.standard.set(autoplays, forKey: "autoplaysWhenQueueEnds")
+            if autoplays { extendWithAutoplay() } else { Task { await player.clearAutoplay() } }
+        }
+    }
+    @ObservationIgnored private var autoplayTask: Task<Void, Never>?
+    /// The queue (by its item count) autoplay found nothing more for: not asked again until it grows.
+    @ObservationIgnored private var autoplayGaveUpAt: Int?
+
     var looksUpLyricsOnline = UserDefaults.standard.bool(forKey: "looksUpLyricsOnline") {
         didSet { UserDefaults.standard.set(looksUpLyricsOnline, forKey: "looksUpLyricsOnline") }
     }
@@ -148,6 +160,48 @@ final class AppState {
                       paths.contains(LibraryPaths.normalized(current.path)) else { return }
                 player.reloadReplayGain()
             }
+            watchQueueForAutoplay()
+        }
+    }
+
+    // MARK: Autoplay
+
+    /// Checks after every change to the queue (a song starting, an edit, repeat).
+    private func watchQueueForAutoplay() {
+        withObservationTracking {
+            _ = player.queue
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.watchQueueForAutoplay() }
+        }
+        extendWithAutoplay()
+    }
+
+    /// Adds a batch of autoplay's picks once the song playing is the last in Up Next, or the
+    /// one before it: while it plays, so the next starts gaplessly (or crossfades) as usual.
+    private func extendWithAutoplay() {
+        let queue = player.queue
+        guard autoplays, let library, autoplayTask == nil, player.repeatMode == .off, let position = queue.position,
+              queue.order.count - position - 1 <= 1, autoplayGaveUpAt != queue.items.count else { return }
+        let seeds = queue.order.map { queue.items[$0] }
+        let queued = queue.items
+        autoplayTask = Task {
+            let picks: [Track] = (try? await library.database.writer.read { db in
+                var rng = SystemRandomNumberGenerator()
+                return try Autoplay.picks(after: seeds, excluding: queued, using: &rng, db)
+            }) ?? []
+            var changed = false
+            if autoplays, player.queue.position != nil {
+                if player.queue.items.count != queued.count {
+                    // Edited while picking: pick again for the queue as it is now.
+                    changed = true
+                } else if picks.isEmpty {
+                    autoplayGaveUpAt = queued.count
+                } else {
+                    do { try await player.enqueue(picks.map(\.url), next: false, autoplay: true) } catch { self.error = "\(error)" }
+                }
+            }
+            autoplayTask = nil
+            if changed { extendWithAutoplay() }
         }
     }
 
