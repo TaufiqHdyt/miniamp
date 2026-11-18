@@ -1,6 +1,7 @@
 import AppKit
 import MiniAmpKit
 import Observation
+import os
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -71,6 +72,7 @@ final class AppState {
         }
     }
     @ObservationIgnored private var autoplayTask: Task<Void, Never>?
+    @ObservationIgnored private let autoplayLog = Logger(subsystem: "dev.miniamp", category: "autoplay")
     /// The queue (by its item count) autoplay found nothing more for: not asked again until it grows.
     @ObservationIgnored private var autoplayGaveUpAt: Int?
 
@@ -180,22 +182,46 @@ final class AppState {
     /// one before it: while it plays, so the next starts gaplessly (or crossfades) as usual.
     private func extendWithAutoplay() {
         let queue = player.queue
-        guard autoplays, let library, autoplayTask == nil, player.repeatMode == .off, let position = queue.position,
-              queue.order.count - position - 1 <= 1, autoplayGaveUpAt != queue.items.count else { return }
+        guard autoplays else { return }
+        guard let library, autoplayTask == nil, player.repeatMode == .off, let position = queue.position else {
+            autoplayLog.debug("not now: library \(self.library != nil), busy \(self.autoplayTask != nil), repeat \(self.player.repeatMode.rawValue, privacy: .public), queued \(queue.position != nil)")
+            return
+        }
+        let left = queue.order.count - position - 1
+        guard left <= 1 else {
+            autoplayLog.debug("\(left) songs left in Up Next; nothing to add yet")
+            return
+        }
+        guard autoplayGaveUpAt != queue.items.count else {
+            autoplayLog.debug("found nothing for this queue before; waiting for it to change")
+            return
+        }
         let seeds = queue.order.map { queue.items[$0] }
-        let queued = queue.items
+        // The song playing and what's still to come. Songs earlier in the queue may come round
+        // again, unless they were just played (Autoplay leaves those out by the play history):
+        // a queue of the whole library would otherwise leave nothing to pick.
+        let upcoming = queue.order[position...].map { queue.items[$0] }
+        let itemCount = queue.items.count
+        autoplayLog.info("\(left) songs left in Up Next; picking after \(seeds.last?.lastPathComponent ?? "?", privacy: .public)")
         autoplayTask = Task {
-            let picks: [Track] = (try? await library.database.writer.read { db in
-                var rng = SystemRandomNumberGenerator()
-                return try Autoplay.picks(after: seeds, excluding: queued, using: &rng, db)
-            }) ?? []
+            let picks: [Track]
+            do {
+                picks = try await library.database.writer.read { db in
+                    var rng = SystemRandomNumberGenerator()
+                    return try Autoplay.picks(after: seeds, excluding: upcoming, using: &rng, db)
+                }
+            } catch {
+                autoplayLog.error("can't pick: \(error, privacy: .public)")
+                picks = []
+            }
+            autoplayLog.info("picked \(picks.count) songs")
             var changed = false
             if autoplays, player.queue.position != nil {
-                if player.queue.items.count != queued.count {
+                if player.queue.items.count != itemCount {
                     // Edited while picking: pick again for the queue as it is now.
                     changed = true
                 } else if picks.isEmpty {
-                    autoplayGaveUpAt = queued.count
+                    autoplayGaveUpAt = itemCount
                 } else {
                     do { try await player.enqueue(picks.map(\.url), next: false, autoplay: true) } catch { self.error = "\(error)" }
                 }

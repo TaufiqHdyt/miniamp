@@ -6,7 +6,7 @@ import GRDB
 ///
 /// A candidate scores for sharing an artist, album artist, genre, album, or era with the last
 /// few songs queued (the latest counting most), and for having been played around the same
-/// time as them before. Songs queued already, played in the last few hours or among the last
+/// time as them before. Songs still to come, played in the last few hours or among the last
 /// plays, or cut short the last time they played, are left out or marked down. Picks are drawn
 /// at random, weighted by score, at most a couple per artist; when too few songs score, the
 /// rest of the batch is drawn from the whole library.
@@ -25,7 +25,7 @@ public enum Autoplay {
     static let perArtist = 2
 
     /// Up to `count` tracks to follow `seeds` (the queue's songs in play order; the last ones
-    /// count), none of them in `queued`.
+    /// count), none of them in `queued` (what's still to come).
     public static func picks<R: RandomNumberGenerator>(
         after seeds: [URL], excluding queued: [URL], count: Int = batchSize, now: Date = Date(),
         using rng: inout R, _ db: Database

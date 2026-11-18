@@ -95,13 +95,13 @@ struct LyricsView<NowPlaying: View>: View {
                 HStack {
                     Text("Lyrics")
                     Spacer()
-                    if case .found(let found) = state, !found.lyrics.isInstrumental {
-                        if found.lyrics.isSynced { TimingControl(app: app, url: url) }
-                        extrasMenu
-                        shareButton
-                    }
-                    if case .found = state {
-                        editButton
+                    if case .found(let found) = state {
+                        if found.lyrics.isInstrumental {
+                            editButton
+                        } else {
+                            if found.lyrics.isSynced { TimingControl(app: app, url: url) }
+                            moreMenu
+                        }
                         Button { app.toggleFullLyrics() } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
                             .buttonStyle(.borderless)
                             .help("Show the lyrics full size (⇧⌥⌘L)")
@@ -226,13 +226,35 @@ struct LyricsView<NowPlaying: View>: View {
         .foregroundStyle(.secondary)
     }
 
+    /// The pane's narrow header has room for one menu: romanization and translation, sharing,
+    /// and editing.
+    private var moreMenu: some View {
+        Menu {
+            extrasToggles
+            Divider()
+            Button("Share Lyrics…") { share(from: follower?.position.line) }
+            Button("Edit Lyrics…") { app.editLyrics() }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Romanization, translation, sharing, and editing")
+    }
+
+    @ViewBuilder
+    private var extrasToggles: some View {
+        Toggle("Romanization", isOn: Binding(get: { app.showsLyricsRomanization }, set: { app.showsLyricsRomanization = $0 }))
+            .disabled(!needsRomanization)
+        Toggle(translationLabel, isOn: Binding(get: { app.showsLyricsTranslation }, set: { app.showsLyricsTranslation = $0 }))
+            .disabled(!canTranslate)
+    }
+
     /// Romanization and translation, shown under each line.
     private var extrasMenu: some View {
         Menu {
-            Toggle("Romanization", isOn: Binding(get: { app.showsLyricsRomanization }, set: { app.showsLyricsRomanization = $0 }))
-                .disabled(!needsRomanization)
-            Toggle(translationLabel, isOn: Binding(get: { app.showsLyricsTranslation }, set: { app.showsLyricsTranslation = $0 }))
-                .disabled(!canTranslate)
+            extrasToggles
         } label: {
             Image(systemName: "character.bubble")
         }

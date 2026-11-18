@@ -18,6 +18,7 @@ struct LyricsShareTarget: Identifiable {
 /// with the cover, title, and artist below. Shared, copied, or saved as a PNG.
 struct LyricsShareSheet: View {
     static let maximumLines = 5
+    static let previewWidth = LyricsCard.width * 0.6
 
     let app: AppState
     let target: LyricsShareTarget
@@ -27,6 +28,8 @@ struct LyricsShareSheet: View {
     @State private var cover: NSImage?
     /// The card as a PNG in the temporary folder, for the share menu; redone as lines change.
     @State private var file: URL?
+    /// The card as it will be shared, shown beside the lines.
+    @State private var preview: NSImage?
 
     private var lines: [Lyrics.Line] { target.lyrics.lines.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty } }
 
@@ -36,13 +39,19 @@ struct LyricsShareSheet: View {
                 picker
                     .frame(width: 280)
                 VStack(spacing: 8) {
-                    card
-                        .scaleEffect(0.6, anchor: .top)
-                        .frame(width: LyricsCard.width * 0.6, height: LyricsCard.width * 0.6 * 1.25, alignment: .top)
-                        .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
-                    Text(selected.isEmpty ? "Choose lines on the left."
+                    Group {
+                        if let preview {
+                            Image(nsImage: preview).resizable().aspectRatio(contentMode: .fit)
+                        } else {
+                            Color.clear.aspectRatio(4 / 3, contentMode: .fit)
+                        }
+                    }
+                    .frame(width: Self.previewWidth)
+                    .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
+                    Text(selected.isEmpty ? "Choose up to \(Self.maximumLines) lines on the left."
                                           : "\(selected.count) of \(Self.maximumLines) lines")
                         .font(.caption).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
                 }
             }
             .padding(20)
@@ -68,7 +77,7 @@ struct LyricsShareSheet: View {
             .disabled(selected.isEmpty)
             .padding(16)
         }
-        .frame(width: 280 + LyricsCard.width * 0.6 + 60)
+        .frame(width: 280 + Self.previewWidth + 60)
         .task {
             if let start = target.startLine, lines.contains(where: { $0.id == start }) { selected = [start] }
             entry = await QueueEntry.load([target.url], from: app.library)[target.url] ?? QueueEntry(fileName: target.url)
@@ -100,7 +109,7 @@ struct LyricsShareSheet: View {
             .disabled(!isOn && selected.count >= Self.maximumLines)
         }
         .listStyle(.bordered)
-        .frame(height: LyricsCard.width * 0.6 * 1.25)
+        .frame(height: 360)
     }
 
     private var card: LyricsCard {
@@ -121,7 +130,9 @@ struct LyricsShareSheet: View {
     }
 
     private func writeFile() {
-        guard !selected.isEmpty, let data = png() else {
+        let data = png()
+        preview = data.flatMap(NSImage.init(data:))
+        guard !selected.isEmpty, let data else {
             file = nil
             return
         }

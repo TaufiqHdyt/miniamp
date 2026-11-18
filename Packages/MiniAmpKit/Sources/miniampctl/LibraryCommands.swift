@@ -9,6 +9,7 @@ usage: miniampctl library scan <folder>... [--db PATH] [--no-artwork]
        miniampctl library stats [--db PATH]
        miniampctl library browse [--db PATH]    time the queries the window runs (median of 5)
        miniampctl library history [--db PATH]   the last 50 plays
+       miniampctl library autoplay <words> [--db PATH]   what autoplay would add after the song found by <words>
        miniampctl library recap [YEAR] [--db PATH]   listening stats for a year, or all time
        miniampctl library duplicates [--sound] [--db PATH]  by tags, or by sound (fingerprints what's needed first)
        miniampctl library backup <file> [--db PATH]  back the library up (no settings: those are the app's)
@@ -92,6 +93,19 @@ func libraryCommand(_ args: [String]) async throws {
             print("\(when)  \(listened)  \(info.track.title) · \(info.artistName ?? "?")")
         }
         print("\(plays.count) play\(plays.count == 1 ? "" : "s")")
+    case "autoplay" where !options.rest.isEmpty:
+        let library = try options.open()
+        guard let seed = try await library.search(options.rest.joined(separator: " "), limit: 1).first else {
+            print("no song matches"); exit(1)
+        }
+        print("after \(seed.track.title) · \(seed.artistName ?? "?") [\(seed.track.genre ?? "no genre")]:")
+        let start = ContinuousClock.now
+        let picks = try await library.database.writer.read { db in
+            var rng = SystemRandomNumberGenerator()
+            return try Autoplay.picks(after: [seed.track.url], excluding: [seed.track.url], using: &rng, db)
+        }
+        for track in picks { print("  \(track.title) [\(track.genre ?? "-")]") }
+        print("\(picks.count) picks in \((ContinuousClock.now - start).wholeMilliseconds) ms")
     case "backup" where options.rest.count == 1:
         let library = try options.open()
         let url = URL(fileURLWithPath: options.rest[0])
