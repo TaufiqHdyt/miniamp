@@ -129,12 +129,12 @@ Gaps found by comparing with other local-library players.
 
 Modern macOS, Apple Music's layout taken further, in phases. The plan, the baseline screenshots, and what they show are in [DESIGN.md](DESIGN.md).
 
-- [ ] Phase 0: design tokens and components, a glass modifier with a macOS 15 fallback, a wash for low-saturation covers, and the baseline's bugs (stats rounding, empty Time of day chart, "miniamp" title in the full views, Songs columns)
-- [ ] Phase 1: player bar (fewer buttons, a quality badge in words, times on the seek bar)
-- [ ] Phase 2: browsing (split artist credits, Home, album and artist pages, the inspector hidden when nothing plays)
-- [ ] Phase 3: full-window Now Playing, with lyrics, Up Next, and the visualizer as its modes
-- [ ] Phase 4: Listening Stats, Duplicates, and Settings
-- [ ] Phase 5: motion and accessibility
+- [ ] Phase 0: design tokens and components, a glass modifier with a macOS 15 fallback, a wash for low-saturation covers, and the baseline's bugs (stats rounding, empty Time of day chart, "miniamp" title in the full views, Songs columns) (#56)
+- [ ] Phase 1: player bar (fewer buttons, a quality badge in words, times on the seek bar) (#57)
+- [ ] Phase 2: browsing (split artist credits, Home, album and artist pages, the inspector hidden when nothing plays) (#58)
+- [ ] Phase 3: full-window Now Playing, with lyrics, Up Next, and the visualizer as its modes (#59)
+- [ ] Phase 4: Listening Stats, Duplicates, and Settings (#60)
+- [ ] Phase 5: motion and accessibility (#61)
 
 **Done when:** every phase meets its check in DESIGN.md, and `make app-bench` is no worse than the baseline.
 

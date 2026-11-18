@@ -1,6 +1,6 @@
 # miniamp design
 
-The plan for redesigning miniamp's interface: modern macOS, Apple Music's layout taken further, delivered phase by phase so the app stays usable after each one. Tracked as M10 in [ROADMAP.md](ROADMAP.md).
+The plan for redesigning miniamp's interface: modern macOS, Apple Music's layout taken further, delivered phase by phase so the app stays usable after each one. Tracked as M10 in [ROADMAP.md](ROADMAP.md) and the M10 milestone (#56 to #61).
 
 ## Ground rules
 
@@ -49,7 +49,7 @@ Phases 1 and 2 can go in either order; 1 first is suggested, since it's small, a
 | 4 Secondary pages | M | 0 |
 | 5 Polish | S, plus a share in each phase | all |
 
-### Phase 0: Foundations
+### Phase 0: Foundations (#56)
 
 - `App/Sources/Design/`: tokens for spacing, corner radii, type, shadows, and how strongly each surface takes the cover tint.
 - A `Glass` modifier: Liquid Glass on macOS 26 and later, the current material on 15.
@@ -61,7 +61,7 @@ Phases 1 and 2 can go in either order; 1 first is suggested, since it's small, a
 
 **Done when:** nothing looks different except the fixes, every view uses the tokens, and the baseline bench is recorded.
 
-### Phase 1: Player bar
+### Phase 1: Player bar (#57)
 
 - On macOS 26, a floating glass bar inset from the window edges. On macOS 15, a bar along the bottom as now.
 - On the right: the quality badge, Up Next and Lyrics, volume, and output. The visualizer and sleep timer move into a `…` menu.
@@ -71,7 +71,7 @@ Phases 1 and 2 can go in either order; 1 first is suggested, since it's small, a
 
 **Done when:** everything the bar did is still in reach, keyboard shortcuts included, and the bar fits an 860 pt window without truncating.
 
-### Phase 2: Browsing
+### Phase 2: Browsing (#58)
 
 - **Artist credits are split** in the library, with a migration: "A, B & C" counts toward A, B, and C, and the song keeps its full credit. This comes before the Artist page.
 - **Home**, the default page, in shelves: Recently Added, Recently Played, Top This Month, Rediscover (loved once, not played lately). All from `Plays` and `ListeningStats`; nothing new is stored.
@@ -83,7 +83,7 @@ Phases 1 and 2 can go in either order; 1 first is suggested, since it's small, a
 
 **Done when:** an album or artist is two clicks from Home, and the Albums grid scrolls smoothly at 10,000 tracks (`make library-bench`).
 
-### Phase 3: Now Playing
+### Phase 3: Now Playing (#59)
 
 - One full-window Now Playing: the large cover and controls on the left; lyrics, Up Next, or the visualizer on the right; the cover's wash behind it all.
 - Full lyrics and the full visualizer become its modes. While it's open the inspector closes, so nothing shows twice.
@@ -94,13 +94,13 @@ Phases 1 and 2 can go in either order; 1 first is suggested, since it's small, a
 
 **Done when:** synced lyrics still follow a seek, and app-bench CPU with lyrics and the visualizer is no higher than at the baseline.
 
-### Phase 4: Secondary pages
+### Phase 4: Secondary pages (#60)
 
 - **Listening Stats:** headline cards, charts in the cover tint, and the top lists as shelves.
 - **Duplicates:** each group side by side with covers and format, so choosing which copy to keep is easier.
 - **Settings:** grouped forms in tabs (Playback, Library, Lyrics, Advanced). The tag and lyrics editors match.
 
-### Phase 5: Polish and accessibility
+### Phase 5: Polish and accessibility (#61)
 
 - Motion for page changes, hero headers, and Now Playing.
 - Reduce Motion, Reduce Transparency (glass becomes solid), and Increase Contrast.
