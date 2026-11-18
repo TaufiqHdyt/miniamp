@@ -20,7 +20,7 @@ A native macOS music player for a local library. It plays FLAC, MP3, ALAC, and A
 
 ## Milestones
 
-M1 to M8 are done. M9 is next.
+M1 to M8 are done. M9 and M10 are next.
 
 ### M1: Playback proof of concept
 
@@ -124,6 +124,19 @@ Gaps found by comparing with other local-library players.
 - [ ] Share up to five lyric lines as a card tinted with the cover colour (#55)
 
 **Done when:** a song LRCLIB doesn't have gets lyrics from another provider, an album ending with autoplay on keeps playing, and a lyrics card can be shared from the Lyrics pane.
+
+### M10: Interface redesign
+
+Modern macOS, Apple Music's layout taken further, in phases. The plan, the baseline screenshots, and what they show are in [DESIGN.md](DESIGN.md).
+
+- [ ] Phase 0: design tokens and components, a glass modifier with a macOS 15 fallback, a wash for low-saturation covers, and the baseline's bugs (stats rounding, empty Time of day chart, "miniamp" title in the full views, Songs columns)
+- [ ] Phase 1: player bar (fewer buttons, a quality badge in words, times on the seek bar)
+- [ ] Phase 2: browsing (split artist credits, Home, album and artist pages, the inspector hidden when nothing plays)
+- [ ] Phase 3: full-window Now Playing, with lyrics, Up Next, and the visualizer as its modes
+- [ ] Phase 4: Listening Stats, Duplicates, and Settings
+- [ ] Phase 5: motion and accessibility
+
+**Done when:** every phase meets its check in DESIGN.md, and `make app-bench` is no worse than the baseline.
 
 ## Out of scope
 
