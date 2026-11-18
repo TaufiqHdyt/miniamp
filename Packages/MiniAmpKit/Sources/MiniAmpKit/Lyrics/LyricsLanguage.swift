@@ -43,10 +43,15 @@ public enum LyricsLanguage {
     }
 
     /// Romanized lines, by line id, for the lines that change.
+    ///
+    /// Kanji are read by the lyrics' script rather than their dominant language: lyrics mostly
+    /// in English with Japanese lines are detected as English, and transliteration would read
+    /// their kanji as Mandarin (君 as "jūn"). Any kana makes them Japanese.
     public static func romanized(_ lyrics: Lyrics, language: Locale.Language?) -> [Int: String] {
+        let reading = readingLanguage(lyrics, detected: language)
         var out: [Int: String] = [:]
         for line in lyrics.lines where !line.text.isEmpty {
-            let latin = romanize(line.text, language: language)
+            let latin = romanize(line.text, language: reading)
             if latin != line.text { out[line.id] = latin }
         }
         return out
@@ -66,7 +71,9 @@ public enum LyricsLanguage {
                 .trimmingCharacters(in: .whitespaces)
             if !between.isEmpty { words.append(between) }
             last = range.location + range.length
-            if let latin = CFStringTokenizerCopyCurrentTokenAttribute(tokenizer, kCFStringTokenizerAttributeLatinTranscription) as? String,
+            if let counted = countedReading(token, locale: locale) {
+                words.append(counted)
+            } else if let latin = CFStringTokenizerCopyCurrentTokenAttribute(tokenizer, kCFStringTokenizerAttributeLatinTranscription) as? String,
                token.unicodeScalars.contains(where: isNonLatinLetter) {
                 words.append(latin)
             } else {
@@ -85,6 +92,30 @@ public enum LyricsLanguage {
             out += word
         }
         return out
+    }
+
+    /// A digit and a counter in Japanese ("2人"): the system reads the pair as Chinese ("2rén"),
+    /// but a kanji numeral as Japanese ("二人" is "futari"), so the digit is read as one.
+    private static func countedReading(_ token: String, locale: Locale) -> String? {
+        guard locale.language.languageCode?.identifier == "ja", let first = token.unicodeScalars.first,
+              let digit = Int(String(first)), digit > 0, token.unicodeScalars.count > 1,
+              token.unicodeScalars.dropFirst().allSatisfy(\.properties.isIdeographic) else { return nil }
+        let numerals = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九"]
+        return tokenized(numerals[digit] + String(token.unicodeScalars.dropFirst()), locale: locale)
+    }
+
+    /// Japanese when there's kana anywhere; otherwise the detected language, or Chinese for
+    /// lyrics in Han characters with a language not worked out as Chinese or Japanese.
+    static func readingLanguage(_ lyrics: Lyrics, detected: Locale.Language?) -> Locale.Language? {
+        let scalars = lyrics.lines.lazy.flatMap(\.text.unicodeScalars)
+        if scalars.contains(where: { (0x3040...0x30FF).contains($0.value) || (0x31F0...0x31FF).contains($0.value) }) {
+            return Locale.Language(identifier: "ja")
+        }
+        let code = detected?.languageCode?.identifier
+        if code != "ja", code != "zh", scalars.contains(where: \.properties.isIdeographic) {
+            return Locale.Language(identifier: "zh")
+        }
+        return detected
     }
 
     private static func isNonLatinLetter(_ scalar: Unicode.Scalar) -> Bool {
