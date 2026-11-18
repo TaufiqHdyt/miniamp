@@ -85,7 +85,7 @@ struct CoverWash: View {
                 }
                 .transition(.opacity)
             }
-            Color.black.opacity(Theme.washDarkness(for: app.artworkTint))
+            Color.black.opacity(Theme.washDarkness(brightness: app.artworkBrightness))
         }
         .clipped()
         .ignoresSafeArea()

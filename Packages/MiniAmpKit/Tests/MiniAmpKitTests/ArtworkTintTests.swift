@@ -22,6 +22,15 @@ import Testing
         tint.map { ArtworkTint.hsb($0.red, $0.green, $0.blue).0 }
     }
 
+    @Test func brightnessIsHowLightTheWholeCoverIs() throws {
+        #expect(try #require(ArtworkTint.brightness(of: image([((1, 1, 1), 1)]))) > 0.98)
+        #expect(try #require(ArtworkTint.brightness(of: image([((0, 0, 0), 1)]))) < 0.02)
+        // Mostly white with a vivid red band: it has a tint, and it's still a light cover.
+        let mostlyWhite = image([((1, 1, 1), 0.8), ((0.9, 0.1, 0.1), 0.2)])
+        #expect(ArtworkTint.of(mostlyWhite) != nil)
+        #expect(try #require(ArtworkTint.brightness(of: mostlyWhite)) > 0.8)
+    }
+
     @Test func takesTheHueOfASolidCover() throws {
         let red = try #require(ArtworkTint.of(image([((0.9, 0.1, 0.1), 1)])))
         #expect(red.red > red.green && red.red > red.blue)

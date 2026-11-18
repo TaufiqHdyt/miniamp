@@ -109,6 +109,8 @@ final class AppState {
     }
     /// The playing song's cover colour (set by the player bar as the song changes).
     var artworkTint: ArtworkTint?
+    /// How light the playing song's cover is, 0 to 1 (see ArtworkTint.brightness).
+    var artworkBrightness: Double?
     /// What to tint with now, if anything.
     var tint: Color? { tintsWithArtwork ? artworkTint?.color : nil }
 

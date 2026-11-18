@@ -27,16 +27,7 @@ public struct ArtworkTint: Sendable, Equatable, Hashable {
     /// averaged, then brought into a range that reads as a tint.
     public static func of(_ image: CGImage) -> ArtworkTint? {
         let n = sampleSize
-        var pixels = [UInt8](repeating: 0, count: n * n * 4)
-        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
-            guard let context = CGContext(data: buffer.baseAddress, width: n, height: n, bitsPerComponent: 8, bytesPerRow: n * 4,
-                                          space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-            context.interpolationQuality = .medium
-            context.draw(image, in: CGRect(x: 0, y: 0, width: n, height: n))
-            return true
-        }
-        guard drawn else { return nil }
+        guard let pixels = samples(image) else { return nil }
 
         var weight = [Double](repeating: 0, count: hueBins)
         var sums = [(r: Double, g: Double, b: Double)](repeating: (0, 0, 0), count: hueBins)
@@ -61,6 +52,38 @@ public struct ArtworkTint: Sendable, Equatable, Hashable {
         let (h, s, v) = hsb(sums[best].r / w, sums[best].g / w, sums[best].b / w)
         let (r, g, b) = rgb(h, min(max(s, 0.35), 0.8), min(max(v, 0.55), 0.85))
         return ArtworkTint(red: r, green: g, blue: b)
+    }
+
+    /// How light the cover is overall, 0 (black) to 1 (white): the average luma of its
+    /// pixels. A cover can be mostly white with a vivid hue somewhere (the tint), so text laid
+    /// over it is darkened by this, not by the tint.
+    public static func brightness(of image: CGImage) -> Double? {
+        guard let pixels = samples(image) else { return nil }
+        var total = 0.0
+        var count = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            let alpha = Double(pixels[i + 3]) / 255
+            guard alpha > 0.5 else { continue }
+            let (r, g, b) = (Double(pixels[i]) / 255 / alpha, Double(pixels[i + 1]) / 255 / alpha, Double(pixels[i + 2]) / 255 / alpha)
+            total += 0.2126 * r + 0.7152 * g + 0.0722 * b
+            count += 1
+        }
+        return count == 0 ? nil : total / Double(count)
+    }
+
+    /// The cover scaled to `sampleSize` pixels a side, as premultiplied sRGBA bytes.
+    static func samples(_ image: CGImage) -> [UInt8]? {
+        let n = sampleSize
+        var pixels = [UInt8](repeating: 0, count: n * n * 4)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: n, height: n, bitsPerComponent: 8, bytesPerRow: n * 4,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.interpolationQuality = .medium
+            context.draw(image, in: CGRect(x: 0, y: 0, width: n, height: n))
+            return true
+        }
+        return drawn ? pixels : nil
     }
 
     /// Hue, saturation, and brightness, each 0 to 1.

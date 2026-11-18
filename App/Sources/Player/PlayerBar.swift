@@ -49,14 +49,18 @@ struct PlayerBar: View {
             guard let url = app.currentURL else {
                 current = nil
                 app.artworkTint = nil
+                app.artworkBrightness = nil
                 return
             }
             if current?.url != url { current = QueueEntry(fileName: url) }
             current = await QueueEntry.load([url], from: app.library)[url] ?? current
             guard let entry = current, entry.url == url else { return }
-            let tint = await ArtworkImages.shared.tint(key: entry.artworkKey, fileURL: entry.inLibrary ? nil : url,
-                                                       in: app.library?.artwork)
-            if !Task.isCancelled { app.artworkTint = tint }
+            let colours = await ArtworkImages.shared.colours(key: entry.artworkKey, fileURL: entry.inLibrary ? nil : url,
+                                                             in: app.library?.artwork)
+            if !Task.isCancelled {
+                app.artworkTint = colours?.tint
+                app.artworkBrightness = colours?.brightness
+            }
         }
     }
 

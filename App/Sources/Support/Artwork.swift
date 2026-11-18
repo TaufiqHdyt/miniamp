@@ -52,13 +52,14 @@ final class ArtworkImages {
     }
 
     /// Tints already worked out, by cover (nil: a cover with no colour to take).
-    private var tints: [String: ArtworkTint?] = [:]
+    private var colours: [String: CoverColours] = [:]
 
-    /// The colour to tint with for a library cover, or the one embedded in a file outside it.
-    func tint(key: String?, fileURL: URL?, in artwork: ArtworkCache?) async -> ArtworkTint? {
+    /// The colour to tint with and how light the cover is, for a library cover or the one
+    /// embedded in a file outside it.
+    func colours(key: String?, fileURL: URL?, in artwork: ArtworkCache?) async -> CoverColours? {
         let id = key ?? fileURL.map { "file:" + $0.path } ?? ""
         guard !id.isEmpty else { return nil }
-        if let known = tints[id] { return known }
+        if let known = colours[id] { return known }
         var image: NSImage?
         if let key, let artwork {
             image = await self.image(for: key, size: .small, in: artwork)
@@ -66,10 +67,12 @@ final class ArtworkImages {
             image = await self.image(embeddedIn: fileURL, size: .small)
         }
         guard let cgImage = image?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-        let tint = await Task.detached(priority: .utility) { ArtworkTint.of(cgImage) }.value
-        if tints.count > 500 { tints.removeAll() }
-        tints[id] = tint
-        return tint
+        let found = await Task.detached(priority: .utility) {
+            CoverColours(tint: ArtworkTint.of(cgImage), brightness: ArtworkTint.brightness(of: cgImage))
+        }.value
+        if colours.count > 500 { colours.removeAll() }
+        colours[id] = found
+        return found
     }
 
     private func load(_ cacheKey: String, _ decode: @escaping @Sendable () -> CGImage?) async -> NSImage? {
@@ -151,6 +154,13 @@ struct ArtworkView: View {
             }
             .accessibilityHidden(true)
     }
+}
+
+/// What a cover lends what's around it: its colour (nil when it has too little) and how
+/// light it is overall.
+struct CoverColours: Equatable, Sendable {
+    var tint: ArtworkTint?
+    var brightness: Double?
 }
 
 extension ArtworkTint {
