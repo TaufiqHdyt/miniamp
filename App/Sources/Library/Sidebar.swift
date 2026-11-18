@@ -138,7 +138,7 @@ private struct PlaylistRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .background {
-                    RoundedRectangle(cornerRadius: 5)
+                    RoundedRectangle(cornerRadius: Theme.Radius.medium)
                         .strokeBorder(.tint, lineWidth: 2)
                         .padding(-3)
                         .opacity(targeted ? 1 : 0)

@@ -100,7 +100,7 @@ private struct DeviceRow: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 6).fill(hovering && !selected ? AnyShapeStyle(.quaternary.opacity(0.5)) : AnyShapeStyle(.clear)))
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.medium).fill(hovering && !selected ? AnyShapeStyle(.quaternary.opacity(0.5)) : AnyShapeStyle(.clear)))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture {

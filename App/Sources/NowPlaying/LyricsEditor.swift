@@ -82,8 +82,8 @@ struct LyricsEditor: View {
                     .autocorrectionDisabled()
                     .scrollContentBackground(.hidden)
                     .padding(4)
-                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
+                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.medium).strokeBorder(.quaternary))
                 ForEach(notes(lyrics), id: \.self) { note in
                     Label(note, systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
                 }
@@ -112,8 +112,8 @@ struct LyricsEditor: View {
             }
         }
         .listStyle(.inset)
-        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.medium).strokeBorder(.quaternary))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.medium))
     }
 
     /// What to know about the text as written.
@@ -156,8 +156,8 @@ struct LyricsEditor: View {
                     }
                     .padding(.vertical, 4)
                 }
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(syncFocused ? Color.accentColor.opacity(0.6) : .secondary.opacity(0.3)))
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.medium).strokeBorder(syncFocused ? Color.accentColor.opacity(0.6) : .secondary.opacity(0.3)))
                 .focusable()
                 .focusEffectDisabled()
                 .focused($syncFocused)

@@ -101,8 +101,8 @@ struct TagEditor: View {
                 .autocorrectionDisabled()
                 .scrollContentBackground(.hidden)
                 .padding(4)
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.medium).strokeBorder(.quaternary))
                 .frame(height: 140)
             Text(sidecar.map { "\($0.lastPathComponent) beside the song is shown instead when it's timed. Edit Lyrics in the Lyrics pane can save there." }
                  ?? "Plain, or LRC with times ([01:23.45]). Edit Lyrics in the Lyrics pane times them to the song.")

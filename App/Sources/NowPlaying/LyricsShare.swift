@@ -47,7 +47,7 @@ struct LyricsShareSheet: View {
                         }
                     }
                     .frame(width: Self.previewWidth)
-                    .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
+                    .elevation(.panel)
                     Text(selected.isEmpty ? "Choose up to \(Self.maximumLines) lines on the left."
                                           : "\(selected.count) of \(Self.maximumLines) lines")
                         .font(.caption).foregroundStyle(.secondary)

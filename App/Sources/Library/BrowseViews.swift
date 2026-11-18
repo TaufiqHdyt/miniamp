@@ -64,7 +64,8 @@ struct AlbumsView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 20)], spacing: 22) {
                     ForEach(albums) { album in
                         NavigationLink(value: album) {
-                            AlbumTile(album: album, artwork: library.artwork) { play(album, shuffled: false) }
+                            ArtworkTile(title: album.title, subtitle: album.artistName ?? "Unknown Artist", artworkKey: album.artworkKey,
+                                        artwork: library.artwork) { play(album, shuffled: false) }
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
@@ -112,45 +113,6 @@ struct AlbumsView: View {
     }
 }
 
-/// A cover with the album's title and artist. Hovering dims the cover a little and shows a
-/// play button on it, as in Apple Music; clicking elsewhere opens the album.
-private struct AlbumTile: View {
-    let album: AlbumSummary
-    let artwork: ArtworkCache?
-    let play: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            ArtworkView(key: album.artworkKey, artwork: artwork, cornerRadius: 6)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6).fill(.black.opacity(hovering ? 0.18 : 0))
-                }
-                .overlay(alignment: .bottomLeading) {
-                    if hovering {
-                        Button(action: play) {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 30, height: 30)
-                                .background(.black.opacity(0.55), in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .padding(8)
-                        .help("Play \(album.title)")
-                        .transition(.opacity)
-                    }
-                }
-                .shadow(color: .black.opacity(hovering ? 0.25 : 0.15), radius: hovering ? 4 : 2, y: 1)
-            Text(album.title).lineLimit(1).padding(.top, 3)
-            Text(album.artistName ?? "Unknown Artist").lineLimit(1).font(.callout).foregroundStyle(.secondary)
-        }
-        .contentShape(Rectangle())
-        .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovering)
-    }
-}
-
 private struct AlbumDetail: View {
     let app: AppState
     let library: Library
@@ -160,24 +122,20 @@ private struct AlbumDetail: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .bottom, spacing: 18) {
-                ArtworkView(key: album.artworkKey, artwork: library.artwork, cornerRadius: 6)
+                ArtworkView(key: album.artworkKey, artwork: library.artwork, cornerRadius: Theme.Radius.medium)
                     .frame(width: 140, height: 140)
-                    .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
+                    .elevation(.card)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(album.title).font(.title.bold()).lineLimit(2)
                     Text(album.artistName ?? "Unknown Artist").font(.title3).foregroundStyle(.secondary)
                     Text(details).font(.callout).foregroundStyle(.secondary)
-                    HStack {
-                        Button { app.play(tracks, from: nil) } label: { Label("Play", systemImage: "play.fill") }
-                            .keyboardShortcut(.defaultAction)
-                        Button { app.play(tracks, from: nil, shuffled: true) } label: { Label("Shuffle", systemImage: "shuffle") }
-                    }
-                    .padding(.top, 6)
-                    .disabled(tracks.isEmpty)
+                    PlayShuffleButtons(play: { app.play(tracks, from: nil) }, shuffle: { app.play(tracks, from: nil, shuffled: true) })
+                        .padding(.top, 6)
+                        .disabled(tracks.isEmpty)
                 }
                 Spacer()
             }
-            .padding(20)
+            .padding(Theme.Spacing.page)
             TrackListView(app: app, library: library, scope: .album(album.id), title: album.title, showsHeader: false)
         }
         .navigationTitle(album.title)

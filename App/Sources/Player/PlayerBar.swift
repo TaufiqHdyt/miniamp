@@ -39,7 +39,7 @@ struct PlayerBar: View {
             ZStack {
                 Rectangle().fill(.bar)
                 if let tint = app.tint {
-                    LinearGradient(colors: [tint.opacity(0.28), tint.opacity(0.08)], startPoint: .leading, endPoint: .trailing)
+                    LinearGradient(colors: [tint.opacity(Theme.Tint.playerBar.leading), tint.opacity(Theme.Tint.playerBar.trailing)], startPoint: .leading, endPoint: .trailing)
                 }
             }
             .animation(.easeInOut(duration: 0.6), value: app.tint)
@@ -76,9 +76,9 @@ private struct NowPlayingSummary: View {
         HStack(spacing: 12) {
             Button { app.showsNowPlaying.toggle() } label: {
                 ArtworkView(key: entry?.artworkKey, artwork: artwork,
-                            fileURL: entry?.inLibrary == false ? entry?.url : nil, size: .small, cornerRadius: 4)
+                            fileURL: entry?.inLibrary == false ? entry?.url : nil, size: .small, cornerRadius: Theme.Radius.small)
                     .frame(width: 52, height: 52)
-                    .shadow(color: .black.opacity(0.15), radius: 1.5, y: 0.5)
+                    .elevation(.hairline)
             }
             .buttonStyle(.plain)
             .help(app.showsNowPlaying ? "Hide \(app.inspectorPane == .lyrics ? "Lyrics" : "Up Next")"

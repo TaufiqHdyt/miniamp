@@ -23,8 +23,8 @@ struct FullVisualizerView: View {
                     .background(.regularMaterial, in: Capsule())
             }
             SpectrumView(player: app.player)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.panel))
+                .elevation(.panel)
                 .overlay {
                     Group {
                         if app.player.isSendingDoP {

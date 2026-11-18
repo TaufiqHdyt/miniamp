@@ -37,7 +37,7 @@ struct NowPlayingView: View {
         .scrollContentBackground(app.tint == nil ? .automatic : .hidden)
         .background {
             if let tint = app.tint {
-                LinearGradient(colors: [tint.opacity(0.22), tint.opacity(0.04)], startPoint: .top, endPoint: .bottom)
+                LinearGradient(colors: [tint.opacity(Theme.Tint.inspector.top), tint.opacity(Theme.Tint.inspector.bottom)], startPoint: .top, endPoint: .bottom)
                     .ignoresSafeArea()
             }
         }
@@ -205,7 +205,7 @@ private struct QueueRow: View {
     var body: some View {
         HStack(spacing: 10) {
             ArtworkView(key: entry.artworkKey, artwork: artwork,
-                        fileURL: entry.inLibrary ? nil : entry.url, size: .small, cornerRadius: 4)
+                        fileURL: entry.inLibrary ? nil : entry.url, size: .small, cornerRadius: Theme.Radius.small)
                 .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 1) {
                 Text(entry.title).fontWeight(isCurrent ? .semibold : .regular).lineLimit(1)

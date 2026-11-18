@@ -50,9 +50,9 @@ struct FullViewHeading: View {
     var body: some View {
         HStack(spacing: 12) {
             ArtworkView(key: entry.artworkKey, artwork: app.library?.artwork,
-                        fileURL: entry.inLibrary ? nil : entry.url, size: .small, cornerRadius: 6)
+                        fileURL: entry.inLibrary ? nil : entry.url, size: .small, cornerRadius: Theme.Radius.medium)
                 .frame(width: 56, height: 56)
-                .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+                .elevation(.floating)
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.title).font(.title3.weight(.semibold))
                 if let subtitle = entry.subtitle {
@@ -85,7 +85,7 @@ struct CoverWash: View {
                 }
                 .transition(.opacity)
             }
-            Color.black.opacity(0.35)
+            Color.black.opacity(Theme.washDarkness(for: app.artworkTint))
         }
         .clipped()
         .ignoresSafeArea()

@@ -182,15 +182,15 @@ private struct StatsContent: View {
 
     private var tiles: some View {
         HStack(spacing: 12) {
-            StatTile(value: Listening.short(stats.listened), label: "Listening")
-            StatTile(value: stats.plays.formatted(), label: stats.plays == 1 ? "Play" : "Plays")
-            StatTile(value: stats.tracks.formatted(), label: stats.tracks == 1 ? "Song" : "Songs")
-            StatTile(value: stats.artists.formatted(), label: stats.artists == 1 ? "Artist" : "Artists")
+            StatCard(value: Listening.short(stats.listened), label: "Listening")
+            StatCard(value: stats.plays.formatted(), label: stats.plays == 1 ? "Play" : "Plays")
+            StatCard(value: stats.tracks.formatted(), label: stats.tracks == 1 ? "Song" : "Songs")
+            StatCard(value: stats.artists.formatted(), label: stats.artists == 1 ? "Artist" : "Artists")
             if let new = stats.newArtists {
-                StatTile(value: new.formatted(), label: new == 1 ? "New artist" : "New artists")
+                StatCard(value: new.formatted(), label: new == 1 ? "New artist" : "New artists")
                     .help("Artists first played this year")
             }
-            StatTile(value: stats.longestStreak.formatted(), label: "Day streak")
+            StatCard(value: stats.longestStreak.formatted(), label: "Day streak")
                 .help("The most days in a row with something played")
         }
     }
@@ -206,11 +206,11 @@ enum Listening {
             : duration.formatted(.units(allowed: [.hours, .minutes], width: .abbreviated))
     }
 
-    /// "120 h" or "45 min", for a tile.
+    /// "120 h" or "45 min", for a tile. Rounded as `long` rounds, so the two agree
+    /// (14 h 59 min 40 s is "15 hr" there and "15 h" here).
     static func short(_ duration: Duration) -> String {
-        duration >= .seconds(3600)
-            ? "\(duration.components.seconds / 3600) h"
-            : "\(duration.components.seconds / 60) min"
+        let minutes = (duration.components.seconds + 30) / 60
+        return minutes >= 60 ? "\((minutes + 30) / 60) h" : "\(minutes) min"
     }
 
     /// Hours when there's a lot, minutes otherwise; the chart's unit.
@@ -218,21 +218,6 @@ enum Listening {
         (values.max() ?? .zero) >= .seconds(2 * 3600)
             ? ("Hours", { Double($0.components.seconds) / 3600 })
             : ("Minutes", { Double($0.components.seconds) / 60 })
-    }
-}
-
-private struct StatTile: View {
-    let value: String
-    let label: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.title2.bold().monospacedDigit()).lineLimit(1).minimumScaleFactor(0.6)
-            Text(label).font(.callout).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -263,8 +248,8 @@ private struct Tooltip: View {
             Text(value).font(.callout.bold().monospacedDigit())
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
-        .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
+        .elevation(.card)
     }
 }
 
@@ -313,18 +298,22 @@ private struct TimelineChart: View {
 
 private struct HourChart: View {
     let byHour: [Duration]
-    @State private var selected: Int?
+    @State private var selectedX: Double?
+
+    /// The hour under the pointer.
+    private var selected: Int? { selectedX.map { min(max(Int($0.rounded()), 0), 23) } }
 
     var body: some View {
         let unit = Listening.unit(for: byHour)
+        let played = (0..<24).filter { byHour[$0] > .zero }
         Chart {
-            ForEach(0..<24, id: \.self) { hour in
-                BarMark(x: .value("Hour", hour), y: .value(unit.label, unit.value(byHour[hour])), width: .ratio(0.7))
-                    .clipShape(barShape)
-                    .foregroundStyle(Color.accentColor.opacity(selected == nil || selected == hour ? 1 : 0.45))
+            // Each bar spans its hour by hand: on a numeric axis, BarMark's ratio width drew
+            // no bars at all.
+            ForEach(played, id: \.self) { hour in
+                bar(hour, unit: unit)
             }
-            if let selected, (0..<24).contains(selected) {
-                RuleMark(x: .value("Selected", selected))
+            if let selected {
+                RuleMark(x: .value("Selected", Double(selected)))
                     .foregroundStyle(.clear)
                     .annotation(position: .top, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
                         Tooltip(title: "\(Self.label(selected))–\(Self.label((selected + 1) % 24))",
@@ -332,11 +321,11 @@ private struct HourChart: View {
                     }
             }
         }
-        .chartXSelection(value: $selected)
+        .chartXSelection(value: $selectedX)
         .chartXScale(domain: -0.5...23.5)
         .chartXAxis {
-            AxisMarks(values: [0, 6, 12, 18]) { value in
-                AxisValueLabel { if let hour = value.as(Int.self) { Text(Self.label(hour)) } }
+            AxisMarks(values: [0.0, 6, 12, 18]) { value in
+                AxisValueLabel { if let hour = value.as(Double.self) { Text(Self.label(Int(hour))) } }
             }
         }
         .chartYAxis {
@@ -347,6 +336,17 @@ private struct HourChart: View {
         }
         .chartYAxisLabel(unit.label)
         .frame(height: 160)
+    }
+
+    private func bar(_ hour: Int, unit: (label: String, value: (Duration) -> Double)) -> some ChartContent {
+        let x = Double(hour)
+        let start: Double = x - 0.35
+        let end: Double = x + 0.35
+        let value: Double = unit.value(byHour[hour])
+        return RectangleMark(xStart: .value("Hour", start), xEnd: .value("Hour", end),
+                             yStart: .value(unit.label, 0.0), yEnd: .value(unit.label, value))
+            .clipShape(barShape)
+            .foregroundStyle(Color.accentColor.opacity(selected == nil || selected == hour ? 1 : 0.45))
     }
 
     /// "6 AM" or "06", as the locale writes hours.
@@ -456,7 +456,7 @@ private struct TopAlbums: View {
                   alignment: .leading, spacing: 16) {
             ForEach(ranked, id: \.item.id) { entry in
                 VStack(alignment: .leading, spacing: 4) {
-                    ArtworkView(key: entry.item.artworkKey, artwork: library.artwork, size: .small, cornerRadius: 6)
+                    ArtworkView(key: entry.item.artworkKey, artwork: library.artwork, size: .small, cornerRadius: Theme.Radius.medium)
                     Text(entry.item.title).font(.callout).lineLimit(1)
                     Text("\(entry.item.artist ?? "Unknown Artist") · \(entry.plays) play\(entry.plays == 1 ? "" : "s")")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
