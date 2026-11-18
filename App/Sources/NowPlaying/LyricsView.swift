@@ -36,6 +36,8 @@ struct LyricsView<NowPlaying: View>: View {
     private struct LoadKey: Equatable {
         var url: URL
         var online: Bool
+        /// The providers that are on, in order: a change in Settings may find something.
+        var providers: [LyricsProviderID]
         /// Lyrics saved: read them again.
         var revision: Int
     }
@@ -51,7 +53,8 @@ struct LyricsView<NowPlaying: View>: View {
             .onChange(of: follower?.position.line) { scroll(proxy, animated: true) }
             .onChange(of: state) { scroll(proxy, animated: false) }
         }
-        .task(id: LoadKey(url: url, online: app.looksUpLyricsOnline, revision: app.lyricsRevision)) {
+        .task(id: LoadKey(url: url, online: app.looksUpLyricsOnline, providers: app.lyricsProviders.enabled,
+                           revision: app.lyricsRevision)) {
             if follower == nil { follower = LyricsFollower(player: app.player) }
             await app.loadLyricsOffset(for: url)
             follower?.offset = app.totalLyricsOffset(for: url)
@@ -271,10 +274,10 @@ struct LyricsView<NowPlaying: View>: View {
         case .searching:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("Searching LRCLIB…").foregroundStyle(.secondary)
+                Text("Searching \(app.lyricsProviderNames)…").foregroundStyle(.secondary)
             }
         case .found(let found) where found.lyrics.isInstrumental:
-            Label("Instrumental: LRCLIB says this song has no words.", systemImage: "pianokeys")
+            Label("Instrumental: \(providerName(found.source) ?? "the file") says this song has no words.", systemImage: "pianokeys")
                 .foregroundStyle(.secondary)
         case .found(let found):
             if found.lyrics.isSynced, let follower {
@@ -307,12 +310,16 @@ struct LyricsView<NowPlaying: View>: View {
         case .none(let searched):
             VStack(alignment: .leading, spacing: 8) {
                 Text(searched
-                     ? "No lyrics in the file, beside it, or on LRCLIB."
+                     ? "No lyrics in the file, beside it, or from \(app.lyricsProviderNames)."
                      : "No lyrics in the file or in a .lrc file beside it.")
                     .foregroundStyle(.secondary)
                 HStack {
-                    Button(searched ? "Search LRCLIB Again" : "Search LRCLIB") { Task { await load(.refresh) } }
-                        .help("Sends this song's title, artist, album, and duration to lrclib.net")
+                    let providers = app.lyricsProviders.enabled
+                    Button(searched ? "Search Online Again" : "Search Online") { Task { await load(.refresh) } }
+                        .disabled(providers.isEmpty)
+                        .help(providers.isEmpty
+                              ? "Turn on a lyrics provider in Settings › Lyrics"
+                              : "Sends this song's title, artist, album, and duration to \(providers.map(\.host).formatted())")
                     Button("Add Lyrics…") { app.editLyrics() }
                         .help("Type or paste the lyrics, and time them to the song")
                 }
@@ -342,11 +349,13 @@ struct LyricsView<NowPlaying: View>: View {
         let wanted = url
         if online == .refresh { state = .searching }
         do {
-            var result = try await app.lyricsFinder.find(for: wanted, online: online == .automatic ? .cachedOnly : online)
+            let providers = app.lyricsProviders.enabled
+            var result = try await app.lyricsFinder.find(for: wanted, online: online == .automatic ? .cachedOnly : online,
+                                                         using: providers)
             // Show what's local or cached at once; only then wait on the network.
             if online == .automatic, case .notFound(searchedOnline: false) = result {
                 state = .searching
-                result = try await app.lyricsFinder.find(for: wanted, online: .automatic)
+                result = try await app.lyricsFinder.find(for: wanted, online: .automatic, using: providers)
             }
             guard !Task.isCancelled, wanted == url else { return }
             switch result {
@@ -374,8 +383,12 @@ struct LyricsView<NowPlaying: View>: View {
         switch source {
         case .sidecar(let file): "From \(file.lastPathComponent)"
         case .embedded: "From the file's tags"
-        case .lrclib: "From LRCLIB"
+        case .online(let provider, _): "From \(provider.name)"
         }
+    }
+
+    private func providerName(_ source: FoundLyrics.Source) -> String? {
+        if case .online(let provider, _) = source { provider.name } else { nil }
     }
 }
 

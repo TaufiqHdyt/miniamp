@@ -54,16 +54,28 @@ final class AppState {
         set { if newValue { fullView = .visualizer } else if fullView == .visualizer { fullView = nil } }
     }
 
-    /// Ask LRCLIB for lyrics when a song has none of its own. Off until turned on: it sends
-    /// what's playing (title, artist, album, duration) to lrclib.net.
     /// No crossfade between songs from the same album, which are often meant to run together
     /// (live albums, DJ mixes). On by default.
     var keepsAlbumsGapless = UserDefaults.standard.object(forKey: "keepsAlbumsGapless") as? Bool ?? true {
         didSet { UserDefaults.standard.set(keepsAlbumsGapless, forKey: "keepsAlbumsGapless") }
     }
 
+    /// Ask the lyrics providers that are on when a song has no lyrics of its own. Off until
+    /// turned on: it sends what's playing (title, artist, album, duration) to each.
     var looksUpLyricsOnline = UserDefaults.standard.bool(forKey: "looksUpLyricsOnline") {
         didSet { UserDefaults.standard.set(looksUpLyricsOnline, forKey: "looksUpLyricsOnline") }
+    }
+
+    /// The online lyrics providers, in the order they're tried, and which are on.
+    var lyricsProviders: LyricsProviderSettings = UserDefaults.standard.data(forKey: "lyricsProviders")
+        .flatMap { try? JSONDecoder().decode(LyricsProviderSettings.self, from: $0) } ?? LyricsProviderSettings() {
+        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(lyricsProviders), forKey: "lyricsProviders") }
+    }
+
+    /// "LRCLIB, then NetEase Cloud Music": the providers that are on, as a phrase.
+    var lyricsProviderNames: String {
+        let names = lyricsProviders.enabled.map(\.name)
+        return names.count <= 1 ? names.first ?? "no provider" : names.dropLast().joined(separator: ", ") + ", then " + names.last!
     }
 
     @ObservationIgnored let lyricsFinder: LyricsFinder
@@ -112,7 +124,8 @@ final class AppState {
         self.library = library
         sleepTimer = SleepTimer(player: player)
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
-        lyricsFinder = LyricsFinder(database: library?.database, client: LRCLIB(userAgent: "miniamp/\(version)"))
+        lyricsFinder = LyricsFinder(database: library?.database,
+                                    providers: LyricsFinder.standardProviders(userAgent: "miniamp/\(version)"))
         systemNowPlaying = SystemNowPlaying(app: self)
         widgetPublisher = WidgetPublisher(app: self)
         if let library {
@@ -469,7 +482,7 @@ final class AppState {
     // MARK: Editing lyrics
 
     /// Opens the lyrics editor for the song playing, on its lyrics as they're stored: the
-    /// `.lrc` beside it, its tags, or (from LRCLIB) written out as LRC. Library songs only.
+    /// `.lrc` beside it, its tags, or (found online) written out as LRC. Library songs only.
     func editLyrics() {
         guard let url = currentURL, let library else { return }
         perform {
@@ -483,7 +496,8 @@ final class AppState {
             }
             var text = ""
             var source: FoundLyrics.Source?
-            if case .found(let found) = try? await self.lyricsFinder.find(for: url, online: .cachedOnly) {
+            let enabled = self.lyricsProviders.enabled
+            if case .found(let found) = try? await self.lyricsFinder.find(for: url, online: .cachedOnly, using: enabled) {
                 source = found.source
                 text = await LocalLyrics.text(of: found.source, for: url) ?? found.lyrics.lrc
             }

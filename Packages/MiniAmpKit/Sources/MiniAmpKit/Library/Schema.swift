@@ -188,4 +188,26 @@ enum Schema {
             );
             """)
     }
+
+    /// Lyrics from every online provider, one row per track and provider asked: what it
+    /// returned, or that it had nothing (`recordId` NULL). Replaces v3's LRCLIB-only table,
+    /// whose rows come across as LRCLIB's.
+    static func v7(_ db: Database) throws {
+        try db.execute(sql: """
+            CREATE TABLE lyricsLookup (
+                trackId INTEGER NOT NULL REFERENCES track(id) ON DELETE CASCADE,
+                provider TEXT NOT NULL,             -- LyricsProviderID
+                recordId TEXT,                      -- NULL when the provider had nothing
+                syncedLyrics TEXT,
+                plainLyrics TEXT,
+                instrumental BOOLEAN NOT NULL DEFAULT 0,
+                fetchedAt DATETIME NOT NULL,
+                PRIMARY KEY (trackId, provider)
+            ) WITHOUT ROWID;
+            INSERT INTO lyricsLookup (trackId, provider, recordId, syncedLyrics, plainLyrics, instrumental, fetchedAt)
+                SELECT trackId, 'lrclib', CAST(lrclibId AS TEXT), syncedLyrics, plainLyrics, instrumental, fetchedAt
+                FROM onlineLyrics;
+            DROP TABLE onlineLyrics;
+            """)
+    }
 }

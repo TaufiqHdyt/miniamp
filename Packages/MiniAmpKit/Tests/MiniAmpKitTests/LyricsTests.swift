@@ -283,7 +283,7 @@ import Testing
             return (200, Self.json(["id": 7, "trackName": "Song & Dance", "duration": 184.0, "instrumental": false,
                                     "plainLyrics": "Words", "syncedLyrics": "[00:01.00] Words"]))
         }
-        let record = try #require(try await stub.client.lookUp(
+        let record = try #require(try await stub.client.record(for:
             LRCLIB.Query(title: "Song & Dance", artist: "Band", album: "Record", duration: .milliseconds(183_600))))
         #expect(record.id == 7)
         #expect(record.lyrics?.lines.map(\.text) == ["Words"])
@@ -301,8 +301,12 @@ import Testing
                 ["id": 4, "duration": 200.0, "instrumental": false],
             ]))
         }
-        let record = try await stub.client.lookUp(LRCLIB.Query(title: "Song", artist: "Band", duration: .seconds(200)))
+        let record = try await stub.client.record(for: LRCLIB.Query(title: "Song", artist: "Band", duration: .seconds(200)))
         #expect(record?.id == 3)
+        // As a provider, the same record under LRCLIB's name.
+        let online = try await stub.client.lookUp(LRCLIB.Query(title: "Song", artist: "Band", duration: .seconds(200)))
+        #expect(online?.provider == .lrclib)
+        #expect(online?.id == "3")
     }
 
     @Test func nothingFoundAndErrors() async throws {
@@ -311,7 +315,7 @@ import Testing
         }
         #expect(try await empty.client.lookUp(LRCLIB.Query(title: "A", artist: "B", duration: .seconds(1))) == nil)
         let failing = StubServer { _ in (503, Data()) }
-        await #expect(throws: LRCLIB.ServiceError.self) {
+        await #expect(throws: LyricsServiceError.self) {
             try await failing.client.lookUp(LRCLIB.Query(title: "A", artist: "B", duration: .seconds(1)))
         }
     }
@@ -349,14 +353,14 @@ import Testing
             }
             return request.url?.path == "/api/get" ? (404, Data()) : (200, Data("[]".utf8))
         }
-        let finder = LyricsFinder(database: db, client: stub.client)
+        let finder = LyricsFinder(database: db, providers: [stub.client])
 
         #expect(try await finder.find(for: found, online: .off) == .notFound(searchedOnline: false))
         #expect(try await finder.find(for: found, online: .cachedOnly) == .notFound(searchedOnline: false))
         guard case .found(let first) = try await finder.find(for: found, online: .automatic) else {
             Issue.record("not found"); return
         }
-        #expect(first.source == .lrclib(id: 9))
+        #expect(first.source == .online(.lrclib, id: "9"))
         #expect(first.lyrics.lines.first?.text == "Hi")
         #expect(try await finder.find(for: found, online: .cachedOnly) == .found(first))
         #expect(try await finder.find(for: missing, online: .automatic) == .notFound(searchedOnline: true))
@@ -377,7 +381,245 @@ import Testing
         #expect(asked.withLock { $0.count } == 5)
         // Deleting the track deletes what was cached.
         try await db.writer.write { try $0.execute(sql: "DELETE FROM track") }
-        #expect(try await db.writer.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM onlineLyrics") } == 0)
+        #expect(try await db.writer.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM lyricsLookup") } == 0)
+    }
+}
+
+/// Issue #53: NetEase Cloud Music, against a stub server.
+@Suite struct NetEaseTests {
+    static let song = LyricsQuery(title: "The Nights", artist: "Avicii", duration: .milliseconds(176_000))
+
+    @Test func takesTheMatchingSongAndDropsTheCredits() async throws {
+        let asked = Mutex<[String]>([])
+        let stub = StubServer { request in
+            let query = StubServer.query(request)
+            if request.url?.path == "/api/search/get" {
+                #expect(query["s"] == "The Nights Avicii")
+                #expect(query["type"] == "1")
+                return (200, LRCLIBTests.json(["result": ["songs": [
+                    // Another artist, a remix far longer, then two that fit: the exact title wins.
+                    ["id": 1, "name": "The Nights", "duration": 176_000, "artists": [["name": "Someone Else"]]],
+                    ["id": 2, "name": "The Nights (Remix)", "duration": 200_000, "artists": [["name": "Avicii"]]],
+                    ["id": 3, "name": "The Nights (Edit)", "duration": 176_200, "artists": [["name": "Avicii"]]],
+                    ["id": 4, "name": "the nights", "duration": 177_500, "artists": [["name": "Avicii"], ["name": "Nicholas Furlong"]]],
+                ]]]))
+            }
+            asked.withLock { $0.append(query["id"] ?? "") }
+            #expect(request.url?.path == "/api/song/lyric")
+            return (200, LRCLIBTests.json(["lrc": ["lyric": """
+                [00:00.000] 作词 : Tim Bergling
+                [00:00.800] 作曲 : Tim Bergling
+                [00:01.000] Producer: Avicii
+                [00:12.30]Hey, once upon a younger year
+                [00:15.10]When all our shadows disappeared
+                """]]))
+        }
+        let record = try #require(try await stub.netEase.lookUp(Self.song))
+        #expect(record.provider == .netease)
+        #expect(record.id == "4")
+        #expect(asked.withLock { $0 } == ["4"])
+        #expect(record.lyrics?.isSynced == true)
+        #expect(record.lyrics?.lines.map(\.text) == ["Hey, once upon a younger year", "When all our shadows disappeared"])
+    }
+
+    @Test func triesTheNextMatchWhenOneHasNoLyrics() async throws {
+        let stub = StubServer { request in
+            if request.url?.path == "/api/search/get" {
+                return (200, LRCLIBTests.json(["result": ["songs": [
+                    ["id": 1, "name": "The Nights", "duration": 176_000, "artists": [["name": "Avicii"]]],
+                    ["id": 2, "name": "The Nights", "duration": 176_900, "artists": [["name": "AVICII"]]],
+                ]]]))
+            }
+            let id = StubServer.query(request)["id"]
+            return (200, LRCLIBTests.json(id == "1" ? ["lrc": ["lyric": ""]] : ["lrc": ["lyric": "[00:01.00]Hey"]]))
+        }
+        #expect(try await stub.netEase.lookUp(Self.song)?.id == "2")
+    }
+
+    @Test func nothingFoundAndInstrumentals() async throws {
+        let empty = StubServer { _ in (200, LRCLIBTests.json(["result": [:], "code": 200])) }
+        #expect(try await empty.netEase.lookUp(Self.song) == nil)
+        let instrumental = StubServer { request in
+            if request.url?.path == "/api/search/get" {
+                return (200, LRCLIBTests.json(["result": ["songs": [
+                    ["id": 5, "name": "The Nights", "duration": 176_000, "artists": [["name": "Avicii"]]],
+                ]]]))
+            }
+            return (200, LRCLIBTests.json(["lrc": ["lyric": "[99:00.00]纯音乐，请欣赏\n"]]))
+        }
+        #expect(try await instrumental.netEase.lookUp(Self.song)?.lyrics == .instrumental)
+    }
+}
+
+/// Issue #53: Lyrics.ovh, against a stub server.
+@Suite struct LyricsOvhTests {
+    @Test func plainLyricsWithoutTheHeading() async throws {
+        let stub = StubServer { request in
+            // A slash in the artist stays in the name, not the path.
+            #expect(request.url?.absoluteString.hasSuffix("/v1/AC%2FDC/Back%20in%20Black") == true)
+            return (200, LRCLIBTests.json(["lyrics": "Paroles de la chanson Back in Black par AC/DC\r\nBack in black\r\nI hit the sack"]))
+        }
+        let record = try #require(try await stub.lyricsOvh.lookUp(LyricsQuery(title: "Back in Black", artist: "AC/DC", duration: .seconds(255))))
+        #expect(record.provider == .lyricsOvh)
+        #expect(record.lyrics?.isSynced == false)
+        #expect(record.lyrics?.lines.map(\.text) == ["Back in black", "I hit the sack"])
+    }
+
+    @Test func notFound() async throws {
+        let stub = StubServer { _ in (404, LRCLIBTests.json(["error": "No lyrics found"])) }
+        #expect(try await stub.lyricsOvh.lookUp(LyricsQuery(title: "A", artist: "B", duration: .seconds(1))) == nil)
+        let blank = StubServer { _ in (200, LRCLIBTests.json(["lyrics": "  \n "])) }
+        #expect(try await blank.lyricsOvh.lookUp(LyricsQuery(title: "A", artist: "B", duration: .seconds(1))) == nil)
+    }
+}
+
+/// Issue #53: providers tried in order, each remembered on its own.
+@Suite struct LyricsProviderOrderTests {
+    /// A provider that answers from a table of titles, counting what it's asked.
+    final class Fake: LyricsProvider, @unchecked Sendable {
+        let provider: LyricsProviderID
+        let lyrics: [String: String]
+        let fails: Bool
+        let asked = Mutex<[String]>([])
+
+        init(_ provider: LyricsProviderID, _ lyrics: [String: String] = [:], fails: Bool = false) {
+            self.provider = provider
+            self.lyrics = lyrics
+            self.fails = fails
+        }
+
+        func lookUp(_ query: LyricsQuery) async throws -> OnlineLyricsRecord? {
+            asked.withLock { $0.append(query.title) }
+            if fails { throw LyricsServiceError(provider: provider, status: 503) }
+            return lyrics[query.title].map { OnlineLyricsRecord(provider: provider, id: query.title, syncedLyrics: $0) }
+        }
+    }
+
+    @Test func firstProviderWithLyricsWinsAndEachIsAskedOnce() async throws {
+        let db = try AppDatabase.inMemory()
+        let folder = try TestFolder()
+        let both = try folder.mp3("both.mp3", title: "Both", artist: "Band")
+        let second = try folder.mp3("second.mp3", title: "Second", artist: "Band")
+        let neither = try folder.mp3("neither.mp3", title: "Neither", artist: "Band")
+        let paths = ["both.mp3", "second.mp3", "neither.mp3"].map { folder.canonical($0) }
+        try await db.writer.write { d in
+            for path in paths { _ = try SchemaTests.insertTrack(path, artist: "Band", album: nil, path: path, d) }
+        }
+        let lrclib = Fake(.lrclib, ["Both": "[00:01.00]From LRCLIB"])
+        let netease = Fake(.netease, ["Both": "[00:01.00]From NetEase", "Second": "[00:01.00]Only NetEase"])
+        let finder = LyricsFinder(database: db, providers: [lrclib, netease])
+
+        guard case .found(let a) = try await finder.find(for: both, online: .automatic) else { Issue.record("not found"); return }
+        #expect(a.source == .online(.lrclib, id: "Both"))
+        guard case .found(let b) = try await finder.find(for: second, online: .automatic) else { Issue.record("not found"); return }
+        #expect(b.source == .online(.netease, id: "Second"))
+        #expect(try await finder.find(for: neither, online: .automatic) == .notFound(searchedOnline: true))
+        // NetEase wasn't asked about the song LRCLIB had.
+        #expect(lrclib.asked.withLock { $0 } == ["Both", "Second", "Neither"])
+        #expect(netease.asked.withLock { $0 } == ["Second", "Neither"])
+
+        // From the cache, nobody is asked again.
+        #expect(try await finder.find(for: second, online: .cachedOnly) == .found(b))
+        #expect(try await finder.find(for: neither, online: .automatic) == .notFound(searchedOnline: true))
+        #expect(lrclib.asked.withLock { $0.count } == 3)
+        #expect(netease.asked.withLock { $0.count } == 2)
+
+        // In the other order, NetEase is asked first and its lyrics win, though LRCLIB has some cached.
+        guard case .found(let c) = try await finder.find(for: both, online: .automatic, using: [.netease, .lrclib]) else {
+            Issue.record("not found"); return
+        }
+        #expect(c.lyrics.lines.first?.text == "From NetEase")
+        #expect(netease.asked.withLock { $0.count } == 3)
+        // A provider turned off isn't asked, and its cached lyrics aren't shown.
+        #expect(try await finder.find(for: second, online: .automatic, using: [.lrclib]) == .notFound(searchedOnline: true))
+        #expect(try await finder.find(for: second, online: .automatic, using: []) == .notFound(searchedOnline: false))
+        // One row per track and provider.
+        #expect(try await db.writer.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM lyricsLookup") } == 6)
+    }
+
+    @Test func aNewProviderIsAskedWithoutWaitingOutTheOthers() async throws {
+        let db = try AppDatabase.inMemory()
+        let folder = try TestFolder()
+        let song = try folder.mp3("song.mp3", title: "Song", artist: "Band")
+        let path = folder.canonical("song.mp3")
+        try await db.writer.write { d in _ = try SchemaTests.insertTrack("Song", artist: "Band", album: nil, path: path, d) }
+        let lrclib = Fake(.lrclib)
+        let netease = Fake(.netease, ["Song": "[00:01.00]Hi"])
+        let finder = LyricsFinder(database: db, providers: [lrclib, netease])
+
+        #expect(try await finder.find(for: song, online: .automatic, using: [.lrclib]) == .notFound(searchedOnline: true))
+        // Turning NetEase on: the cache alone doesn't settle it, so the pane goes on to ask.
+        #expect(try await finder.find(for: song, online: .cachedOnly, using: [.lrclib, .netease]) == .notFound(searchedOnline: false))
+        guard case .found = try await finder.find(for: song, online: .automatic, using: [.lrclib, .netease]) else {
+            Issue.record("not found"); return
+        }
+        #expect(lrclib.asked.withLock { $0.count } == 1)
+        #expect(netease.asked.withLock { $0.count } == 1)
+    }
+
+    @Test func aFailingProviderFallsThrough() async throws {
+        let folder = try TestFolder()
+        let song = try folder.mp3("song.mp3", title: "Song", artist: "Band")
+        let down = Fake(.lrclib, fails: true)
+        let finder = LyricsFinder(database: nil, providers: [down, Fake(.lyricsOvh, ["Song": "Plain words"])])
+        guard case .found(let found) = try await finder.find(for: song, online: .automatic) else { Issue.record("not found"); return }
+        #expect(found.source == .online(.lyricsOvh, id: "Song"))
+        // With nothing found anywhere, the failure is what's reported.
+        let alone = LyricsFinder(database: nil, providers: [down, Fake(.netease)])
+        await #expect(throws: LyricsServiceError.self) { try await alone.find(for: song, online: .automatic) }
+    }
+
+    @Test func migrationKeepsWhatLRCLIBSaid() throws {
+        let queue = try DatabaseQueue()
+        var migrator = AppDatabase.migrator
+        try migrator.migrate(queue, upTo: "v6")
+        try queue.write { d in
+            let id = try SchemaTests.insertTrack("A", artist: nil, album: nil, path: "/a.flac", d).id
+            let other = try SchemaTests.insertTrack("B", artist: nil, album: nil, path: "/b.flac", d).id
+            try d.execute(sql: "INSERT INTO onlineLyrics (trackId, lrclibId, syncedLyrics, instrumental, fetchedAt) VALUES (?, 42, '[00:01.00]Hi', 0, ?)",
+                          arguments: [id, Date()])
+            try d.execute(sql: "INSERT INTO onlineLyrics (trackId, lrclibId, instrumental, fetchedAt) VALUES (?, NULL, 0, ?)",
+                          arguments: [other, Date()])
+        }
+        migrator = AppDatabase.migrator
+        try migrator.migrate(queue)
+        let rows = try queue.read { try LyricsLookup.order(Column("trackId")).fetchAll($0) }
+        #expect(rows.map(\.provider) == ["lrclib", "lrclib"])
+        #expect(rows.first?.found?.source == .online(.lrclib, id: "42"))
+        #expect(rows.last?.recordId == nil)
+        #expect(try queue.read { try $0.tableExists("onlineLyrics") } == false)
+    }
+}
+
+/// Issue #53: the order and switches the Lyrics settings keep.
+@Suite struct LyricsProviderSettingsTests {
+    @Test func startsWithEveryProviderAndOnlyLRCLIBOn() {
+        let settings = LyricsProviderSettings()
+        #expect(settings.entries.map(\.provider) == LyricsProviderID.allCases)
+        #expect(settings.enabled == [.lrclib])
+    }
+
+    @Test func reordersAndSwitches() throws {
+        var settings = LyricsProviderSettings()
+        settings.set(.netease, on: true)
+        settings.move(.netease, by: -1)
+        #expect(settings.enabled == [.netease, .lrclib])
+        settings.move(.netease, by: -5)
+        #expect(settings.entries.first?.provider == .netease)
+        settings.move(fromOffsets: [0], toOffset: 3)
+        #expect(settings.entries.map(\.provider) == [.lrclib, .lyricsOvh, .netease])
+        settings.set(.lrclib, on: false)
+        #expect(settings.enabled == [.netease])
+        // Round-trips through JSON, as kept in the defaults.
+        let data = try JSONEncoder().encode(settings)
+        #expect(try JSONDecoder().decode(LyricsProviderSettings.self, from: data) == settings)
+    }
+
+    @Test func fillsInNewProvidersAndDropsUnknownOnes() throws {
+        let saved = Data(#"{"entries":[{"provider":"lyricsOvh","isOn":true},{"provider":"someday","isOn":true},{"provider":"lyricsOvh","isOn":false}]}"#.utf8)
+        let settings = try JSONDecoder().decode(LyricsProviderSettings.self, from: saved)
+        #expect(settings.entries.map(\.provider) == [.lyricsOvh, .lrclib, .netease])
+        #expect(settings.enabled == [.lyricsOvh, .lrclib])
     }
 }
 
@@ -415,12 +657,23 @@ final class StubServer: Sendable {
     let client: LRCLIB
 
     init(_ handler: @escaping Handler) {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [StubProtocol.self]
-        client = LRCLIB(userAgent: "miniamp-test/1", configuration: configuration,
+        client = LRCLIB(userAgent: "miniamp-test/1", configuration: Self.configuration,
                         base: URL(string: "https://\(host)/api/")!)
         StubProtocol.handlers.withLock { $0[host] = handler }
     }
+
+    /// A session configuration whose requests the stubs answer.
+    static var configuration: URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        return configuration
+    }
+
+    /// The stub's address, for a provider's `base`.
+    func base(_ path: String = "api/") -> URL { URL(string: "https://\(host)/\(path)")! }
+
+    var netEase: NetEase { NetEase(userAgent: "miniamp-test/1", configuration: Self.configuration, base: base()) }
+    var lyricsOvh: LyricsOvh { LyricsOvh(userAgent: "miniamp-test/1", configuration: Self.configuration, base: base("v1/")) }
 
     deinit { StubProtocol.handlers.withLock { _ = $0.removeValue(forKey: host) } }
 

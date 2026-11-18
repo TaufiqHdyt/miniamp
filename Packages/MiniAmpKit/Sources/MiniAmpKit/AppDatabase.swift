@@ -39,6 +39,7 @@ public final class AppDatabase: Sendable {
         m.registerMigration("v4", migrate: Schema.v4)
         m.registerMigration("v5", migrate: Schema.v5)
         m.registerMigration("v6", migrate: Schema.v6)
+        m.registerMigration("v7", migrate: Schema.v7)
         return m
     }
 

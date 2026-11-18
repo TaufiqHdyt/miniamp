@@ -7,8 +7,8 @@ public struct FoundLyrics: Sendable, Equatable {
         case sidecar(URL)
         /// The track's own tags.
         case embedded
-        /// LRCLIB, by its record id.
-        case lrclib(id: Int)
+        /// An online provider, by the provider's id for what it found.
+        case online(LyricsProviderID, id: String)
     }
 
     public var lyrics: Lyrics
@@ -67,7 +67,7 @@ extension LocalLyrics {
         switch source {
         case .sidecar(let file): (try? Data(contentsOf: file)).flatMap(decode)
         case .embedded: TagReader.lyrics(url)
-        case .lrclib: nil
+        case .online: nil
         }
     }
 }

@@ -20,8 +20,9 @@ options:
   --app-volume V   miniamp's own volume, 0...1 (0 plays silently, everything else as usual)
   --lyrics         print each line of the track's synced lyrics (.lrc or tags) as it's reached
   --lyrics-offset MS   with --lyrics, show them MS sooner (negative: later)
-       miniampctl lyrics [--online] <file>   show a file's lyrics and where they came from
-                                             (--online asks LRCLIB when the file has none)
+       miniampctl lyrics [--online [--provider ID]...] <file>   show a file's lyrics and where they came from
+                                             (--online asks LRCLIB, NetEase, then Lyrics.ovh when the file
+                                             has none; --provider lrclib|netease|lyricsOvh picks and orders them)
        miniampctl fingerprint <file> [<other>]  a file's Chromaprint fingerprint, or how alike two files sound
        miniampctl library ...        scan, search, and watch a library (miniampctl library for help)
 """
@@ -189,17 +190,33 @@ func play(_ args: [String]) async throws {
 
 @MainActor
 func showLyrics(_ args: [String]) async throws {
-    let online = args.contains("--online")
-    guard let path = args.first(where: { $0 != "--online" }) else { print(usage); exit(64) }
-    let finder = LyricsFinder(database: nil, client: online ? LRCLIB(userAgent: "miniampctl") : nil)
-    switch try await finder.find(for: URL(fileURLWithPath: path), online: online ? .refresh : .off) {
+    var args = args[...]
+    var online = false
+    var order: [LyricsProviderID] = []
+    var path: String?
+    while let arg = args.popFirst() {
+        switch arg {
+        case "--online": online = true
+        case "--provider":
+            guard let name = args.popFirst(), let id = LyricsProviderID(rawValue: name) else {
+                print("--provider takes one of: \(LyricsProviderID.allCases.map(\.rawValue).joined(separator: ", "))")
+                exit(64)
+            }
+            order.append(id)
+        default: path = arg
+        }
+    }
+    guard let path else { print(usage); exit(64) }
+    let finder = LyricsFinder(database: nil, providers: online ? LyricsFinder.standardProviders(userAgent: "miniampctl") : [])
+    switch try await finder.find(for: URL(fileURLWithPath: path), online: online ? .refresh : .off,
+                                 using: order.isEmpty ? nil : order) {
     case .notFound(let searched):
-        print(searched ? "no lyrics (LRCLIB has none either)" : "no lyrics")
+        print(searched ? "no lyrics (none online either)" : "no lyrics")
     case .found(let found):
         let source = switch found.source {
         case .sidecar(let url): url.lastPathComponent
         case .embedded: "the file's tags"
-        case .lrclib(let id): "LRCLIB #\(id)"
+        case .online(let provider, let id): "\(provider.name) #\(id)"
         }
         let lyrics = found.lyrics
         print("from \(source): \(lyrics.isInstrumental ? "instrumental" : "\(lyrics.lines.count) lines"), "

@@ -119,7 +119,7 @@ Unordered. Pick these up as interest dictates.
 
 Gaps found by comparing with other local-library players.
 
-- [ ] More lyrics providers, tried in an order you set, after the file's own lyrics (#53)
+- [x] More lyrics providers (LRCLIB, NetEase Cloud Music, Lyrics.ovh), tried in an order you set, after the file's own lyrics (#53)
 - [ ] Autoplay: when Up Next runs out, keep playing similar songs from the library, picked on the Mac (#54)
 - [ ] Share up to five lyric lines as a card tinted with the cover colour (#55)
 

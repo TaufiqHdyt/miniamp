@@ -278,7 +278,7 @@ struct LyricsEditor: View {
     private var footer: some View {
         HStack(spacing: 12) {
             Button("Remove Lyrics…", role: .destructive) { confirmsRemoval = true }
-                .disabled(target.source.map(isFromLRCLIB) ?? true)
+                .disabled(target.source.map(isFromOnline) ?? true)
                 .help("Take the lyrics out of the song")
             if let sidecar = target.sidecar {
                 Picker("Save to", selection: $destination) {
@@ -304,12 +304,12 @@ struct LyricsEditor: View {
                 .keyboardShortcut(.cancelAction)
             Button("Save") { save(text) }
                 .keyboardShortcut("s")
-                .disabled(text == target.text && !(target.source.map(isFromLRCLIB) ?? false))
+                .disabled(text == target.text && !(target.source.map(isFromOnline) ?? false))
         }
     }
 
     private var saveNote: String {
-        if let source = target.source, isFromLRCLIB(source) { return "From LRCLIB; saving keeps them in the song's tags." }
+        if case .online(let provider, _) = target.source { return "From \(provider.name); saving keeps them in the song's tags." }
         return "Saved in the song's tags."
     }
 
@@ -317,12 +317,12 @@ struct LyricsEditor: View {
         switch target.source {
         case .sidecar(let file): "\(file.lastPathComponent) goes to the Trash."
         case .embedded: "They're taken out of the song's tags."
-        case .lrclib, nil: ""
+        case .online, nil: ""
         }
     }
 
-    private func isFromLRCLIB(_ source: FoundLyrics.Source) -> Bool {
-        if case .lrclib = source { true } else { false }
+    private func isFromOnline(_ source: FoundLyrics.Source) -> Bool {
+        if case .online = source { true } else { false }
     }
 
     private func save(_ text: String?) {

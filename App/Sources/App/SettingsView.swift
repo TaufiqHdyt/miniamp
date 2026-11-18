@@ -43,13 +43,55 @@ private struct LyricsSettings: View {
                     .foregroundStyle(.secondary).font(.caption)
             }
             Section {
-                Toggle("Look up missing lyrics on LRCLIB", isOn: $app.looksUpLyricsOnline)
+                Toggle("Look up missing lyrics online", isOn: $app.looksUpLyricsOnline)
             } footer: {
-                Text("When a song has no lyrics of its own, miniamp asks lrclib.net, sending the song's title, artist, album, and duration. What it finds is kept in the library, so each song is asked about once. With this off, you can still search for one song from the Lyrics pane.")
+                Text("When a song has no lyrics of its own, miniamp asks the providers below that are on, in order, until one has them. Each is sent the song's title, artist, album, and duration. What they say is kept in the library, so each song is asked about once. With this off, you can still search for one song from the Lyrics pane.")
+                    .foregroundStyle(.secondary).font(.caption)
+            }
+            Section {
+                let entries = app.lyricsProviders.entries
+                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                    LyricsProviderRow(app: app, entry: entry, isFirst: index == 0, isLast: index == entries.count - 1)
+                }
+                .onMove { app.lyricsProviders.move(fromOffsets: $0, toOffset: $1) }
+            } header: {
+                Text("Providers")
+            } footer: {
+                Text("Tried from the top. LRCLIB and NetEase Cloud Music mostly have synced lyrics; Lyrics.ovh has plain ones only.")
                     .foregroundStyle(.secondary).font(.caption)
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// A provider's switch, with where it sends the song and buttons to move it up and down.
+private struct LyricsProviderRow: View {
+    let app: AppState
+    let entry: LyricsProviderSettings.Entry
+    let isFirst: Bool
+    let isLast: Bool
+
+    var body: some View {
+        HStack {
+            Toggle(isOn: Binding(get: { entry.isOn }, set: { app.lyricsProviders.set(entry.provider, on: $0) })) {
+                Text(entry.provider.name)
+                Text(entry.provider.host)
+            }
+            .toggleStyle(.checkbox)
+            Spacer()
+            ControlGroup {
+                Button { app.lyricsProviders.move(entry.provider, by: -1) } label: { Image(systemName: "chevron.up") }
+                    .disabled(isFirst)
+                    .help("Try \(entry.provider.name) sooner")
+                    .accessibilityLabel("Move \(entry.provider.name) Up")
+                Button { app.lyricsProviders.move(entry.provider, by: 1) } label: { Image(systemName: "chevron.down") }
+                    .disabled(isLast)
+                    .help("Try \(entry.provider.name) later")
+                    .accessibilityLabel("Move \(entry.provider.name) Down")
+            }
+            .fixedSize()
+        }
     }
 }
 
