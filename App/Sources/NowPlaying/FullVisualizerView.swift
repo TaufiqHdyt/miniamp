@@ -1,8 +1,8 @@
 import MiniAmpKit
 import SwiftUI
 
-/// The spectrum visualizer filling the library area, on the playing song's cover like the
-/// full-size lyrics.
+/// Now Playing with the spectrum visualizer, beside the song's cover, on its wash as the
+/// lyrics are.
 struct FullVisualizerView: View {
     let app: AppState
     let url: URL
@@ -12,6 +12,7 @@ struct FullVisualizerView: View {
         let entry = entry?.url == url ? entry : nil
         // As much of the page as there is: the bars stretch to the height, and more of
         // them fit the width.
+        NowPlayingLayout(app: app, entry: entry) {
         SpectrumView(player: app.player)
             .padding(Theme.Spacing.s)
             .modifier(SpectrumPanel(tint: app.tint))
@@ -35,6 +36,7 @@ struct FullVisualizerView: View {
             .clearsUpNext()
             .padding(.top, Theme.Spacing.s)
             .padding(.bottom, Theme.Spacing.s + app.playerBarInset)
+        }
         .background { CoverWash(app: app, entry: entry) }
         .environment(\.colorScheme, .dark)
         .fullViewToolbar(app: app)

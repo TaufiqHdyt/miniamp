@@ -39,7 +39,11 @@ final class AppState {
 
     /// What fills the library area in place of the library, on the playing song's cover: the
     /// lyrics, big, or the visualizer. Not remembered: each launch opens on the library.
-    var fullView: FullView?
+    var fullView: FullView? {
+        didSet { if let fullView { lastFullView = fullView } }
+    }
+    /// The full view open last, which the player bar's cover opens again.
+    @ObservationIgnored private var lastFullView: FullView = .lyrics
 
     /// Up Next's rows' tags, by file. Kept here rather than in the panel, so the rows don't
     /// fall back to file names for a moment when the panel is rebuilt (a song change).
@@ -412,6 +416,12 @@ final class AppState {
     func showFullView(_ view: FullView?) {
         guard view == nil || player.queue.current != nil else { return }
         switchingViews { fullView = view }
+    }
+
+    /// Opens Now Playing (the full view open last) or goes back to the library: the player
+    /// bar's cover.
+    func toggleNowPlaying() {
+        showFullView(fullView == nil ? lastFullView : nil)
     }
 
     /// Between a full view and the library at once, rather than one fading into the other.

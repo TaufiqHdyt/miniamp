@@ -1,8 +1,8 @@
 import MiniAmpKit
 import SwiftUI
 
-/// The lyrics filling the library area, as in Apple Music: big, over the playing song's
-/// cover blurred into a wash of its colours. The song is named in the player bar below.
+/// Now Playing with the lyrics, as in Apple Music: big, beside the playing song's cover, over
+/// the cover blurred into a wash of its colours.
 struct FullLyricsView: View {
     let app: AppState
     let url: URL
@@ -10,8 +10,10 @@ struct FullLyricsView: View {
 
     var body: some View {
         let entry = entry?.url == url ? entry : nil
-        LyricsView(app: app, url: url)
-            .id(url)
+        NowPlayingLayout(app: app, entry: entry) {
+            LyricsView(app: app, url: url)
+                .id(url)
+        }
         .background { CoverWash(app: app, entry: entry) }
         // Light text on the dark wash, whatever the system appearance.
         .environment(\.colorScheme, .dark)

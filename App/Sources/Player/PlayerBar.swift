@@ -69,7 +69,7 @@ struct PlayerBar: View {
     }
 }
 
-/// Cover, then title over artist, all left-aligned. The cover opens and closes the inspector.
+/// Cover, then title over artist, all left-aligned. The cover opens and closes Now Playing.
 private struct NowPlayingSummary: View {
     let entry: QueueEntry?
     let artwork: ArtworkCache?
@@ -77,14 +77,15 @@ private struct NowPlayingSummary: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Button { app.toggleUpNext() } label: {
+            Button { app.toggleNowPlaying() } label: {
                 ArtworkView(key: entry?.artworkKey, artwork: artwork,
                             fileURL: entry?.inLibrary == false ? entry?.url : nil, size: .small, cornerRadius: Theme.Radius.small)
                     .frame(width: 52, height: 52)
                     .elevation(.hairline)
             }
             .buttonStyle(.plain)
-            .help(app.showsNowPlaying ? "Hide Up Next" : "Show Up Next")
+            .disabled(entry == nil)
+            .help(app.fullView == nil ? "Show Now Playing" : "Back to the library")
 
             VStack(alignment: .leading, spacing: 3) {
                 if let entry, let album = entry.albumId {
@@ -117,7 +118,7 @@ private struct NowPlayingSummary: View {
 }
 
 /// Text that opens a page: underlined while the pointer is on it, as links in Apple Music.
-private struct BarLinkStyle: ButtonStyle {
+struct BarLinkStyle: ButtonStyle {
     var secondary = false
 
     func makeBody(configuration: Configuration) -> some View {
