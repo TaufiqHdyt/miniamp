@@ -106,7 +106,7 @@ struct NowPlayingView: View {
 
     private func note(_ text: String) -> some View {
         Text(text)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(QueueRow.dimmed)
             .font(.callout)
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
@@ -197,6 +197,10 @@ struct NowPlayingView: View {
 /// A queue entry: cover, title over artist and album, and its length; lit under the pointer,
 /// on the glass rather than between separators.
 private struct QueueRow: View {
+    /// Secondary text as a plain colour, not the vibrant `.secondary`: that one follows what's
+    /// behind the glass, so it flickered as the library swapped for a full view under it.
+    static let dimmed = Color.primary.opacity(0.6)
+
     let entry: QueueEntry
     let artwork: ArtworkCache?
     @State private var hovering = false
@@ -209,13 +213,13 @@ private struct QueueRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(entry.title).lineLimit(1)
                 if let subtitle = entry.subtitle {
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(subtitle).font(.caption).foregroundStyle(Self.dimmed).lineLimit(1)
                 }
             }
             .help([entry.title, entry.subtitle].compactMap { $0 }.joined(separator: "\n"))
             Spacer(minLength: 4)
             if let ms = entry.durationMs, ms > 0 {
-                Text(TimeFormat.minutes(ms / 1000)).monospacedDigit().font(.caption).foregroundStyle(.secondary)
+                Text(TimeFormat.minutes(ms / 1000)).monospacedDigit().font(.caption).foregroundStyle(Self.dimmed)
             }
         }
         .padding(.horizontal, 6)
