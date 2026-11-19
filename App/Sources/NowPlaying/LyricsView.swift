@@ -2,16 +2,12 @@ import MiniAmpKit
 import SwiftUI
 import Translation
 
-/// A song's lyrics, filling the library area: big, the song and the controls in the toolbar.
+/// A song's lyrics, filling the library area: big, the controls in the toolbar.
 /// Synced lyrics follow playback, the line being sung kept in view (and, in word-timed
 /// lyrics, its words lit as they're sung); clicking a line plays from there.
-struct LyricsView<NowPlaying: View>: View {
+struct LyricsView: View {
     let app: AppState
     let url: URL
-    /// Back to the library.
-    let close: () -> Void
-    /// The song playing, named in the toolbar.
-    @ViewBuilder let nowPlaying: NowPlaying
 
     @State private var state: LoadState = .loading
     @State private var follower: LyricsFollower?
@@ -93,13 +89,15 @@ struct LyricsView<NowPlaying: View>: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.never)
+            // Not on under the toolbar, behind its buttons: the lines fade out below it.
+            .clipped()
             .mask {
-                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.06),
+                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.1),
                                        .init(color: .black, location: 0.9), .init(color: .clear, location: 1)],
                                startPoint: .top, endPoint: .bottom)
             }
         }
-        .fullViewToolbar(close: close) { nowPlaying } timing: {
+        .fullViewToolbar(app: app) {
             if case .found(let found) = state, !found.lyrics.isInstrumental, found.lyrics.isSynced {
                 TimingControl(app: app, url: url)
             }

@@ -2,7 +2,7 @@ import MiniAmpKit
 import SwiftUI
 
 /// The lyrics filling the library area, as in Apple Music: big, over the playing song's
-/// cover blurred into a wash of its colours, the song named at the top.
+/// cover blurred into a wash of its colours. The song is named in the player bar below.
 struct FullLyricsView: View {
     let app: AppState
     let url: URL
@@ -10,10 +10,8 @@ struct FullLyricsView: View {
 
     var body: some View {
         let entry = entry?.url == url ? entry : nil
-        LyricsView(app: app, url: url, close: { app.toggleFullLyrics() }) {
-            FullViewHeading(app: app, entry: entry ?? QueueEntry(fileName: url))
-        }
-        .id(url)
+        LyricsView(app: app, url: url)
+            .id(url)
         .background { CoverWash(app: app, entry: entry) }
         // Light text on the dark wash, whatever the system appearance.
         .environment(\.colorScheme, .dark)
@@ -40,59 +38,41 @@ struct FullViewEntry: ViewModifier {
     }
 }
 
-/// The song named in the toolbar over a full view: its cover, title, and artist and album.
-struct FullViewHeading: View {
-    let app: AppState
-    let entry: QueueEntry
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ArtworkView(key: entry.artworkKey, artwork: app.library?.artwork,
-                        fileURL: entry.inLibrary ? nil : entry.url, size: .small, cornerRadius: Theme.Radius.small)
-                .frame(width: 34, height: 34)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(entry.title).font(.headline)
-                if let subtitle = entry.subtitle {
-                    Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
-                }
-            }
-            .lineLimit(1)
-        }
-        .padding(.horizontal, 4)
-        .help([entry.title, entry.subtitle].compactMap { $0 }.joined(separator: "\n"))
-    }
-}
-
 extension View {
-    /// A full view's toolbar: the song where a page's title goes, its buttons and the one
-    /// back to the library at the trailing end; the wash running up under it, as in Apple
-    /// Music, rather than stopping at a grey bar.
-    func fullViewToolbar<Heading: View, Timing: View, Controls: View>(
-        close: @escaping () -> Void,
-        @ViewBuilder heading: () -> Heading,
+    /// A full view's toolbar: back to the library where a pushed page's Back is, a switch
+    /// between lyrics and the visualizer in the middle, the page's buttons at the trailing
+    /// end. Not the song: the player bar under the page names it (and opens its album and
+    /// artist). The wash runs up under the toolbar, as in Apple Music, rather than stopping at
+    /// a grey bar.
+    func fullViewToolbar<Timing: View, Controls: View>(
+        app: AppState,
         @ViewBuilder timing: () -> Timing = { EmptyView() },
         @ViewBuilder controls: () -> Controls = { EmptyView() }
     ) -> some View {
-        let heading = heading()
         let timing = timing()
         let controls = controls()
         return toolbar(removing: .title)
             .toolbar {
-                ToolbarItem(placement: .navigation) { heading }
-                    .fullViewHeadingBackground()
-                // Pushes what follows to the window's trailing edge, away from the song.
-                FullViewSpacer(flexible: true)
-                // On a glass of its own, apart from the buttons about the words.
-                ToolbarItem(placement: .automatic) { timing }
-                FullViewSpacer(flexible: false)
-                ToolbarItemGroup(placement: .automatic) { controls }
-                // Back to the library on a glass of its own, apart from the page's buttons.
-                FullViewSpacer(flexible: false)
-                ToolbarItem(placement: .automatic) {
-                    Button(action: close) { Label("Back to the Library", systemImage: "arrow.down.right.and.arrow.up.left") }
+                ToolbarItem(placement: .navigation) {
+                    Button { app.showFullView(nil) } label: { Label("Back to the Library", systemImage: "chevron.left") }
                         .keyboardShortcut(.cancelAction)
                         .help("Back to the library (Esc)")
                 }
+                ToolbarItem(placement: .principal) {
+                    Picker("Show", selection: Binding(get: { app.fullView ?? .lyrics }, set: { app.showFullView($0) })) {
+                        ForEach(FullView.allCases, id: \.self) { view in
+                            Label(view.label, systemImage: view.symbol).tag(view)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelStyle(.titleAndIcon)
+                    .fixedSize()
+                    .help("Lyrics (⌥⌘L) or the visualizer (⇧⌥⌘V)")
+                }
+                ToolbarItem(placement: .automatic) { timing }
+                // On a glass of its own, apart from the timing.
+                FullViewSpacer(flexible: false)
+                ToolbarItemGroup(placement: .automatic) { controls }
             }
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
     }
@@ -105,18 +85,6 @@ private struct FullViewSpacer: ToolbarContent {
     var body: some ToolbarContent {
         if #available(macOS 26, *) {
             ToolbarSpacer(flexible ? .flexible : .fixed, placement: .automatic)
-        }
-    }
-}
-
-private extension ToolbarContent {
-    /// The song sits on the wash, not on a glass button.
-    @ToolbarContentBuilder
-    func fullViewHeadingBackground() -> some ToolbarContent {
-        if #available(macOS 26, *) {
-            sharedBackgroundVisibility(.hidden)
-        } else {
-            self
         }
     }
 }

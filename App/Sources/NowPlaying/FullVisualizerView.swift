@@ -2,7 +2,7 @@ import MiniAmpKit
 import SwiftUI
 
 /// The spectrum visualizer filling the library area, on the playing song's cover like the
-/// full-size lyrics, the song named in the toolbar.
+/// full-size lyrics.
 struct FullVisualizerView: View {
     let app: AppState
     let url: URL
@@ -37,9 +37,7 @@ struct FullVisualizerView: View {
             .padding(.bottom, Theme.Spacing.s + app.playerBarInset)
         .background { CoverWash(app: app, entry: entry) }
         .environment(\.colorScheme, .dark)
-        .fullViewToolbar(close: { app.toggleVisualizer() }) {
-            FullViewHeading(app: app, entry: entry ?? QueueEntry(fileName: url))
-        }
+        .fullViewToolbar(app: app)
         .modifier(FullViewEntry(app: app, url: url, entry: $entry))
     }
 }

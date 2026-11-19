@@ -407,6 +407,13 @@ final class AppState {
         showsNowPlaying.toggle()
     }
 
+    /// Opens `view` filling the library area (while something is playing), or goes back to the
+    /// library (nil): from the full views' switch and back button.
+    func showFullView(_ view: FullView?) {
+        guard view == nil || player.queue.current != nil else { return }
+        switchingViews { fullView = view }
+    }
+
     /// Between a full view and the library at once, rather than one fading into the other.
     private func switchingViews(_ change: () -> Void) {
         var transaction = Transaction(animation: nil)
@@ -614,8 +621,22 @@ final class AppState {
     }
 }
 
-enum FullView {
+enum FullView: CaseIterable {
     case lyrics, visualizer
+
+    var label: String {
+        switch self {
+        case .lyrics: "Lyrics"
+        case .visualizer: "Visualizer"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .lyrics: "quote.bubble"
+        case .visualizer: "chart.bar.xaxis"
+        }
+    }
 }
 
 /// The song a lyrics editor edits, and its lyrics as they were.
