@@ -25,6 +25,8 @@ enum Theme {
         static let large: CGFloat = 8
         /// Panels set into a page (the visualizer).
         static let panel: CGFloat = 10
+        /// The player bar, as a glass panel (macOS 26 and later).
+        static let bar: CGFloat = 16
     }
 
     /// How far a thing sits above the page.

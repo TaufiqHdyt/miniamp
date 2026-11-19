@@ -1,17 +1,26 @@
 import MiniAmpKit
 import SwiftUI
 
-/// What the device is doing with the file, as a coloured symbol; the format and a plain
-/// explanation are in its tooltip, and more in the popover it opens.
+/// What the device is doing with the file: a coloured symbol and the format in words
+/// ("FLAC 48/24", "FLAC 192 → 96"); a plain explanation is in its tooltip, and more in the
+/// popover it opens.
 struct QualityBadge: View {
     let path: SignalPath
     @State private var showsDetails = false
 
     var body: some View {
         Button { showsDetails.toggle() } label: {
-            Image(systemName: symbol)
-                .imageScale(.large)
-                .foregroundStyle(color)
+            HStack(spacing: Theme.Spacing.xs) {
+                Image(systemName: symbol)
+                    .imageScale(.medium)
+                    .foregroundStyle(color)
+                Text(short)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .fixedSize()
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("\(title)\n\n\(headline)")
@@ -25,6 +34,20 @@ struct QualityBadge: View {
         if path.dsd != nil { return path.codec }
         let rate = FormatSelection.formatRate(path.fileSampleRate)
         return path.fileBitDepth.map { "\(path.codec) \(rate)/\($0)" } ?? "\(path.codec) \(rate)"
+    }
+
+    /// The format, and what happens to it when that's more than "plays as it is".
+    private var short: String {
+        switch path.verdict {
+        case .resampled(let from, let to):
+            "\(path.codec) \(FormatSelection.formatRate(from)) → \(FormatSelection.formatRate(to))"
+        case .reducedBitDepth(_, let to): "\(format) → \(to)"
+        case .dsdOverPCM: "\(path.codec) DoP"
+        case .dsdConverted: "\(path.codec) → PCM"
+        case .processed where path.isResampled:
+            "\(path.codec) \(FormatSelection.formatRate(path.fileSampleRate)) → \(FormatSelection.formatRate(path.deviceSampleRate))"
+        default: format
+        }
     }
 
     private var title: String {

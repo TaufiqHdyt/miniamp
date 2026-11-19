@@ -1,8 +1,8 @@
 import MiniAmpKit
 import SwiftUI
 
-/// A thin progress line, as in Apple Music. Hovering thickens it and shows the elapsed time
-/// and the length on either side; click or drag anywhere on it to seek.
+/// A thin progress line, as in Apple Music, with the time played on its left and the time
+/// left on its right. Hovering thickens it; click or drag anywhere on it to seek.
 ///
 /// The only view that reads `player.position`, so a position change re-renders just this.
 struct SeekBar: View {
@@ -15,10 +15,9 @@ struct SeekBar: View {
         let total = player.duration.seconds
         let active = (player.state == .playing || player.state == .paused) && total > 0
         let fraction = active ? scrub ?? min(max(player.position.seconds / total, 0), 1) : 0
-        let showsTimes = active && (hovering || scrub != nil)
+        let played = active ? fraction * total : nil
         HStack(spacing: 8) {
-            TimeLabel(seconds: active ? fraction * total : nil, alignment: .trailing)
-                .opacity(showsTimes ? 1 : 0)
+            TimeLabel(text: played.map { TimeFormat.minutes(Int($0.rounded(.down))) }, alignment: .trailing)
             GeometryReader { geometry in
                 let width = geometry.size.width
                 let thick = active && (hovering || scrub != nil)
@@ -41,12 +40,10 @@ struct SeekBar: View {
                     })
             }
             .frame(height: 12)
-            TimeLabel(seconds: active ? total : nil, alignment: .leading)
-                .opacity(showsTimes ? 1 : 0)
+            TimeLabel(text: played.map { "-" + TimeFormat.minutes(Int((total - $0).rounded(.up))) }, alignment: .leading)
         }
         .font(.caption)
         .foregroundStyle(.secondary)
-        .animation(.easeOut(duration: 0.15), value: showsTimes)
         .onHover { hovering = $0 }
         .accessibilityElement()
         .accessibilityLabel("Position")
@@ -61,12 +58,13 @@ struct SeekBar: View {
 
 /// Fixed width, so a change of digits doesn't move anything around it.
 private struct TimeLabel: View {
-    let seconds: Double?
+    /// Nil while nothing plays: the space stays, empty.
+    let text: String?
     var alignment: Alignment = .center
 
     var body: some View {
-        Text(seconds.map { TimeFormat.minutes(Int($0.rounded(.down))) } ?? "–:––")
+        Text(text ?? "")
             .monospacedDigit()
-            .frame(width: 44, alignment: alignment)
+            .frame(width: 52, alignment: alignment)
     }
 }

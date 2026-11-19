@@ -26,7 +26,8 @@ struct MainWindow: View {
             .toolbar(removing: .title)
             .searchFocused($searchFocused)
             .onChange(of: app.searchFocusRequests) { searchFocused = true }
-            Divider()
+            // The bar is a glass panel of its own on macOS 26; before that, a strip under a line.
+            if #available(macOS 26, *) {} else { Divider() }
             PlayerBar(app: app)
         }
         .frame(minWidth: 860, minHeight: 520)
