@@ -1,0 +1,19 @@
+make bench (scripts/bench.sh 30), the playback engine alone, before the M10 redesign.
+Run on 2026-11-18 at a52c8a8..ef1a659 (Phase 0 changed no playback code).
+The app benchmark (make app-bench) is still to be taken: the terminal needs access to the
+app's container (Full Disk Access) to write its scratch library there.
+
+case                         cpu%   energy wakeup/s   mem MB   coreaud%
+idle (no playback)           0.00     0.00      5.0      1.5       0.00
+FLAC 44.1/16                 0.59     0.75     65.8      7.1       8.08
+FLAC 44.1/16 mono            0.58     0.77     61.8      6.7       8.37
+FLAC 96/24                   0.46     0.56     37.2      7.5       4.25
+FLAC 192/24 (SRC→96)         8.77     9.22    172.7      9.0       4.13
+ALAC 88.2/24                 0.83     1.35    211.0      7.5       4.72
+AAC 48                       0.58     1.03    176.7      7.0       7.56
+MP3 44.1                     0.83     1.32    203.6      6.9       8.27
+FLAC 96/24 hog               0.72     1.16    188.4      7.5       4.52
+FLAC 96/24 DSP               0.77     1.22    195.3      7.4       4.28
+DSD64 → PCM 88.2             1.96     2.46    188.9      6.5       4.69
+DSD128 → PCM 88.2            2.73     3.22    215.0      6.5       4.75
+DSD64 → PCM, DSP             1.97     2.40    194.2      6.5       4.62
