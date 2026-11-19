@@ -110,10 +110,11 @@ struct MainWindow: View {
     /// Up Next floating over the library's trailing side, as wide as this, inset like the sidebar.
     static let upNextWidth: CGFloat = 300
 
-    /// How much of the library area's trailing side Up Next covers, margins and all.
+    /// How much of the library area's trailing side Up Next covers: the panel and its margin
+    /// from the window's edge. Pages keep their own margin from it, as from the sidebar.
     private var upNextRoom: CGFloat {
         guard #available(macOS 26, *), app.showsNowPlaying else { return 0 }
-        return Self.upNextWidth + Theme.Spacing.s * 2
+        return Self.upNextWidth + Theme.Spacing.s
     }
 
     /// Up Next, floating at the window's trailing side between the toolbar and the player bar.

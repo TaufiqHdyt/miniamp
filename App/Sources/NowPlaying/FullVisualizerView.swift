@@ -29,9 +29,9 @@ struct FullVisualizerView: View {
             }
             .animation(.easeInOut(duration: 0.2), value: app.player.state == .paused)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Level with Up Next beside it: as far from the toolbar and the player bar, and as
-            // far from the sidebar and from Up Next.
-            .padding(.horizontal, Theme.Spacing.l)
+            // A panel among panels: as far from the sidebar, Up Next, the toolbar and the player
+            // bar as they are from the window's edges.
+            .padding(.horizontal, Theme.Spacing.s)
             .clearsUpNext()
             .padding(.top, Theme.Spacing.s)
             .padding(.bottom, Theme.Spacing.s + app.playerBarInset)
