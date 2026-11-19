@@ -29,9 +29,12 @@ struct FullVisualizerView: View {
             }
             .animation(.easeInOut(duration: 0.2), value: app.player.state == .paused)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 32)
+            // Level with Up Next beside it: as far from the toolbar and the player bar, and as
+            // far from the sidebar and from Up Next.
+            .padding(.horizontal, Theme.Spacing.l)
+            .clearsUpNext()
             .padding(.top, Theme.Spacing.s)
-                .padding(.bottom, Theme.Spacing.l + app.playerBarInset)
+            .padding(.bottom, Theme.Spacing.s + app.playerBarInset)
         .background { CoverWash(app: app, entry: entry) }
         .environment(\.colorScheme, .dark)
         .fullViewToolbar(close: { app.toggleVisualizer() }) {
