@@ -27,8 +27,9 @@ struct FullViewEntry: ViewModifier {
 
     func body(content: Content) -> some View {
         content.task(id: TagsKey(url: url, revision: app.library?.revision ?? 0)) {
+            if entry?.url != url, let known = app.upNextEntries[url] { entry = known }
             let loaded = await QueueEntry.load([url], from: app.library)[url]
-            if !Task.isCancelled { entry = loaded }
+            if !Task.isCancelled, let loaded { entry = loaded }
         }
     }
 

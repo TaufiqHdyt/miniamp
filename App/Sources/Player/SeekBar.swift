@@ -7,6 +7,9 @@ import SwiftUI
 /// The only view that reads `player.position`, so a position change re-renders just this.
 struct SeekBar: View {
     let player: Player
+    /// The length of the song being loaded, from its tags: shown (from 0:00) while it loads,
+    /// rather than no times at all for a moment.
+    var loadingDurationMs: Int?
     /// Where a drag is, 0...1; nil follows the player.
     @State private var scrub: Double?
     @State private var hovering = false
@@ -15,7 +18,9 @@ struct SeekBar: View {
         let total = player.duration.seconds
         let active = (player.state == .playing || player.state == .paused) && total > 0
         let fraction = active ? scrub ?? min(max(player.position.seconds / total, 0), 1) : 0
-        let played = active ? fraction * total : nil
+        let loading = player.state == .preparing ? loadingDurationMs.map { Double($0) / 1000 } : nil
+        let played = active ? fraction * total : loading.map { _ in 0 }
+        let length = active ? total : loading ?? 0
         HStack(spacing: 8) {
             TimeLabel(text: played.map { TimeFormat.minutes(Int($0.rounded(.down))) }, alignment: .trailing)
             GeometryReader { geometry in
@@ -40,7 +45,7 @@ struct SeekBar: View {
                     })
             }
             .frame(height: 12)
-            TimeLabel(text: played.map { "-" + TimeFormat.minutes(Int((total - $0).rounded(.up))) }, alignment: .leading)
+            TimeLabel(text: played.map { "-" + TimeFormat.minutes(Int((length - $0).rounded(.up))) }, alignment: .leading)
         }
         .font(.caption)
         .foregroundStyle(.secondary)

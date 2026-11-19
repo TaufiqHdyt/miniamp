@@ -18,7 +18,8 @@ struct PlayerBar: View {
 
             VStack(spacing: 4) {
                 TransportButtons(app: app)
-                SeekBar(player: player)
+                // While the next song loads, its length, from its tags.
+                SeekBar(player: player, loadingDurationMs: current?.url == app.currentURL ? current?.durationMs : nil)
             }
             .frame(minWidth: 300, idealWidth: 520, maxWidth: 560)
             // Sized first, so the two sides split what's left equally and the middle stays centred.
@@ -46,8 +47,12 @@ struct PlayerBar: View {
                 app.artworkBrightness = nil
                 return
             }
-            if current?.url != url { current = QueueEntry(fileName: url) }
-            current = await QueueEntry.load([url], from: app.library)[url] ?? current
+            // Up Next has the next song's tags already: straight to them, rather than the file's
+            // name for a moment while the library is read.
+            if current?.url != url, let known = app.upNextEntries[url] { current = known }
+            let loaded = await QueueEntry.load([url], from: app.library)[url]
+            guard !Task.isCancelled else { return }
+            current = loaded ?? (current?.url == url ? current : QueueEntry(fileName: url))
             guard let entry = current, entry.url == url else { return }
             let colours = await ArtworkImages.shared.colours(key: entry.artworkKey, fileURL: entry.inLibrary ? nil : url,
                                                              in: app.library?.artwork)
@@ -160,7 +165,8 @@ struct TransportButtons: View {
             .help("Previous (⌘←)")
             .disabled(player.queue.isEmpty)
             Button { app.perform { try await player.togglePlayPause() } } label: {
-                Image(systemName: player.state == .playing ? "pause.fill" : "play.fill")
+                // Pause while the next song loads too: it's about to play.
+                Image(systemName: player.state == .playing || player.state == .preparing ? "pause.fill" : "play.fill")
                     .contentTransition(.symbolEffect(.replace))
                     .font(.title2)
                     .frame(width: 24)
