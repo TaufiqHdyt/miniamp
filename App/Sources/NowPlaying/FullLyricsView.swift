@@ -67,12 +67,14 @@ extension View {
     /// A full view's toolbar: the song where a page's title goes, its buttons and the one
     /// back to the library at the trailing end; the wash running up under it, as in Apple
     /// Music, rather than stopping at a grey bar.
-    func fullViewToolbar<Heading: View, Controls: View>(
+    func fullViewToolbar<Heading: View, Timing: View, Controls: View>(
         close: @escaping () -> Void,
         @ViewBuilder heading: () -> Heading,
+        @ViewBuilder timing: () -> Timing = { EmptyView() },
         @ViewBuilder controls: () -> Controls = { EmptyView() }
     ) -> some View {
         let heading = heading()
+        let timing = timing()
         let controls = controls()
         return toolbar(removing: .title)
             .toolbar {
@@ -80,6 +82,9 @@ extension View {
                     .fullViewHeadingBackground()
                 // Pushes what follows to the window's trailing edge, away from the song.
                 FullViewSpacer(flexible: true)
+                // On a glass of its own: a group's glass sized to icons cut it off.
+                ToolbarItem(placement: .automatic) { timing.fixedSize() }
+                FullViewSpacer(flexible: false)
                 ToolbarItemGroup(placement: .automatic) { controls }
                 // Back to the library on a glass of its own, apart from the page's buttons.
                 FullViewSpacer(flexible: false)

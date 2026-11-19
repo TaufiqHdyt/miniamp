@@ -99,13 +99,16 @@ struct LyricsView<NowPlaying: View>: View {
                                startPoint: .top, endPoint: .bottom)
             }
         }
-        .fullViewToolbar(close: close) { nowPlaying } controls: { fullControls }
+        .fullViewToolbar(close: close) { nowPlaying } timing: {
+            if case .found(let found) = state, !found.lyrics.isInstrumental, found.lyrics.isSynced {
+                TimingControl(app: app, url: url)
+            }
+        } controls: { fullControls }
     }
 
     @ViewBuilder
     private var fullControls: some View {
         if case .found(let found) = state, !found.lyrics.isInstrumental {
-            if found.lyrics.isSynced { TimingControl(app: app, url: url) }
             extrasMenu
             shareButton
         }
