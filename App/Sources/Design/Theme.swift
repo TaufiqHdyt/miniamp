@@ -23,12 +23,10 @@ enum Theme {
         static let medium: CGFloat = 6
         /// Cards.
         static let large: CGFloat = 8
-        /// Panels set into a page (the visualizer).
-        static let panel: CGFloat = 10
-        /// The player bar, as a glass panel (macOS 26 and later).
-        static let bar: CGFloat = 16
-        /// The Up Next panel, floating like the sidebar (macOS 26 and later).
+        /// The big panels, all alike: the player bar (glass, macOS 26 and later), Up Next
+        /// (floating like the sidebar), the visualizer. Continuous corners.
         static let floatingPanel: CGFloat = 18
+        static let bar: CGFloat = floatingPanel
     }
 
     /// How far a thing sits above the page.

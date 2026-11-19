@@ -13,7 +13,7 @@ struct FullVisualizerView: View {
         // As much of the page as there is: the bars stretch to the height, and more of
         // them fit the width.
         SpectrumView(player: app.player)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.panel))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.floatingPanel, style: .continuous))
             .elevation(.panel)
             .overlay {
                 Group {
