@@ -110,10 +110,10 @@ struct Shelf<Content: View>: View {
                     .padding(.vertical, Theme.Spacing.xs)
             }
             .scrollIndicators(.automatic)
-            // Out under Up Next as it scrolls (its content margin keeps the last cover clear),
-            // as under nothing else: not under the sidebar.
-            .extendsUnderUpNext()
+            // Not out under the sidebar as it scrolls, but out under Up Next (its content
+            // margin keeps the last cover clear): clipped first, then widened under it.
             .clipped()
+            .extendsUnderUpNext()
         }
     }
 }
@@ -195,7 +195,6 @@ private struct HeroWash: View {
             }
             .clipped()
             .padding(.top, -HeroWash.reach)
-            .extendsUnderUpNext()
             .accessibilityHidden(true)
         }
     }
@@ -238,7 +237,8 @@ extension View {
     /// Keeps clear of Up Next: for what doesn't scroll, or (tables, lists) ignores content margins.
     func clearsUpNext() -> some View { modifier(UpNextRoom(clears: true)) }
 
-    /// Runs on under Up Next, out of a scroll view's content: backgrounds, shelves.
+    /// Runs on under Up Next, out of a scroll view's content: shelves. Not for backgrounds:
+    /// one widened the album page's layout past the window, Up Next with it.
     func extendsUnderUpNext() -> some View { modifier(UpNextRoom(clears: false)) }
 }
 
