@@ -29,11 +29,12 @@ final class AppState {
     /// Whether the main window is on screen: the position is only updated while it shows.
     var mainWindowVisible = true { didSet { player.updatesPosition = mainWindowVisible } }
 
-    /// The now-playing inspector. Remembered across launches. Read with bool(forKey:), not
-    /// `as? Bool`: a launch argument (-showsNowPlaying NO) arrives as a string.
+    /// The now-playing inspector. Remembered across launches, but not its closing for a full
+    /// view. Read with bool(forKey:), not `as? Bool`: a launch argument (-showsNowPlaying NO)
+    /// arrives as a string.
     var showsNowPlaying = UserDefaults.standard.object(forKey: "showsNowPlaying") == nil
         ? true : UserDefaults.standard.bool(forKey: "showsNowPlaying") {
-        didSet { UserDefaults.standard.set(showsNowPlaying, forKey: "showsNowPlaying") }
+        didSet { if fullView == nil { UserDefaults.standard.set(showsNowPlaying, forKey: "showsNowPlaying") } }
     }
 
     /// What the inspector shows under the cover. Remembered across launches.
@@ -43,7 +44,24 @@ final class AppState {
 
     /// What fills the library area in place of the library, on the playing song's cover: the
     /// lyrics, big, or the visualizer. Not remembered: each launch opens on the library.
-    var fullView: FullView?
+    ///
+    /// The inspector closes meanwhile (the full view already names the song) and comes back
+    /// after, if it was open. Closed and opened as its buttons do it, by `showsNowPlaying`:
+    /// hiding it from the binding alone left it stuck closed.
+    var fullView: FullView? {
+        didSet {
+            guard (oldValue == nil) != (fullView == nil) else { return }
+            if fullView != nil {
+                inspectorBeforeFullView = showsNowPlaying
+                showsNowPlaying = false
+            } else if inspectorBeforeFullView {
+                showsNowPlaying = true
+            }
+        }
+    }
+
+    /// Whether the inspector was open when a full view opened.
+    private var inspectorBeforeFullView = false
 
     var showsFullLyrics: Bool {
         get { fullView == .lyrics }
@@ -400,12 +418,8 @@ final class AppState {
 
     // MARK: Lyrics
 
-    /// Whether the inspector shows: it's closed while a full view (full lyrics, the
-    /// visualizer) is open, which already names the song, and comes back after.
-    var inspectorVisible: Bool { showsNowPlaying && fullView == nil }
-
     /// Whether the inspector is open on `pane`.
-    func isShowing(_ pane: InspectorPane) -> Bool { inspectorVisible && inspectorPane == pane }
+    func isShowing(_ pane: InspectorPane) -> Bool { showsNowPlaying && inspectorPane == pane }
 
     /// Up Next and Lyrics each have a button: it opens the inspector on its pane, switches to
     /// it from the other, or closes the inspector when it's already showing.

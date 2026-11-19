@@ -79,7 +79,7 @@ private struct NowPlayingSummary: View {
                     .elevation(.hairline)
             }
             .buttonStyle(.plain)
-            .help(app.inspectorVisible ? "Hide \(app.inspectorPane == .lyrics ? "Lyrics" : "Up Next")"
+            .help(app.showsNowPlaying ? "Hide \(app.inspectorPane == .lyrics ? "Lyrics" : "Up Next")"
                                       : "Show \(app.inspectorPane == .lyrics ? "Lyrics" : "Up Next")")
 
             VStack(alignment: .leading, spacing: 3) {
