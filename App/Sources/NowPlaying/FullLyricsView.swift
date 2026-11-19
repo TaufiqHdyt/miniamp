@@ -10,14 +10,13 @@ struct FullLyricsView: View {
 
     var body: some View {
         let entry = entry?.url == url ? entry : nil
-        LyricsView(app: app, url: url, style: .full) {
+        LyricsView(app: app, url: url, close: { app.showsFullLyrics = false }) {
             FullViewHeading(app: app, entry: entry ?? QueueEntry(fileName: url))
         }
         .id(url)
         .background { CoverWash(app: app, entry: entry) }
         // Light text on the dark wash, whatever the system appearance.
         .environment(\.colorScheme, .dark)
-        .fullViewToolbar()
         .modifier(FullViewEntry(app: app, url: url, entry: $entry))
     }
 }
@@ -41,58 +40,64 @@ struct FullViewEntry: ViewModifier {
     }
 }
 
-/// The song named at the top of a full view: its cover, title, and artist and album.
+/// The song named in the toolbar over a full view: its cover, title, and artist and album.
 struct FullViewHeading: View {
     let app: AppState
     let entry: QueueEntry
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 10) {
             ArtworkView(key: entry.artworkKey, artwork: app.library?.artwork,
-                        fileURL: entry.inLibrary ? nil : entry.url, size: .small, cornerRadius: Theme.Radius.medium)
-                .frame(width: 64, height: 64)
-                .elevation(.floating)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(entry.title).font(.title2.bold())
+                        fileURL: entry.inLibrary ? nil : entry.url, size: .small, cornerRadius: Theme.Radius.small)
+                .frame(width: 34, height: 34)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(entry.title).font(.headline)
                 if let subtitle = entry.subtitle {
-                    Text(subtitle).font(.title3).foregroundStyle(.secondary)
+                    Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
                 }
             }
             .lineLimit(1)
         }
-    }
-}
-
-/// A full view's buttons, on glass at the top right, ending in the one back to the library.
-struct FullViewControls<Content: View>: View {
-    let close: () -> Void
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        let controls = HStack(spacing: 14) {
-            content
-            Button(action: close) { Image(systemName: "arrow.down.right.and.arrow.up.left") }
-                .buttonStyle(.borderless)
-                .keyboardShortcut(.cancelAction)
-                .help("Back to the library (Esc)")
-        }
-        .imageScale(.large)
-        .padding(.horizontal, 14)
-        .frame(height: 36)
-        if #available(macOS 26, *) {
-            controls.glassEffect(.regular.interactive(), in: Capsule())
-        } else {
-            controls.background(.regularMaterial, in: Capsule())
-        }
+        .padding(.horizontal, 4)
+        .help([entry.title, entry.subtitle].compactMap { $0 }.joined(separator: "\n"))
     }
 }
 
 extension View {
-    /// A full view's chrome: no title in the toolbar (the heading names the song) and the
-    /// wash running up under it, as in Apple Music, rather than stopping at a grey bar.
-    func fullViewToolbar() -> some View {
-        toolbar(removing: .title)
+    /// A full view's toolbar: the song where a page's title goes, its buttons and the one
+    /// back to the library at the trailing end; the wash running up under it, as in Apple
+    /// Music, rather than stopping at a grey bar.
+    func fullViewToolbar<Heading: View, Controls: View>(
+        close: @escaping () -> Void,
+        @ViewBuilder heading: () -> Heading,
+        @ViewBuilder controls: () -> Controls = { EmptyView() }
+    ) -> some View {
+        let heading = heading()
+        let controls = controls()
+        return toolbar(removing: .title)
+            .toolbar {
+                ToolbarItem(placement: .navigation) { heading }
+                    .fullViewHeadingBackground()
+                ToolbarItemGroup(placement: .primaryAction) { controls }
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: close) { Label("Back to the Library", systemImage: "arrow.down.right.and.arrow.up.left") }
+                        .keyboardShortcut(.cancelAction)
+                        .help("Back to the library (Esc)")
+                }
+            }
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+    }
+}
+
+private extension ToolbarContent {
+    /// The song sits on the wash, not on a glass button.
+    @ToolbarContentBuilder
+    func fullViewHeadingBackground() -> some ToolbarContent {
+        if #available(macOS 26, *) {
+            sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
     }
 }
 

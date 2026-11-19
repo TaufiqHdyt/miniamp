@@ -27,7 +27,7 @@ enum Theme {
         static let panel: CGFloat = 10
         /// The player bar, as a glass panel (macOS 26 and later).
         static let bar: CGFloat = 16
-        /// The Up Next and Lyrics panel, floating like the sidebar (macOS 26 and later).
+        /// The Up Next panel, floating like the sidebar (macOS 26 and later).
         static let floatingPanel: CGFloat = 18
     }
 

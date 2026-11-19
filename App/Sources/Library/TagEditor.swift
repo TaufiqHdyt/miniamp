@@ -104,8 +104,8 @@ struct TagEditor: View {
                 .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
                 .overlay(RoundedRectangle(cornerRadius: Theme.Radius.medium).strokeBorder(.quaternary))
                 .frame(height: 140)
-            Text(sidecar.map { "\($0.lastPathComponent) beside the song is shown instead when it's timed. Edit Lyrics in the Lyrics pane can save there." }
-                 ?? "Plain, or LRC with times ([01:23.45]). Edit Lyrics in the Lyrics pane times them to the song.")
+            Text(sidecar.map { "\($0.lastPathComponent) beside the song is shown instead when it's timed. Edit Lyrics in Lyrics can save there." }
+                 ?? "Plain, or LRC with times ([01:23.45]). Edit Lyrics in Lyrics times them to the song.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

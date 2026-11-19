@@ -2,17 +2,15 @@ import MiniAmpKit
 import SwiftUI
 import Translation
 
-/// A song's lyrics, in the inspector's Lyrics pane or filling the library area.
-///
-/// The pane is laid out like Up Next: the song playing first, then its lyrics where the queue
-/// would be. Full size, the lyrics are big, under the song with the controls beside it.
+/// A song's lyrics, filling the library area: big, the song and the controls in the toolbar.
 /// Synced lyrics follow playback, the line being sung kept in view (and, in word-timed
 /// lyrics, its words lit as they're sung); clicking a line plays from there.
 struct LyricsView<NowPlaying: View>: View {
     let app: AppState
     let url: URL
-    var style: LyricsStyle = .pane
-    /// The song playing: the Now Playing row in the pane, the heading full size.
+    /// Back to the library.
+    let close: () -> Void
+    /// The song playing, named in the toolbar.
     @ViewBuilder let nowPlaying: NowPlaying
 
     @State private var state: LoadState = .loading
@@ -46,12 +44,7 @@ struct LyricsView<NowPlaying: View>: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            Group {
-                switch style {
-                case .pane: pane
-                case .full: full
-                }
-            }
+            full
             .onChange(of: follower?.position.line) { scroll(proxy, animated: true) }
             .onChange(of: state) { scroll(proxy, animated: false) }
         }
@@ -86,56 +79,16 @@ struct LyricsView<NowPlaying: View>: View {
         }
     }
 
-    private var pane: some View {
-        List {
-            Section("Now Playing") { nowPlaying }
-            Section {
-                rows
-            } header: {
-                HStack {
-                    Text("Lyrics")
-                    Spacer()
-                    if case .found(let found) = state {
-                        if found.lyrics.isInstrumental {
-                            editButton
-                        } else {
-                            if found.lyrics.isSynced { TimingControl(app: app, url: url) }
-                            moreMenu
-                        }
-                        Button { app.toggleFullLyrics() } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
-                            .buttonStyle(.borderless)
-                            .help("Show the lyrics full size (⇧⌥⌘L)")
-                    }
-                }
-            } footer: {
-                if case .found(let found) = state, !found.lyrics.isInstrumental {
-                    sourceNotes(found).font(.caption)
-                }
-            }
-        }
-        .listStyle(.inset)
-        .clearsPlayerBar(app)
-    }
-
-    /// Big lyrics under the song, the controls beside it; the line being sung a third of the
-    /// way down, fading out at the edges.
+    /// Big lyrics, the line being sung a third of the way down, fading out at the edges.
     private var full: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: 12) {
-                nowPlaying
-                Spacer(minLength: 12)
-                fullControls
-            }
-            .padding(.horizontal, 32)
-            .padding(.top, 20)
-            .padding(.bottom, 8)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     fullRows
                 }
                 .frame(maxWidth: 760, alignment: .leading)
                 .padding(.horizontal, 48)
-                .padding(.top, 40)
+                .padding(.top, 32)
                 .padding(.bottom, 280)
                 .frame(maxWidth: .infinity)
             }
@@ -146,20 +99,17 @@ struct LyricsView<NowPlaying: View>: View {
                                startPoint: .top, endPoint: .bottom)
             }
         }
+        .fullViewToolbar(close: close) { nowPlaying } controls: { fullControls }
     }
 
+    @ViewBuilder
     private var fullControls: some View {
-        FullViewControls(close: { app.showsFullLyrics = false }) {
-            if case .found(let found) = state, !found.lyrics.isInstrumental {
-                if found.lyrics.isSynced { TimingControl(app: app, url: url) }
-                extrasMenu
-                shareButton
-            }
-            if case .found = state {
-                editButton
-                Divider().frame(height: 14)
-            }
+        if case .found(let found) = state, !found.lyrics.isInstrumental {
+            if found.lyrics.isSynced { TimingControl(app: app, url: url) }
+            extrasMenu
+            shareButton
         }
+        if case .found = state { editButton }
     }
 
     @ViewBuilder
@@ -218,23 +168,6 @@ struct LyricsView<NowPlaying: View>: View {
             if let translationError, app.showsLyricsTranslation { Text(translationError) }
         }
         .foregroundStyle(.secondary)
-    }
-
-    /// The pane's narrow header has room for one menu: romanization and translation, sharing,
-    /// and editing.
-    private var moreMenu: some View {
-        Menu {
-            extrasToggles
-            Divider()
-            Button("Share Lyrics…") { share(from: follower?.position.line) }
-            Button("Edit Lyrics…") { app.editLyrics() }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("Romanization, translation, sharing, and editing")
     }
 
     @ViewBuilder

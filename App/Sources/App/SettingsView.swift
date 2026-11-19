@@ -39,13 +39,13 @@ private struct LyricsSettings: View {
                     LabeledContent("Delay synced lyrics by", value: "\(app.lyricsDelay.wholeMilliseconds) ms")
                 }
             } footer: {
-                Text("For speakers that play the sound late, such as Bluetooth headphones (often 150 to 300 ms), where lyrics would otherwise show before you hear the words. It applies to every song, on top of the timing set for a song in the Lyrics pane.")
+                Text("For speakers that play the sound late, such as Bluetooth headphones (often 150 to 300 ms), where lyrics would otherwise show before you hear the words. It applies to every song, on top of the timing set for a song in Lyrics.")
                     .foregroundStyle(.secondary).font(.caption)
             }
             Section {
                 Toggle("Look up missing lyrics online", isOn: $app.looksUpLyricsOnline)
             } footer: {
-                Text("When a song has no lyrics of its own, miniamp asks the providers below that are on, in order, until one has them. Each is sent the song's title, artist, album, and duration. What they say is kept in the library, so each song is asked about once. With this off, you can still search for one song from the Lyrics pane.")
+                Text("When a song has no lyrics of its own, miniamp asks the providers below that are on, in order, until one has them. Each is sent the song's title, artist, album, and duration. What they say is kept in the library, so each song is asked about once. With this off, you can still search for one song from Lyrics.")
                     .foregroundStyle(.secondary).font(.caption)
             }
             Section {

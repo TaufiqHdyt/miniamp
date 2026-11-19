@@ -72,15 +72,14 @@ private struct NowPlayingSummary: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Button { app.toggle(app.inspectorPane) } label: {
+            Button { app.toggleUpNext() } label: {
                 ArtworkView(key: entry?.artworkKey, artwork: artwork,
                             fileURL: entry?.inLibrary == false ? entry?.url : nil, size: .small, cornerRadius: Theme.Radius.small)
                     .frame(width: 52, height: 52)
                     .elevation(.hairline)
             }
             .buttonStyle(.plain)
-            .help(app.showsNowPlaying ? "Hide \(app.inspectorPane == .lyrics ? "Lyrics" : "Up Next")"
-                                      : "Show \(app.inspectorPane == .lyrics ? "Lyrics" : "Up Next")")
+            .help(app.showsNowPlaying ? "Hide Up Next" : "Show Up Next")
 
             VStack(alignment: .leading, spacing: 3) {
                 if let entry, let album = entry.albumId {
@@ -227,27 +226,31 @@ extension PlayQueue<URL>.Repeat {
     }
 }
 
-/// Opens the inspector on Up Next or Lyrics, lit while that pane shows; again closes it.
+/// Up Next (the inspector) or Lyrics (filling the library area, as the visualizer does), lit
+/// while showing; again closes it.
 private struct PaneButton: View {
+    enum Pane { case upNext, lyrics }
+
     let app: AppState
-    let pane: InspectorPane
+    let pane: Pane
 
     var body: some View {
         let (name, symbol, key) = switch pane {
         case .upNext: ("Up Next", "list.bullet", "⌥⌘I")
         case .lyrics: ("Lyrics", "quote.bubble", "⌥⌘L")
         }
-        Toggle(isOn: Binding(get: { app.isShowing(pane) }, set: { _ in app.toggle(pane) })) {
+        let showing = pane == .upNext ? app.showsNowPlaying : app.showsFullLyrics
+        Toggle(isOn: Binding(get: { showing }, set: { _ in pane == .upNext ? app.toggleUpNext() : app.toggleFullLyrics() })) {
             Label(name, systemImage: symbol)
-                .symbolEffect(.bounce, value: app.isShowing(pane))
+                .symbolEffect(.bounce, value: showing)
         }
         .toggleStyle(.button)
         .buttonStyle(.borderless)
         .labelStyle(.iconOnly)
         .imageScale(.large)
-        // The inspector stays away while nothing is playing.
-        .disabled(app.currentURL == nil)
-        .help("\(app.isShowing(pane) ? "Hide" : "Show") \(name) (\(key))")
+        // Lyrics are the playing song's.
+        .disabled(pane == .lyrics && !showing && app.currentURL == nil)
+        .help("\(showing ? "Hide" : "Show") \(name) (\(key))")
     }
 }
 

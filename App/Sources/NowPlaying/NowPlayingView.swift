@@ -1,8 +1,8 @@
 import MiniAmpKit
 import SwiftUI
 
-/// The inspector, in one of two panes, each opened by its own button in the player bar:
-/// Up Next (the song playing, then what follows, each with its cover) or Lyrics.
+/// The inspector: Up Next, what plays after the song playing (which the player bar shows),
+/// each with its cover; then what autoplay adds.
 struct NowPlayingView: View {
     let app: AppState
     @State private var entries: [URL: QueueEntry] = [:]
@@ -14,20 +14,10 @@ struct NowPlayingView: View {
 
     var body: some View {
         let player = app.player
-        // Lyrics don't need the queue's tags read.
-        let upcoming = app.inspectorPane == .upNext ? upcomingRows(player.queue) : []
+        let upcoming = upcomingRows(player.queue)
         Group {
-            if let url = player.queue.current {
-                let entry = entries[url] ?? QueueEntry(fileName: url)
-                switch app.inspectorPane {
-                case .upNext:
-                    upNext(current: entry, upcoming: upcoming)
-                case .lyrics:
-                    LyricsView(app: app, url: url) {
-                        QueueRow(entry: entry, artwork: app.library?.artwork, isCurrent: true, state: player.state)
-                    }
-                    .id(url)
-                }
+            if player.queue.current != nil {
+                upNext(upcoming: upcoming)
             } else {
                 ContentUnavailableView("Nothing Playing", systemImage: "music.note",
                                        description: Text("Double-click a song to play it."))
@@ -35,9 +25,8 @@ struct NowPlayingView: View {
         }
         .modifier(InspectorPanel(tint: app.tint))
         // Read the tags of what's shown when the queue moves, or when the library changes (a retag).
-        .task(id: Shown(urls: [player.queue.current].compactMap { $0 } + upcoming.map(\.url),
-                        revision: app.library?.revision ?? 0)) {
-            let urls = [player.queue.current].compactMap { $0 } + upcoming.map(\.url)
+        .task(id: Shown(urls: upcoming.map(\.url), revision: app.library?.revision ?? 0)) {
+            let urls = upcoming.map(\.url)
             let revision = app.library?.revision ?? 0
             // After a library change, read everything again so retagged files show their new tags.
             let stale = revision != entriesRevision
@@ -54,26 +43,19 @@ struct NowPlayingView: View {
         }
     }
 
-    private func upNext(current: QueueEntry, upcoming: [Row]) -> some View {
+    private func upNext(upcoming: [Row]) -> some View {
         let player = app.player
-        let artwork = app.library?.artwork
         let chosen = upcoming.filter { !player.autoplayItems.contains($0.item) }
         let autoplayed = upcoming.filter { player.autoplayItems.contains($0.item) }
         let remaining = remainingCount(player.queue, shown: upcoming.count)
         return List {
-            Section("Now Playing") {
-                QueueRow(entry: current, artwork: artwork, isCurrent: true, state: player.state)
-            }
             Section {
                 rows(chosen)
-                if remaining > 0, autoplayed.isEmpty {
-                    Text("and \(remaining) more").foregroundStyle(.secondary).font(.callout)
-                }
-                if upcoming.isEmpty {
-                    Text(player.repeatMode != .off ? "The queue starts over."
-                         : app.autoplays ? "Autoplay adds songs like this one."
+                if remaining > 0, autoplayed.isEmpty { note("and \(remaining) more") }
+                if chosen.isEmpty {
+                    note(!autoplayed.isEmpty ? "Nothing queued: Play Next and Play Last add songs here."
+                         : player.repeatMode != .off ? "The queue starts over."
                          : "This is the last song.")
-                        .foregroundStyle(.secondary).font(.callout)
                 }
             } header: {
                 HStack {
@@ -89,28 +71,38 @@ struct NowPlayingView: View {
                             .buttonStyle(.link)
                             .help("Take the songs you queued out of Up Next; the song playing and autoplay's stay")
                     }
-                    AutoplayToggle(app: app)
                 }
             }
-            if !autoplayed.isEmpty {
-                Section {
-                    rows(autoplayed)
-                    if remaining > 0 {
-                        Text("and \(remaining) more").foregroundStyle(.secondary).font(.callout)
-                    }
-                } header: {
-                    HStack {
-                        Text("Autoplay")
-                        Spacer()
+            Section {
+                rows(autoplayed)
+                if remaining > 0, !autoplayed.isEmpty { note("and \(remaining) more") }
+                if autoplayed.isEmpty {
+                    note(app.autoplays ? "When Up Next runs out, songs like the last ones keep playing."
+                         : "Off. Turn it on to keep playing songs like the last ones when Up Next runs out.")
+                }
+            } header: {
+                HStack {
+                    Text("Autoplay")
+                    Spacer()
+                    if !autoplayed.isEmpty {
                         Button("Clear") { Task { await player.clearAutoplay() } }
                             .buttonStyle(.link)
                             .help("Take autoplay's songs out of Up Next")
                     }
+                    AutoplayToggle(app: app)
                 }
             }
         }
         .listStyle(.inset)
         .clearsPlayerBar(app)
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .foregroundStyle(.secondary)
+            .font(.callout)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
     }
 
     /// Up Next's rows for `section`, which can be dragged to reorder what plays next.
@@ -123,6 +115,9 @@ struct NowPlayingView: View {
         // moves rather than being redrawn as a new one.
         return ForEach(section, id: \.item) { row in
             QueueRow(entry: entries[row.url] ?? QueueEntry(fileName: row.url), artwork: artwork)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 1, leading: 4, bottom: 1, trailing: 4))
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { play(row) }
                 .contextMenu {
@@ -192,13 +187,12 @@ struct NowPlayingView: View {
     }
 }
 
-/// A queue entry: cover, title over artist and album, and its length. The song playing is
-/// marked with the playing bars and its format.
+/// A queue entry: cover, title over artist and album, and its length; lit under the pointer,
+/// on the glass rather than between separators.
 private struct QueueRow: View {
     let entry: QueueEntry
     let artwork: ArtworkCache?
-    var isCurrent = false
-    var state: Player.State = .stopped
+    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -206,25 +200,25 @@ private struct QueueRow: View {
                         fileURL: entry.inLibrary ? nil : entry.url, size: .small, cornerRadius: Theme.Radius.small)
                 .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 1) {
-                Text(entry.title).fontWeight(isCurrent ? .semibold : .regular).lineLimit(1)
+                Text(entry.title).lineLimit(1)
                 if let subtitle = entry.subtitle {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             .help([entry.title, entry.subtitle].compactMap { $0 }.joined(separator: "\n"))
             Spacer(minLength: 4)
-            VStack(alignment: .trailing, spacing: 1) {
-                if isCurrent {
-                    PlayingBars(isPlaying: state == .playing)
-                        .help(state == .playing ? "Playing" : "Paused")
-                } else if let ms = entry.durationMs, ms > 0 {
-                    Text(TimeFormat.minutes(ms / 1000)).monospacedDigit()
-                }
-                if isCurrent { Text(entry.format).lineLimit(1) }
+            if let ms = entry.durationMs, ms > 0 {
+                Text(TimeFormat.minutes(ms / 1000)).monospacedDigit().font(.caption).foregroundStyle(.secondary)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
         }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
+        .background {
+            RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
+                .fill(.primary.opacity(hovering ? 0.08 : 0))
+        }
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
     }
 }
 

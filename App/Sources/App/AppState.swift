@@ -37,11 +37,6 @@ final class AppState {
         didSet { if fullView == nil { UserDefaults.standard.set(showsNowPlaying, forKey: "showsNowPlaying") } }
     }
 
-    /// What the inspector shows under the cover. Remembered across launches.
-    var inspectorPane = InspectorPane(rawValue: UserDefaults.standard.string(forKey: "inspectorPane") ?? "") ?? .upNext {
-        didSet { UserDefaults.standard.set(inspectorPane.rawValue, forKey: "inspectorPane") }
-    }
-
     /// What fills the library area in place of the library, on the playing song's cover: the
     /// lyrics, big, or the visualizer. Not remembered: each launch opens on the library.
     ///
@@ -418,23 +413,18 @@ final class AppState {
 
     // MARK: Lyrics
 
-    /// Whether the inspector is open on `pane`.
-    func isShowing(_ pane: InspectorPane) -> Bool { showsNowPlaying && inspectorPane == pane }
-
-    /// Up Next and Lyrics each have a button: it opens the inspector on its pane, switches to
-    /// it from the other, or closes the inspector when it's already showing.
-    func toggle(_ pane: InspectorPane) {
-        if isShowing(pane) {
+    /// Opens Up Next in the inspector, or closes it. It takes over from a full view.
+    func toggleUpNext() {
+        if showsNowPlaying {
             showsNowPlaying = false
         } else {
-            // The inspector takes over from a full view.
             fullView = nil
-            inspectorPane = pane
             showsNowPlaying = true
         }
     }
 
-    /// Opens the full-size lyrics (while something is playing) or goes back to the library.
+    /// Opens the lyrics, filling the library area (while something is playing), or goes back
+    /// to the library.
     func toggleFullLyrics() {
         if showsFullLyrics {
             showsFullLyrics = false
@@ -631,10 +621,6 @@ final class AppState {
             self.lyricsRevision += 1
         }
     }
-}
-
-enum InspectorPane: String {
-    case upNext, lyrics
 }
 
 enum FullView {

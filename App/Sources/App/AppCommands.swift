@@ -28,12 +28,10 @@ struct AppCommands: Commands {
                 .disabled(app.library == nil)
         }
         CommandGroup(before: .sidebar) {
-            Button(app.isShowing(.upNext) ? "Hide Up Next" : "Show Up Next") { app.toggle(.upNext) }
+            Button(app.showsNowPlaying ? "Hide Up Next" : "Show Up Next") { app.toggleUpNext() }
                 .keyboardShortcut("i", modifiers: [.command, .option])
-            Button(app.isShowing(.lyrics) ? "Hide Lyrics" : "Show Lyrics") { app.toggle(.lyrics) }
+            Button(app.showsFullLyrics ? "Hide Lyrics" : "Show Lyrics") { app.toggleFullLyrics() }
                 .keyboardShortcut("l", modifiers: [.command, .option])
-            Button(app.showsFullLyrics ? "Hide Full Lyrics" : "Show Full Lyrics") { app.toggleFullLyrics() }
-                .keyboardShortcut("l", modifiers: [.command, .option, .shift])
                 .disabled(!app.showsFullLyrics && app.currentURL == nil)
             Button(app.showsVisualizer ? "Hide Visualizer" : "Show Visualizer") { app.toggleVisualizer() }
                 .keyboardShortcut("v", modifiers: [.command, .option, .shift])

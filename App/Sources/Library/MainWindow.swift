@@ -100,15 +100,14 @@ struct MainWindow: View {
     }
 
     private var split: some View {
-        // Read here, in the body, so SwiftUI redraws when a song starts or the queue empties;
-        // read only inside the binding, the inspector didn't come back once something played.
-        let showsInspector = app.showsNowPlaying && app.currentURL != nil
+        // Read here, in the body: read only inside the binding, SwiftUI doesn't redraw when it
+        // changes. Open or closed as it was left, whether or not anything is playing.
+        let showsInspector = app.showsNowPlaying
         return NavigationSplitView {
             Sidebar(app: app, selection: $selection)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 300)
         } detail: {
             detail
-                // Not while nothing is playing, rather than a column saying so.
                 .inspector(isPresented: Binding(get: { showsInspector }, set: { app.showsNowPlaying = $0 })) {
                     NowPlayingView(app: app)
                         .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
