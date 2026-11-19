@@ -1,30 +1,33 @@
 #!/usr/bin/env bash
-# Measures the app's CPU, energy impact, wakeups, and memory: idle, then playing with each
-# inspector pane, with it closed, and with the visualizer. Uses a scratch library in the app's container
+# Measures the app's CPU, energy impact, wakeups, and memory: idle, then playing with Up Next
+# open and closed, and in Now Playing with the synced lyrics and with the visualizer. Uses a scratch library in the app's container
 # (-libraryDatabase), never the real one, and plays silent files. Quit miniamp first.
 # Usage: scripts/app-bench.sh [seconds-per-case]   (default 30; CONFIG=Release for a Release build)
+# APP=path/to/miniamp.app measures that build instead, unbuilt (an older commit's, for a baseline).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 SECS="${1:-30}"
 CONFIG="${CONFIG:-Debug}"
-APP="build/Build/Products/$CONFIG/miniamp.app"
+APP="${APP:-build/Build/Products/$CONFIG/miniamp.app}"
 DATA="$HOME/Library/Containers/dev.miniamp.app/Data/tmp/miniamp-app-bench"
 MUSIC="$DATA/music"
 SONG="$MUSIC/tone-96k-24.flac"
 
 if pgrep -xq miniamp; then echo "Quit miniamp first." >&2; exit 1; fi
 [ -f "$SONG" ] || TONE_LEVEL=0 scripts/make-fixtures.sh "$MUSIC" 60 >/dev/null
-# Synced lyrics beside the song, a line every two seconds, for the Lyrics pane.
+# Synced lyrics beside the song, a line every two seconds, for the lyrics.
 python3 -I - "$MUSIC/tone-96k-24.lrc" <<'PY'
 import sys
 with open(sys.argv[1], "w") as f:
     for i in range(30):
         f.write(f"[{i * 2 // 60:02d}:{i * 2 % 60:02d}.00]Line {i + 1} of the benchmark lyrics\n")
 PY
-xcodegen generate --quiet
-xcodebuild -project MiniAmp.xcodeproj -scheme miniamp -configuration "$CONFIG" \
-  -destination "platform=macOS,arch=$(uname -m)" -derivedDataPath build -quiet build
+if [ "$APP" = "build/Build/Products/$CONFIG/miniamp.app" ]; then
+  xcodegen generate --quiet
+  xcodebuild -project MiniAmp.xcodeproj -scheme miniamp -configuration "$CONFIG" \
+    -destination "platform=macOS,arch=$(uname -m)" -derivedDataPath build -quiet build
+fi
 
 # sample <label> <pid>: top once a second; the first CPU sample is meaningless, so drop it.
 sample() {
@@ -52,9 +55,10 @@ run() {
 }
 
 printf "%-34s %6s %8s %8s %8s\n" "case ($CONFIG)" "cpu%" "energy" "wakeup/s" "mem MB"
+# -inspectorPane is for builds before Phase 3 (#59), which had the lyrics in the inspector too.
 run "idle, window open"               -showsNowPlaying YES -inspectorPane upNext
 run "playing 96/24, Up Next"          -showsNowPlaying YES -inspectorPane upNext -autoplay "$SONG"
-run "playing 96/24, Lyrics (synced)"  -showsNowPlaying YES -inspectorPane lyrics -autoplay "$SONG"
-run "playing 96/24, inspector closed" -showsNowPlaying NO -autoplay "$SONG"
-run "playing 96/24, visualizer"      -showsNowPlaying NO -autoplay "$SONG" -fullView visualizer
+run "playing 96/24, Up Next closed"   -showsNowPlaying NO -autoplay "$SONG"
+run "playing 96/24, lyrics (synced)"  -showsNowPlaying NO -autoplay "$SONG" -fullView lyrics
+run "playing 96/24, visualizer"       -showsNowPlaying NO -autoplay "$SONG" -fullView visualizer
 rm -rf "$DATA/db"
