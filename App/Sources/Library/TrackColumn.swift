@@ -5,11 +5,13 @@ import MiniAmpKit
 enum TrackColumn: String, CaseIterable {
     /// The now-playing bars. Always first and always shown; it has no header and doesn't sort.
     case playing
+    /// The song's cover, small. Off at first; taller rows while it shows.
+    case artwork
     case number, title, artist, album, year, genre, time, quality, added
 
     var title: String {
         switch self {
-        case .playing: ""
+        case .playing, .artwork: ""
         case .number: "#"
         case .title: "Title"
         case .artist: "Artist"
@@ -25,10 +27,16 @@ enum TrackColumn: String, CaseIterable {
     var menuTitle: String {
         switch self {
         case .playing: "Now Playing"
+        case .artwork: "Artwork"
         case .number: "Track Number"
         default: title
         }
     }
+
+    /// The cover's size in the artwork column, and the rows' height with and without it.
+    static let artworkSide: CGFloat = 30
+    static let rowHeight: CGFloat = 22
+    static let rowHeightWithArtwork: CGFloat = artworkSide + 6
 
     /// Columns the header menu can hide.
     var isOptional: Bool { self != .playing && self != .title }
@@ -36,7 +44,7 @@ enum TrackColumn: String, CaseIterable {
     /// "#" is album order (or playlist order): sorting by track number alone mixes albums together.
     var sortColumn: TrackSort.Column? {
         switch self {
-        case .playing: nil
+        case .playing, .artwork: nil
         case .number: .albumOrder
         case .title: .title
         case .artist: .artist
@@ -53,6 +61,7 @@ enum TrackColumn: String, CaseIterable {
     private var widths: (CGFloat, CGFloat, CGFloat) {
         switch self {
         case .playing: (20, 20, 20)
+        case .artwork: (TrackColumn.artworkSide + 4, TrackColumn.artworkSide + 4, TrackColumn.artworkSide + 4)
         case .number: (24, 32, 50)
         case .title: (80, 280, 2000)
         case .artist, .album: (60, 180, 1000)
@@ -67,7 +76,7 @@ enum TrackColumn: String, CaseIterable {
     /// What the cell shows (an icon, where there is one, is drawn beside it).
     func text(_ info: TrackInfo, position: Int?) -> String {
         switch self {
-        case .playing: ""
+        case .playing, .artwork: ""
         case .number: (position ?? info.track.trackNumber).map(String.init) ?? ""
         case .title: info.track.title
         case .artist: info.artistName ?? ""
@@ -103,7 +112,7 @@ enum TrackColumn: String, CaseIterable {
     @MainActor
     func resizingMask(autoSized: Bool) -> NSTableColumn.ResizingOptions {
         switch self {
-        case .playing: []
+        case .playing, .artwork: []
         case .title: [.autoresizingMask, .userResizingMask]
         case .artist, .album, .genre: autoSized ? .userResizingMask : [.autoresizingMask, .userResizingMask]
         default: .userResizingMask
@@ -125,7 +134,7 @@ enum TrackColumn: String, CaseIterable {
         (column.minWidth, column.width, column.maxWidth) = widths
         column.headerToolTip = self == .playing ? "Now playing" : nil
         if sortColumn != nil { column.sortDescriptorPrototype = NSSortDescriptor(key: rawValue, ascending: true) }
-        column.isHidden = [.year, .genre, .added].contains(self)
+        column.isHidden = [.artwork, .year, .genre, .added].contains(self)
         column.resizingMask = resizingMask(autoSized: false)
         return column
     }

@@ -7,18 +7,23 @@ public struct ArtistSummary: Sendable, Hashable, Identifiable, FetchableRecord, 
     public var name: String
     public var albumCount: Int
     public var trackCount: Int
+    /// A cover from one of their songs, to stand for them.
+    public var artworkKey: String?
 }
 
 public struct AlbumSummary: Sendable, Hashable, Identifiable, FetchableRecord, Decodable {
     public var id: Int64
     public var title: String
     /// The album artist.
+    public var artistId: Int64?
     public var artistName: String?
     public var year: Int?
     /// The album's cover, or else the first track's that has one.
     public var artworkKey: String?
     public var trackCount: Int
     public var durationMs: Int
+    /// When its newest track was added.
+    public var addedAt: Date
 }
 
 public struct PlaylistSummary: Sendable, Hashable, Identifiable, FetchableRecord, Decodable {
@@ -115,9 +120,10 @@ extension LibraryQueries {
                 WHERE EXISTS (SELECT 1 FROM track WHERE track.albumId = album.id)
                 GROUP BY artistCredit.artistId
             )
-            SELECT artist.id, artist.name, ifnull(owned.albumCount, 0) AS albumCount, tally.trackCount
+            SELECT artist.id, artist.name, ifnull(owned.albumCount, 0) AS albumCount, tally.trackCount, tally.artworkKey
             FROM artist
-            JOIN (SELECT artistId, count(*) AS trackCount FROM credit GROUP BY artistId) AS tally
+            JOIN (SELECT credit.artistId, count(*) AS trackCount, max(track.artworkKey) AS artworkKey
+                  FROM credit JOIN track ON track.id = credit.trackId GROUP BY credit.artistId) AS tally
               ON tally.artistId = artist.id
             LEFT JOIN owned ON owned.artistId = artist.id
             ORDER BY artist.name COLLATE NOCASE
@@ -127,23 +133,34 @@ extension LibraryQueries {
     /// Albums with at least one track, by album artist then title. `artistId` limits them to
     /// albums the artist owns or appears on.
     public static func albums(artistId: Int64? = nil, _ db: Database) throws -> [AlbumSummary] {
-        let filter = artistId == nil ? "" : """
-            WHERE album.artistId IN (SELECT creditId FROM artistCredit WHERE artistId = :artist)
-               OR EXISTS (SELECT 1 FROM track WHERE track.albumId = album.id
-                          AND track.artistId IN (SELECT creditId FROM artistCredit WHERE artistId = :artist))
-            """
-        return try AlbumSummary.fetchAll(db, sql: """
-            SELECT album.id, album.title, artist.name AS artistName,
+        guard let artistId else { return try albumSummaries(db) }
+        return try albumSummaries(db, where: """
+            album.artistId IN (SELECT creditId FROM artistCredit WHERE artistId = :artist)
+            OR EXISTS (SELECT 1 FROM track WHERE track.albumId = album.id
+                       AND track.artistId IN (SELECT creditId FROM artistCredit WHERE artistId = :artist))
+            """, arguments: ["artist": artistId])
+    }
+
+    /// Albums with at least one track. `condition` is on `album` (and its `artist`),
+    /// `order` on those, and on the aggregates `addedAt` and `trackCount` by name (in an
+    /// expression, `year` means a column: spell out `ifnull(album.year, max(track.year))`).
+    static func albumSummaries(_ db: Database, where condition: String? = nil,
+                               order: String = "artist.name IS NULL, artist.name COLLATE NOCASE, album.title COLLATE NOCASE",
+                               limit: Int? = nil, arguments: StatementArguments = [:]) throws -> [AlbumSummary] {
+        try AlbumSummary.fetchAll(db, sql: """
+            SELECT album.id, album.title, album.artistId, artist.name AS artistName,
                    ifnull(album.year, max(track.year)) AS year,
                    ifnull(album.artworkKey, min(track.artworkKey)) AS artworkKey,
-                   count(track.id) AS trackCount, sum(track.durationMs) AS durationMs
+                   count(track.id) AS trackCount, sum(track.durationMs) AS durationMs,
+                   max(track.addedAt) AS addedAt
             FROM album
             JOIN track ON track.albumId = album.id
             LEFT JOIN artist ON artist.id = album.artistId
-            \(filter)
+            \(condition.map { "WHERE " + $0 } ?? "")
             GROUP BY album.id
-            ORDER BY artist.name IS NULL, artist.name COLLATE NOCASE, album.title COLLATE NOCASE
-            """, arguments: ["artist": artistId])
+            ORDER BY \(order)
+            \(limit.map { "LIMIT \($0)" } ?? "")
+            """, arguments: arguments)
     }
 
     public static func playlists(_ db: Database) throws -> [PlaylistSummary] {

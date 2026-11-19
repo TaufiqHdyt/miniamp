@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 struct MainWindow: View {
     @Bindable var app: AppState
-    @SceneStorage("sidebarSelection") private var selection: SidebarItem = .songs
+    @SceneStorage("sidebarSelection") private var selection: SidebarItem = .home
     @FocusState private var searchFocused: Bool
     var body: some View {
         Group {
@@ -54,8 +54,14 @@ struct MainWindow: View {
         }
         .onChange(of: app.library?.revision) { app.libraryChanged() }
         // Anything chosen in the sidebar, or searched for, goes back from the full-size lyrics.
-        .onChange(of: selection) { app.fullView = nil }
-        .onChange(of: app.searchText) { if app.isSearching { app.fullView = nil } }
+        .onChange(of: selection) {
+            app.fullView = nil
+            app.libraryPath = []
+        }
+        .onChange(of: app.searchText) {
+            if app.isSearching { app.fullView = nil }
+            app.libraryPath = []
+        }
         .onChange(of: app.player.queue.current == nil) { if app.player.queue.current == nil { app.fullView = nil } }
         .onChange(of: app.sidebarRequest) {
             guard let item = app.sidebarRequest else { return }
@@ -99,7 +105,9 @@ struct MainWindow: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 300)
         } detail: {
             detail
-                .inspector(isPresented: $app.showsNowPlaying) {
+                // Not while nothing is playing, rather than a column saying so.
+                .inspector(isPresented: Binding(get: { app.showsNowPlaying && app.currentURL != nil },
+                                                set: { app.showsNowPlaying = $0 })) {
                     NowPlayingView(app: app)
                         .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
                 }
@@ -119,10 +127,28 @@ struct MainWindow: View {
             case .lyrics: FullLyricsView(app: app, url: url)
             case .visualizer: FullVisualizerView(app: app, url: url)
             }
-        } else if let library = app.library, app.isSearching {
-            SearchResultsView(app: app, library: library, query: app.searchText)
         } else if let library = app.library {
+            // Album and artist pages open over the page showing, with Back to return.
+            NavigationStack(path: $app.libraryPath) {
+                page(library)
+                    .navigationDestination(for: LibraryDestination.self) { destination in
+                        LibraryDestinationView(app: app, library: library, destination: destination)
+                    }
+            }
+        } else {
+            ContentUnavailableView("The library couldn't be opened", systemImage: "externaldrive.badge.exclamationmark",
+                                   description: Text("Open files with File › Open… to play them."))
+        }
+    }
+
+    @ViewBuilder
+    private func page(_ library: Library) -> some View {
+        if app.isSearching {
+            SearchResultsView(app: app, library: library, query: app.searchText)
+        } else {
             switch selection {
+            case .home:
+                HomeView(app: app, library: library)
             case .songs:
                 TrackListView(app: app, library: library, scope: .all, title: "Songs")
             case .artists:
@@ -137,9 +163,6 @@ struct MainWindow: View {
                 TrackListView(app: app, library: library, scope: .playlist(id),
                               title: app.playlists.first { $0.id == id }?.name ?? "Playlist")
             }
-        } else {
-            ContentUnavailableView("The library couldn't be opened", systemImage: "externaldrive.badge.exclamationmark",
-                                   description: Text("Open files with File › Open… to play them."))
         }
     }
 
@@ -148,7 +171,7 @@ struct MainWindow: View {
         let defaults = UserDefaults.standard
         // Hooks for automated checks: in Debug builds, or in any build when a test database
         // is in use (-libraryDatabase), so a Release check never touches the real library.
-        //   miniamp -sidebar albums            (songs, artists, albums, stats, duplicates, or playlist:<id>)
+        //   miniamp -sidebar albums            (home, songs, artists, albums, stats, duplicates, or playlist:<id>)
         //   miniamp -libraryFolder /path/in/container
         var addsFolders = defaults.string(forKey: "libraryDatabase") != nil
         #if DEBUG

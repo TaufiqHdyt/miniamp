@@ -13,6 +13,9 @@ struct QueueEntry: Equatable {
     /// Library artwork; nil for files outside the library (their cover is read from the file).
     var artworkKey: String?
     var inLibrary = false
+    /// In the library: the credit and album, to open their pages.
+    var artistId: Int64?
+    var albumId: Int64?
 
     init(fileName url: URL) {
         self.url = url
@@ -29,6 +32,8 @@ struct QueueEntry: Equatable {
         durationMs = info.track.durationMs
         artworkKey = info.track.artworkKey
         inLibrary = true
+        artistId = info.track.artistId
+        albumId = info.track.albumId
     }
 
     init(_ tags: TrackTags, url: URL) {

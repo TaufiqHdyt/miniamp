@@ -125,6 +125,9 @@ final class AppState {
     private(set) var playlists: [PlaylistSummary] = []
     /// A sidebar item to show, asked for by something outside the sidebar (a new playlist).
     var sidebarRequest: SidebarItem?
+    /// The album and artist pages opened from the sidebar item showing, in order. Cleared
+    /// when another sidebar item is chosen.
+    var libraryPath: [LibraryDestination] = []
     /// The playlist whose name is being edited in the sidebar.
     var renamingPlaylist: Int64?
     /// The tracks in the Get Info sheet.
@@ -294,6 +297,13 @@ final class AppState {
                 waitingToPlay = (waiting.id, list)
             }
         }
+    }
+
+    /// Opens an album or artist page over the page showing (from anywhere: the player bar,
+    /// a song's menu), leaving full lyrics or the visualizer for it.
+    func show(_ destination: LibraryDestination) {
+        fullView = nil
+        if libraryPath.last != destination { libraryPath.append(destination) }
     }
 
     /// The URL of what's playing (or paused, or next to play).

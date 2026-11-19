@@ -118,6 +118,22 @@ public final class Library {
         try await database.writer.read { try LibraryQueries.albums(artistId: artistId, $0) }
     }
 
+    public func home() async throws -> HomeShelves {
+        try await database.writer.read { try LibraryQueries.home($0) }
+    }
+
+    public func album(_ id: Int64) async throws -> AlbumSummary? {
+        try await database.writer.read { try LibraryQueries.album(id, $0) }
+    }
+
+    public func leadArtist(ofCredit credit: Int64) async throws -> Int64 {
+        try await database.writer.read { try LibraryQueries.leadArtist(ofCredit: credit, $0) }
+    }
+
+    public func artistPage(_ id: Int64) async throws -> ArtistPage? {
+        try await database.writer.read { try LibraryQueries.artistPage(id, $0) }
+    }
+
     public func playlists() async throws -> [PlaylistSummary] {
         try await database.writer.read { try LibraryQueries.playlists($0) }
     }

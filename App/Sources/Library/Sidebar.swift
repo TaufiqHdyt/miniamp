@@ -3,11 +3,12 @@ import SwiftUI
 
 /// What the sidebar can show.
 enum SidebarItem: Hashable, RawRepresentable {
-    case songs, artists, albums, stats, duplicates
+    case home, songs, artists, albums, stats, duplicates
     case playlist(Int64)
 
     init?(rawValue: String) {
         switch rawValue {
+        case "home": self = .home
         case "songs": self = .songs
         case "artists": self = .artists
         case "albums": self = .albums
@@ -21,6 +22,7 @@ enum SidebarItem: Hashable, RawRepresentable {
 
     var rawValue: String {
         switch self {
+        case .home: "home"
         case .songs: "songs"
         case .artists: "artists"
         case .albums: "albums"
@@ -40,6 +42,7 @@ struct Sidebar: View {
     var body: some View {
         List(selection: Binding(get: { selection }, set: { if let new = $0 { selection = new } })) {
             Section("Library") {
+                Label("Home", systemImage: "house").tag(SidebarItem.home)
                 Label("Songs", systemImage: "music.note").tag(SidebarItem.songs)
                 Label("Artists", systemImage: "music.microphone").tag(SidebarItem.artists)
                 Label("Albums", systemImage: "square.stack").tag(SidebarItem.albums)

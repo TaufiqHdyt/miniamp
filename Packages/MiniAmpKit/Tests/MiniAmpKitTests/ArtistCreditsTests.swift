@@ -102,3 +102,68 @@ import Testing
         #expect(artists.map(\.name) == ["Alan Walker", "David Whistle"])
     }
 }
+
+/// Issue #58: Home's shelves and the artist page.
+@Suite struct LibraryPagesTests {
+    let db: AppDatabase
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    init() throws {
+        db = try AppDatabase.inMemory()
+        try db.writer.write { d in
+            try BrowseTests.track("Force", artist: "Alan Walker", album: "Different World", year: 2018, d)
+            try BrowseTests.track("Routine", artist: "Alan Walker & David Whistle", album: "Routine", year: 2021, d)
+            try BrowseTests.track("Guest", artist: "Alan Walker", album: "Hits", albumArtist: "Various", d)
+            try BrowseTests.track("Other", artist: "Someone", album: "Hits", albumArtist: "Various", d)
+            try LibraryScanner.deleteOrphans(d)
+        }
+    }
+
+    func play(_ title: String, daysAgo: Double, times: Int = 1) throws {
+        try db.writer.write { d in
+            let id = try Int64.fetchOne(d, sql: "SELECT id FROM track WHERE title = ?", arguments: [title])!
+            for _ in 0..<times {
+                try d.execute(sql: "INSERT INTO play (trackId, playedAt, listenedMs) VALUES (?, ?, 60000)",
+                              arguments: [id, now.addingTimeInterval(-daysAgo * 86_400)])
+            }
+        }
+    }
+
+    @Test func homeShelves() throws {
+        try db.writer.write { d in
+            try d.execute(sql: "UPDATE track SET addedAt = ? WHERE title = 'Routine'", arguments: [now])
+        }
+        try play("Force", daysAgo: 90, times: 4)
+        try play("Guest", daysAgo: 2, times: 2)
+        try play("Other", daysAgo: 1)
+        let home = try db.writer.read { try LibraryQueries.home(now: now, $0) }
+        #expect(home.recentlyAdded.first?.title == "Routine")
+        #expect(home.recentlyPlayed.map(\.title) == ["Hits", "Different World"])
+        #expect(home.topThisMonth.map(\.track.title) == ["Guest", "Other"])
+        #expect(home.rediscover.map(\.title) == ["Different World"])
+    }
+
+    @Test func artistPageSplitsAlbumsFromAppearances() throws {
+        try play("Routine", daysAgo: 1, times: 3)
+        let walker = try db.writer.read { try Artist.filter(Column("name") == "Alan Walker").fetchOne($0)!.id! }
+        let page = try #require(try db.writer.read { try LibraryQueries.artistPage(walker, $0) })
+        #expect(page.topSongs.first?.track.title == "Routine")
+        #expect(page.topSongs.count == 3)
+        #expect(page.plays.count == 1)
+        #expect(page.albums.map(\.title) == ["Routine", "Different World"])
+        #expect(page.appearsOn.map(\.title) == ["Hits"])
+        #expect(try db.writer.read { try LibraryQueries.artistPage(99_999, $0) } == nil)
+    }
+}
+
+extension ArtistCreditsTests {
+    @Test func aSharedCreditLeadsToItsFirstArtist() throws {
+        let db = try library()
+        try db.writer.read { d in
+            let walker = try Int64.fetchOne(d, sql: "SELECT id FROM artist WHERE name = 'Alan Walker'")!
+            let shared = try Int64.fetchOne(d, sql: "SELECT id FROM artist WHERE name = 'Alan Walker & David Whistle'")!
+            #expect(try LibraryQueries.leadArtist(ofCredit: shared, d) == walker)
+            #expect(try LibraryQueries.leadArtist(ofCredit: walker, d) == walker)
+        }
+    }
+}

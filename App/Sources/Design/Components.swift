@@ -111,3 +111,132 @@ struct PlayShuffleButtons: View {
         }
     }
 }
+
+/// A titled row of things that scrolls sideways (albums on Home, More by This Artist).
+struct Shelf<Content: View>: View {
+    let title: String
+    var seeAll: (() -> Void)? = nil
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                Spacer()
+                if let seeAll {
+                    Button("See All", action: seeAll).buttonStyle(.link)
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.page)
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: Theme.Spacing.l) { content }
+                    .padding(.horizontal, Theme.Spacing.page)
+                    .padding(.vertical, Theme.Spacing.xs)
+            }
+            .scrollIndicators(.automatic)
+        }
+    }
+}
+
+/// The top of an album or artist page: the cover large, over a blur of it that fades into
+/// the page, with the title, what it is, a line of details, and Play and Shuffle.
+struct HeroHeader<Artwork: View, Actions: View>: View {
+    /// "Album", "Single", "Artist".
+    let kind: String
+    let title: String
+    var subtitle: String? = nil
+    var openSubtitle: (() -> Void)? = nil
+    let details: String
+    let washKey: String?
+    let artwork: ArtworkCache?
+    @ViewBuilder var cover: Artwork
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: Theme.Spacing.l + 4) {
+            cover
+                .frame(width: 200, height: 200)
+                .elevation(.floating)
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text(kind.uppercased())
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.system(size: 34, weight: .bold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                    .accessibilityAddTraits(.isHeader)
+                if let subtitle {
+                    if let openSubtitle {
+                        Button(action: openSubtitle) { Text(subtitle) }
+                            .buttonStyle(.plain)
+                            .font(.title3)
+                            .foregroundStyle(.tint)
+                            .help("Go to \(subtitle)")
+                    } else {
+                        Text(subtitle).font(.title3).foregroundStyle(.secondary)
+                    }
+                }
+                Text(details).font(.callout).foregroundStyle(.secondary)
+                actions.padding(.top, Theme.Spacing.s)
+            }
+            .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Theme.Spacing.page)
+        .padding(.top, Theme.Spacing.m)
+        .padding(.bottom, Theme.Spacing.l)
+        .background { HeroWash(key: washKey, artwork: artwork) }
+    }
+}
+
+/// A blur of the cover behind a header, fading into the page toward the bottom.
+private struct HeroWash: View {
+    let key: String?
+    let artwork: ArtworkCache?
+
+    var body: some View {
+        if let key {
+            GeometryReader { geometry in
+                ArtworkView(key: key, artwork: artwork, size: .small, cornerRadius: 0)
+                    .frame(width: geometry.size.width, height: geometry.size.width)
+                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                    .blur(radius: 60, opaque: true)
+                    .saturation(1.3)
+                    .opacity(0.45)
+            }
+            .overlay {
+                Rectangle().fill(.background)
+                    .mask { LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom) }
+            }
+            .clipped()
+            .ignoresSafeArea(edges: .top)
+            .accessibilityHidden(true)
+        }
+    }
+}
+
+/// Up to four covers in a square, standing for an artist.
+struct CoverMosaic: View {
+    let keys: [String]
+    let artwork: ArtworkCache?
+
+    var body: some View {
+        Group {
+            if keys.count >= 4 {
+                Grid(horizontalSpacing: 0, verticalSpacing: 0) {
+                    GridRow { tile(keys[0]); tile(keys[1]) }
+                    GridRow { tile(keys[2]); tile(keys[3]) }
+                }
+            } else {
+                tile(keys.first)
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous))
+    }
+
+    private func tile(_ key: String?) -> some View {
+        ArtworkView(key: key, artwork: artwork, size: .medium, cornerRadius: 0)
+    }
+}

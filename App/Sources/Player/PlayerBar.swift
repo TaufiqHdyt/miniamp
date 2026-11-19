@@ -83,18 +83,55 @@ private struct NowPlayingSummary: View {
                                       : "Show \(app.inspectorPane == .lyrics ? "Lyrics" : "Up Next")")
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(entry?.title ?? "Not Playing")
-                    .fontWeight(.semibold)
-                    .foregroundStyle(entry == nil ? .secondary : .primary)
+                if let entry, let album = entry.albumId {
+                    Button(entry.title) { app.show(.album(album)) }
+                        .buttonStyle(BarLinkStyle())
+                        .fontWeight(.semibold)
+                        .help("Go to \(entry.album ?? "the album")")
+                } else {
+                    Text(entry?.title ?? "Not Playing")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(entry == nil ? .secondary : .primary)
+                }
                 if let artist = entry?.artist, !artist.isEmpty {
-                    Text(artist).font(.callout).foregroundStyle(.secondary)
+                    if let credit = entry?.artistId {
+                        Button(artist) { app.showArtist(credit: credit) }
+                            .buttonStyle(BarLinkStyle(secondary: true))
+                            .font(.callout)
+                            .help("Go to \(artist)")
+                    } else {
+                        Text(artist).font(.callout).foregroundStyle(.secondary)
+                    }
                 } else if entry == nil {
                     Text("Double-click a song to play it").font(.callout).foregroundStyle(.tertiary)
                 }
             }
             .lineLimit(1)
             .truncationMode(.tail)
-            .help(entry.map { [$0.title, $0.subtitle].compactMap { $0 }.joined(separator: "\n") } ?? "")
+        }
+    }
+}
+
+/// Text that opens a page: underlined while the pointer is on it, as links in Apple Music.
+private struct BarLinkStyle: ButtonStyle {
+    var secondary = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        BarLink(label: configuration.label, secondary: secondary, pressed: configuration.isPressed)
+    }
+
+    private struct BarLink<Label: View>: View {
+        let label: Label
+        let secondary: Bool
+        let pressed: Bool
+        @State private var hovering = false
+
+        var body: some View {
+            label
+                .foregroundStyle(secondary ? .secondary : .primary)
+                .underline(hovering)
+                .opacity(pressed ? 0.6 : 1)
+                .onHover { hovering = $0 }
         }
     }
 }
@@ -208,6 +245,8 @@ private struct PaneButton: View {
         .buttonStyle(.borderless)
         .labelStyle(.iconOnly)
         .imageScale(.large)
+        // The inspector stays away while nothing is playing.
+        .disabled(app.currentURL == nil)
         .help("\(app.isShowing(pane) ? "Hide" : "Show") \(name) (\(key))")
     }
 }

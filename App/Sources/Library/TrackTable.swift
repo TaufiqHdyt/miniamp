@@ -35,7 +35,7 @@ struct TrackTable: NSViewRepresentable {
         table.allowsColumnReordering = true
         table.allowsColumnResizing = true
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
-        table.rowHeight = 22
+        table.rowHeight = TrackColumn.rowHeight
         table.intercellSpacing = NSSize(width: 6, height: 0)
         for column in TrackColumn.allCases {
             table.addTableColumn(column.makeTableColumn())
@@ -73,6 +73,7 @@ struct TrackTable: NSViewRepresentable {
         scroll.borderType = .noBorder
         coordinator.table = table
         coordinator.applyResizingMasks(in: table)
+        coordinator.fitRowHeight(in: table)
         // Auto-sized columns share out the width again when it changes (a window resized, the
         // inspector opened), from the widths last measured.
         scroll.contentView.postsFrameChangedNotifications = true
@@ -194,8 +195,15 @@ struct TrackTable: NSViewRepresentable {
                       let cell = table.view(atColumn: index, row: row, makeIfNecessary: false) as? TrackCell
                 else { continue }
                 cell.show(info, column: column, position: positions[info.id], isCurrent: isCurrent(info),
-                          isPlaying: isPlaying, isWaiting: waiting.contains(info.id))
+                          isPlaying: isPlaying, isWaiting: waiting.contains(info.id), artwork: config?.app.library?.artwork)
             }
+        }
+
+        /// Taller rows while the artwork column shows.
+        func fitRowHeight(in table: NSTableView) {
+            let artwork = table.tableColumns.first { $0.identifier.rawValue == TrackColumn.artwork.rawValue }
+            let height = artwork?.isHidden == false ? TrackColumn.rowHeightWithArtwork : TrackColumn.rowHeight
+            if table.rowHeight != height { table.rowHeight = height }
         }
 
         private func isCurrent(_ info: TrackInfo) -> Bool {
@@ -220,7 +228,8 @@ struct TrackTable: NSViewRepresentable {
                 ?? TrackCell(column: column)
             let info = tracks[row]
             cell.show(info, column: column, position: positions[info.id],
-                      isCurrent: isCurrent(info), isPlaying: isPlaying, isWaiting: waiting.contains(info.id))
+                      isCurrent: isCurrent(info), isPlaying: isPlaying, isWaiting: waiting.contains(info.id),
+                      artwork: config?.app.library?.artwork)
             return cell
         }
 
@@ -382,6 +391,11 @@ struct TrackTable: NSViewRepresentable {
                 }
                 menu.addItem(.separator())
             }
+            if chosen.count == 1, let info = chosen.first, let app = config?.app {
+                if info.track.albumId != nil { menu.addItem(item("Go to Album") { app.showAlbum(of: info) }) }
+                if info.track.artistId != nil { menu.addItem(item("Go to Artist") { app.showArtist(credit: info.track.artistId) }) }
+                menu.addItem(.separator())
+            }
             if chosen.contains(where: \.track.isEvicted) {
                 menu.addItem(item("Download from iCloud") { [self] in config?.app.library?.download(chosen.map(\.track)) })
             }
@@ -431,6 +445,7 @@ struct TrackTable: NSViewRepresentable {
                 guard let column = TrackColumn(rawValue: tableColumn.identifier.rawValue), column.isOptional else { continue }
                 let entry = item(column.menuTitle) { [self] in
                     tableColumn.isHidden.toggle()
+                    if column == .artwork { fitRowHeight(in: table) }
                     if autoSizesColumns { fitAllColumns(in: table) }
                 }
                 entry.state = tableColumn.isHidden ? .off : .on
@@ -548,6 +563,10 @@ private final class TrackCell: NSTableCellView {
     /// The playing column's bars, made the first time this cell shows the song playing.
     private var bars: PlayingBarsView?
     private var showsIcon = false
+    /// The artwork column's cover, while it loads.
+    private var artworkKey: String?
+    /// The title of the song playing: in the accent colour, unless the row is selected.
+    private var isCurrentTitle = false
 
     private let column: TrackColumn
 
@@ -566,12 +585,35 @@ private final class TrackCell: NSTableCellView {
         addSubview(label)
         label.font = column.font
         label.textColor = column.textColor
+        if column == .artwork {
+            icon.imageScaling = .scaleProportionallyUpOrDown
+            icon.wantsLayer = true
+            icon.layer?.cornerRadius = Theme.Radius.small
+            icon.layer?.masksToBounds = true
+            icon.isHidden = false
+        }
+    }
+
+    override var backgroundStyle: NSView.BackgroundStyle {
+        didSet { applyTitleColour() }
+    }
+
+    private func applyTitleColour() {
+        guard column == .title else { return }
+        label.textColor = isCurrentTitle && backgroundStyle != .emphasized ? .controlAccentColor : column.textColor
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     override func layout() {
         super.layout()
+        if column == .artwork {
+            let side = TrackColumn.artworkSide
+            icon.frame = NSRect(x: ((bounds.width - side) / 2).rounded(), y: ((bounds.height - side) / 2).rounded(),
+                                width: side, height: side)
+            label.frame = .zero
+            return
+        }
         if column == .playing {
             let side: CGFloat = 14
             icon.frame = NSRect(x: ((bounds.width - side) / 2).rounded(), y: ((bounds.height - side) / 2).rounded(),
@@ -594,7 +636,14 @@ private final class TrackCell: NSTableCellView {
         label.frame = NSRect(x: x, y: y, width: max(bounds.width - x - 2, 0), height: height)
     }
 
-    func show(_ info: TrackInfo, column: TrackColumn, position: Int?, isCurrent: Bool, isPlaying: Bool, isWaiting: Bool) {
+    func show(_ info: TrackInfo, column: TrackColumn, position: Int?, isCurrent: Bool, isPlaying: Bool, isWaiting: Bool,
+              artwork: ArtworkCache?) {
+        if column == .artwork { return showArtwork(info.track.artworkKey, from: artwork) }
+        if column == .title, isCurrentTitle != isCurrent {
+            isCurrentTitle = isCurrent
+            label.font = isCurrent ? .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold) : column.font
+            applyTitleColour()
+        }
         var symbol: String?
         var help: String?
         var text = column.text(info, position: position)
@@ -635,6 +684,30 @@ private final class TrackCell: NSTableCellView {
         showSpinner(column == .quality && isWaiting)
         if layoutChanged { needsLayout = true }
     }
+
+    private func showArtwork(_ key: String?, from artwork: ArtworkCache?) {
+        guard key != artworkKey || icon.image == nil else { return }
+        artworkKey = key
+        guard let key, let artwork else {
+            icon.image = Self.placeholder
+            return
+        }
+        if let image = ArtworkImages.shared.cached(key, .small) {
+            icon.image = image
+            return
+        }
+        icon.image = Self.placeholder
+        Task { @MainActor [weak self] in
+            let image = await ArtworkImages.shared.image(for: key, size: .small, in: artwork)
+            guard let self, self.artworkKey == key else { return }
+            self.icon.image = image ?? Self.placeholder
+        }
+    }
+
+    private static let placeholder: NSImage? = {
+        let image = NSImage(systemSymbolName: "music.note", accessibilityDescription: nil)
+        return image?.withSymbolConfiguration(.init(paletteColors: [.tertiaryLabelColor]))
+    }()
 
     private func showSpinner(_ show: Bool) {
         if show, spinner == nil {
