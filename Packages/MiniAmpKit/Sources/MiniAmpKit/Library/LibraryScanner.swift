@@ -385,13 +385,16 @@ public final class LibraryScanner: Sendable {
         return album.id
     }
 
-    /// Albums with no tracks, then artists with neither tracks nor albums.
+    /// Albums with no tracks; then, with shared credits split again, artists with no tracks,
+    /// no albums, and no part in a credit.
     static func deleteOrphans(_ db: Database) throws {
+        try db.execute(sql: "DELETE FROM album WHERE id NOT IN (SELECT albumId FROM track WHERE albumId IS NOT NULL)")
+        try ArtistCredits.rebuild(db)
         try db.execute(sql: """
-            DELETE FROM album WHERE id NOT IN (SELECT albumId FROM track WHERE albumId IS NOT NULL);
             DELETE FROM artist
             WHERE id NOT IN (SELECT artistId FROM track WHERE artistId IS NOT NULL)
-              AND id NOT IN (SELECT artistId FROM album WHERE artistId IS NOT NULL);
+              AND id NOT IN (SELECT artistId FROM album WHERE artistId IS NOT NULL)
+              AND id NOT IN (SELECT memberId FROM artistMember);
             """)
     }
 

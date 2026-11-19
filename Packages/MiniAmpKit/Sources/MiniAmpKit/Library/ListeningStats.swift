@@ -79,10 +79,14 @@ public struct ListeningStats: Sendable, Equatable {
 
         if let row = try Row.fetchOne(db, sql: """
             SELECT count(*), ifnull(sum(play.listenedMs), 0), count(DISTINCT play.trackId),
-                   count(DISTINCT track.artistId), count(DISTINCT track.albumId)
+                   (SELECT count(DISTINCT artistCredit.artistId)
+                    FROM play JOIN track ON track.id = play.trackId
+                    JOIN artistCredit ON artistCredit.creditId = track.artistId
+                    WHERE \(inRange)),
+                   count(DISTINCT track.albumId)
             FROM play JOIN track ON track.id = play.trackId
             WHERE \(inRange)
-            """, arguments: range) {
+            """, arguments: range + range) {
             stats.plays = row[0]
             stats.listened = .milliseconds(row[1] as Int64)
             stats.tracks = row[2]
@@ -99,8 +103,8 @@ public struct ListeningStats: Sendable, Equatable {
                 SELECT count(*) FROM (
                     SELECT min(play.playedAt) AS first
                     FROM play JOIN track ON track.id = play.trackId
-                    WHERE track.artistId IS NOT NULL
-                    GROUP BY track.artistId)
+                    JOIN artistCredit ON artistCredit.creditId = track.artistId
+                    GROUP BY artistCredit.artistId)
                 WHERE first >= ? AND first < ?
                 """, arguments: range)
         }
@@ -121,7 +125,9 @@ public struct ListeningStats: Sendable, Equatable {
         }
         stats.topArtists = try Row.fetchAll(db, sql: """
             SELECT artist.name, count(*), sum(play.listenedMs)
-            FROM play JOIN track ON track.id = play.trackId JOIN artist ON artist.id = track.artistId
+            FROM play JOIN track ON track.id = play.trackId
+            JOIN artistCredit ON artistCredit.creditId = track.artistId
+            JOIN artist ON artist.id = artistCredit.artistId
             WHERE \(inRange)
             GROUP BY artist.id \(ranking)
             """, arguments: range).map { Ranked(item: $0[0], plays: $0[1], listened: .milliseconds($0[2] as Int64)) }

@@ -210,4 +210,25 @@ enum Schema {
             DROP TABLE onlineLyrics;
             """)
     }
+
+    /// Shared artist credits split into the artists in them (see ArtistCredits). Tracks and
+    /// albums keep their credit as tagged; `artistCredit` says whom each one counts toward.
+    static func v8(_ db: Database) throws {
+        try db.execute(sql: """
+            CREATE TABLE artistMember (
+                creditId INTEGER NOT NULL REFERENCES artist(id) ON DELETE CASCADE,
+                memberId INTEGER NOT NULL REFERENCES artist(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL,
+                PRIMARY KEY (creditId, memberId)
+            ) WITHOUT ROWID;
+            CREATE INDEX artistMember_member ON artistMember(memberId);
+
+            -- Whom each artist row counts toward: the artists in a split credit, or itself.
+            CREATE VIEW artistCredit(creditId, artistId) AS
+                SELECT creditId, memberId FROM artistMember
+                UNION ALL
+                SELECT id, id FROM artist WHERE id NOT IN (SELECT creditId FROM artistMember);
+            """)
+        try ArtistCredits.rebuild(db)
+    }
 }

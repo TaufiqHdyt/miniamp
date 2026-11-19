@@ -30,7 +30,7 @@ public struct PlaylistSummary: Sendable, Hashable, Identifiable, FetchableRecord
 /// Which tracks a list shows.
 public enum TrackScope: Sendable, Hashable {
     case all
-    /// Tracks by the artist, or on an album the artist owns.
+    /// Tracks by the artist, or on an album the artist owns, shared credits included.
     case artist(Int64)
     case album(Int64)
     case playlist(Int64)
@@ -94,25 +94,32 @@ public struct TrackSort: Sendable, Hashable {
 }
 
 extension LibraryQueries {
-    /// Artists by name. Counts include tracks on albums the artist owns.
+    /// Artists by name, shared credits split (see ArtistCredits). Counts include tracks on
+    /// albums the artist owns.
     ///
     /// One grouped pass over the credits: 5 ms for 10,000 tracks, against 400 ms for a
     /// per-artist subquery (its `OR` across two tables can't use an index).
     public static func artists(_ db: Database) throws -> [ArtistSummary] {
         try ArtistSummary.fetchAll(db, sql: """
             WITH credit(artistId, trackId) AS (
-                SELECT artistId, id FROM track WHERE artistId IS NOT NULL
+                SELECT artistCredit.artistId, track.id
+                FROM track JOIN artistCredit ON artistCredit.creditId = track.artistId
                 UNION
-                SELECT album.artistId, track.id FROM track JOIN album ON album.id = track.albumId
-                WHERE album.artistId IS NOT NULL
+                SELECT artistCredit.artistId, track.id
+                FROM track JOIN album ON album.id = track.albumId
+                JOIN artistCredit ON artistCredit.creditId = album.artistId
+            ),
+            owned(artistId, albumCount) AS (
+                SELECT artistCredit.artistId, count(*)
+                FROM album JOIN artistCredit ON artistCredit.creditId = album.artistId
+                WHERE EXISTS (SELECT 1 FROM track WHERE track.albumId = album.id)
+                GROUP BY artistCredit.artistId
             )
-            SELECT artist.id, artist.name,
-                   (SELECT count(*) FROM album WHERE album.artistId = artist.id
-                      AND EXISTS (SELECT 1 FROM track WHERE track.albumId = album.id)) AS albumCount,
-                   tally.trackCount
+            SELECT artist.id, artist.name, ifnull(owned.albumCount, 0) AS albumCount, tally.trackCount
             FROM artist
             JOIN (SELECT artistId, count(*) AS trackCount FROM credit GROUP BY artistId) AS tally
               ON tally.artistId = artist.id
+            LEFT JOIN owned ON owned.artistId = artist.id
             ORDER BY artist.name COLLATE NOCASE
             """)
     }
@@ -121,8 +128,9 @@ extension LibraryQueries {
     /// albums the artist owns or appears on.
     public static func albums(artistId: Int64? = nil, _ db: Database) throws -> [AlbumSummary] {
         let filter = artistId == nil ? "" : """
-            WHERE album.artistId = :artist
-               OR EXISTS (SELECT 1 FROM track WHERE track.albumId = album.id AND track.artistId = :artist)
+            WHERE album.artistId IN (SELECT creditId FROM artistCredit WHERE artistId = :artist)
+               OR EXISTS (SELECT 1 FROM track WHERE track.albumId = album.id
+                          AND track.artistId IN (SELECT creditId FROM artistCredit WHERE artistId = :artist))
             """
         return try AlbumSummary.fetchAll(db, sql: """
             SELECT album.id, album.title, artist.name AS artistName,
@@ -158,7 +166,11 @@ extension LibraryQueries {
         case .all:
             break
         case .artist(let id):
-            sql += "\nWHERE track.artistId = :id OR album.artistId = :id"
+            sql += """
+
+                WHERE track.artistId IN (SELECT creditId FROM artistCredit WHERE artistId = :id)
+                   OR album.artistId IN (SELECT creditId FROM artistCredit WHERE artistId = :id)
+                """
             arguments = ["id": id]
         case .album(let id):
             sql += "\nWHERE track.albumId = :id"
