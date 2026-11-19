@@ -114,6 +114,7 @@ struct LyricsView<NowPlaying: View>: View {
             }
         }
         .listStyle(.inset)
+        .clearsPlayerBar(app)
     }
 
     /// Big lyrics under the song, the controls beside it; the line being sung a third of the

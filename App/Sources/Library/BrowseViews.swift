@@ -18,6 +18,7 @@ struct ArtistsView: View {
                 }
                 .tag(artist.id)
             }
+            .clearsPlayerBar(app)
             .frame(minWidth: 180, idealWidth: 230, maxWidth: 360)
 
             if let artist = artists.first(where: { $0.id == Int64(selectedID) }) {

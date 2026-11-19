@@ -33,9 +33,6 @@ struct NowPlayingView: View {
                                        description: Text("Double-click a song to play it."))
             }
         }
-        // Room after the last row for the floating player bar (the window's margin doesn't
-        // reach the inspector).
-        .contentMargins(.bottom, app.playerBarInset, for: .scrollContent)
         // The cover's colour, strongest at the top where the song is, fading down the list.
         .scrollContentBackground(app.tint == nil ? .automatic : .hidden)
         .background {
@@ -95,6 +92,11 @@ struct NowPlayingView: View {
                         Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
                             .help(player.repeatMode == .one ? "Repeating one" : "Repeating all")
                     }
+                    if !chosen.isEmpty {
+                        Button("Clear") { Task { await player.clearUpNext() } }
+                            .buttonStyle(.link)
+                            .help("Take the songs you queued out of Up Next; the song playing and autoplay's stay")
+                    }
                     AutoplayToggle(app: app)
                 }
             }
@@ -116,6 +118,7 @@ struct NowPlayingView: View {
             }
         }
         .listStyle(.inset)
+        .clearsPlayerBar(app)
     }
 
     /// Up Next's rows for `section`, which can be dragged to reorder what plays next.

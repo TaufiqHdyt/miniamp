@@ -300,6 +300,16 @@ public final class Player {
         await queueChanged()
     }
 
+    /// Takes the songs chosen for Up Next out of it, leaving the song playing and what
+    /// autoplay added.
+    public func clearUpNext() async {
+        guard let position = queue.position else { return }
+        let chosen = Set(queue.order[(position + 1)...].filter { !autoplayItems.contains($0) })
+        guard !chosen.isEmpty else { return }
+        queue.removeUpcoming(chosen)
+        await queueChanged()
+    }
+
     /// Takes what autoplay added out of Up Next. The song playing stays.
     public func clearAutoplay() async {
         queue.removeUpcoming(autoplayItems)

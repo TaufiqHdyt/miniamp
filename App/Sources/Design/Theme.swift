@@ -88,6 +88,14 @@ enum Theme {
 }
 
 extension View {
+    /// Room after a List's last row for the floating player bar. Lists on macOS are AppKit
+    /// tables and ignore contentMargins, but leave room for a bottom safe-area inset.
+    func clearsPlayerBar(_ app: AppState) -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear.frame(height: app.playerBarInset).allowsHitTesting(false)
+        }
+    }
+
     func elevation(_ level: Theme.Elevation) -> some View {
         shadow(color: .black.opacity(level.opacity), radius: level.radius, y: level.y)
     }
