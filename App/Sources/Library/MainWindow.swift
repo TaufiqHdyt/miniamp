@@ -7,28 +7,28 @@ struct MainWindow: View {
     @Bindable var app: AppState
     @SceneStorage("sidebarSelection") private var selection: SidebarItem = .songs
     @FocusState private var searchFocused: Bool
+    /// The floating player bar's height with its margin, as laid out.
+    @State private var barInset: CGFloat = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            NavigationSplitView {
-                Sidebar(app: app, selection: $selection)
-                    .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 300)
-            } detail: {
-                detail
-                    .inspector(isPresented: $app.showsNowPlaying) {
-                        NowPlayingView(app: app)
-                            .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
+        Group {
+            if #available(macOS 26, *) {
+                // The library runs to the bottom of the window and the bar floats over it, as
+                // glass: lists scroll under it, and leave room after their last row to clear it.
+                split
+                    .environment(\.playerBarInset, barInset)
+                    .contentMargins(.bottom, barInset, for: .scrollContent)
+                    .overlay(alignment: .bottom) {
+                        PlayerBar(app: app)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barInset = $0 }
                     }
+            } else {
+                VStack(spacing: 0) {
+                    split
+                    Divider()
+                    PlayerBar(app: app)
+                }
             }
-            // As in Apple Music: search at the top of the sidebar (in the toolbar while the
-            // sidebar is hidden), and no window title in the toolbar; each page names itself.
-            .searchable(text: $app.searchText, placement: .sidebar, prompt: "Search")
-            .toolbar(removing: .title)
-            .searchFocused($searchFocused)
-            .onChange(of: app.searchFocusRequests) { searchFocused = true }
-            // The bar is a glass panel of its own on macOS 26; before that, a strip under a line.
-            if #available(macOS 26, *) {} else { Divider() }
-            PlayerBar(app: app)
         }
         .frame(minWidth: 860, minHeight: 520)
         .onKeyPress(.space) {
@@ -72,6 +72,25 @@ struct MainWindow: View {
         // Nobody sees the position while the window is hidden or covered; stop redrawing it.
         .onWindowVisibilityChange { app.mainWindowVisible = $0 }
         .task { await start() }
+    }
+
+    private var split: some View {
+        NavigationSplitView {
+            Sidebar(app: app, selection: $selection)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 300)
+        } detail: {
+            detail
+                .inspector(isPresented: $app.showsNowPlaying) {
+                    NowPlayingView(app: app)
+                        .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
+                }
+        }
+        // As in Apple Music: search at the top of the sidebar (in the toolbar while the
+        // sidebar is hidden), and no window title in the toolbar; each page names itself.
+        .searchable(text: $app.searchText, placement: .sidebar, prompt: "Search")
+        .toolbar(removing: .title)
+        .searchFocused($searchFocused)
+        .onChange(of: app.searchFocusRequests) { searchFocused = true }
     }
 
     @ViewBuilder

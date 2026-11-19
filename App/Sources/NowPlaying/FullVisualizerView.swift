@@ -7,6 +7,7 @@ struct FullVisualizerView: View {
     let app: AppState
     let url: URL
     @State private var entry: QueueEntry?
+    @Environment(\.playerBarInset) private var barInset
 
     var body: some View {
         let entry = entry?.url == url ? entry : nil
@@ -43,7 +44,7 @@ struct FullVisualizerView: View {
         }
         .padding(.horizontal, 48)
         .padding(.top, 28)
-        .padding(.bottom, 40)
+        .padding(.bottom, 40 + barInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background { CoverWash(app: app, entry: entry) }
         .environment(\.colorScheme, .dark)

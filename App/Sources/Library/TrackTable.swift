@@ -73,6 +73,11 @@ struct TrackTable: NSViewRepresentable {
         scroll.borderType = .noBorder
         coordinator.table = table
         coordinator.applyResizingMasks(in: table)
+        // Auto-sized columns share out the width again when it changes (a window resized, the
+        // inspector opened), from the widths last measured.
+        scroll.contentView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(coordinator, selector: #selector(Coordinator.widthChanged(_:)),
+                                               name: NSView.frameDidChangeNotification, object: scroll.contentView)
         return scroll
     }
 
@@ -84,6 +89,15 @@ struct TrackTable: NSViewRepresentable {
         let isPlaying = app.player.state == .playing
         let waiting: Set<TrackInfo.ID> = app.waitingToPlayID.map { [$0] } ?? []
         context.coordinator.update(self, playing: playing, isPlaying: isPlaying, waiting: waiting)
+        // Room after the last row for the floating player bar. AppKit doesn't see SwiftUI's
+        // safe area, so it's set by hand; the table sits below the page header, so nothing
+        // else needs insetting.
+        let bottom = context.environment.playerBarInset
+        if scroll.contentInsets.bottom != bottom {
+            scroll.automaticallyAdjustsContentInsets = false
+            scroll.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: bottom, right: 0)
+            scroll.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: bottom, right: 0)
+        }
     }
 
     // MARK: -
@@ -109,6 +123,8 @@ struct TrackTable: NSViewRepresentable {
         /// The songs (in any order) and columns the widths were last fitted to: a re-sort can't
         /// change them, so it skips the measuring.
         private var fittedFor: (count: Int, idSum: Int64, columns: [String])?
+        /// The widths the shown columns other than Title were last measured to need, by identifier.
+        private var fittedWidths: [String: CGFloat] = [:]
         static let autoSizeKey = "autoSizeColumns"
         /// Playlist rows being dragged within the table: their playlist item ids.
         static let rowType = NSPasteboard.PasteboardType("dev.miniamp.playlist-items")
@@ -431,9 +447,16 @@ struct TrackTable: NSViewRepresentable {
             return ColumnFitter.width(kind, tableColumn, tracks: tracks, positions: positions)
         }
 
-        /// Dragging a column's edge by hand turns auto-sizing off, so the width sticks.
+        @objc func widthChanged(_ notification: Notification) {
+            guard autoSizesColumns, let table else { return }
+            distributeWidths(in: table)
+        }
+
+        /// Dragging a column's edge by hand turns auto-sizing off, so the width sticks. (Not
+        /// resizing the window, which drags too.)
         func tableViewColumnDidResize(_ notification: Notification) {
-            guard autoSizesColumns, !fitting, NSApp.currentEvent?.type == .leftMouseDragged, let table else { return }
+            guard autoSizesColumns, !fitting, NSApp.currentEvent?.type == .leftMouseDragged, let table,
+                  !(table.window?.inLiveResize ?? false) else { return }
             autoSizesColumns = false
             applyResizingMasks(in: table)
         }
@@ -461,26 +484,47 @@ struct TrackTable: NSViewRepresentable {
             if unlessUnchanged, let fittedFor, fittedFor.count == key.count, fittedFor.idSum == key.idSum,
                fittedFor.columns == key.columns { return }
             fittedFor = key
+            fittedWidths = [:]
+            for tableColumn in table.tableColumns where !tableColumn.isHidden {
+                guard let kind = TrackColumn(rawValue: tableColumn.identifier.rawValue), kind != .title, kind != .playing else { continue }
+                var width = ColumnFitter.width(kind, tableColumn, tracks: tracks, positions: positions)
+                // One long credit ("A, B, C & D") shouldn't take Title's room.
+                if Self.yieldingColumns.contains(kind) { width = min(width, Self.textColumnFitLimit) }
+                fittedWidths[tableColumn.identifier.rawValue] = width
+            }
+            distributeWidths(in: table)
+        }
+
+        /// Artist, Album, and Genre give up width before anything is pushed out of view.
+        static let yieldingColumns: Set<TrackColumn> = [.artist, .album, .genre]
+
+        /// Lays the measured widths out across the table's width. Title takes what's left and
+        /// truncates, rather than growing to its longest title (one long "… (feat. …) (Album
+        /// Version)" pushed every other column out of view). When even its narrowest won't fit,
+        /// Artist, Album, and Genre shrink, each by its share of the width they can spare.
+        private func distributeWidths(in table: NSTableView) {
+            guard let scroll = table.enclosingScrollView else { return }
+            let spacing = table.intercellSpacing.width
+            let shown = table.tableColumns.filter { !$0.isHidden }
+            guard let title = shown.first(where: { $0.identifier.rawValue == TrackColumn.title.rawValue }) else { return }
+            var others = shown.filter { $0 !== title }.map { ($0, fittedWidths[$0.identifier.rawValue] ?? $0.width) }
+            let available = scroll.contentSize.width - spacing
+            let used = others.reduce(0) { $0 + $1.1 + spacing }
+            let excess = used + title.minWidth - available
+            if excess > 0 {
+                let yielding = others.indices.filter {
+                    TrackColumn(rawValue: others[$0].0.identifier.rawValue).map(Self.yieldingColumns.contains) ?? false
+                }
+                let slack = yielding.reduce(0) { $0 + max(others[$1].1 - others[$1].0.minWidth, 0) }
+                if slack > 0 {
+                    let share = min(excess / slack, 1)
+                    for i in yielding { others[i].1 -= max(others[i].1 - others[i].0.minWidth, 0) * share }
+                }
+            }
             fitting = true
             defer { fitting = false }
-            var title: NSTableColumn?
-            var used: CGFloat = 0
-            for tableColumn in table.tableColumns where !tableColumn.isHidden {
-                guard let kind = TrackColumn(rawValue: tableColumn.identifier.rawValue) else { continue }
-                if kind == .title { title = tableColumn; continue }
-                if kind != .playing {
-                    var width = ColumnFitter.width(kind, tableColumn, tracks: tracks, positions: positions)
-                    // One long credit ("A, B, C & D") shouldn't take Title's room.
-                    if [.artist, .album, .genre].contains(kind) { width = min(width, Self.textColumnFitLimit) }
-                    if abs(width - tableColumn.width) > 0.5 { tableColumn.width = width }
-                }
-                used += tableColumn.width + table.intercellSpacing.width
-            }
-            guard let title else { return }
-            let available = (table.enclosingScrollView?.contentSize.width ?? table.bounds.width) - table.intercellSpacing.width
-            // Title takes what's left and truncates, rather than growing to its longest title: one
-            // long one ("… (feat. …) (Album Version)") pushed every other column out of view.
-            let width = min(max(available - used, title.minWidth), title.maxWidth)
+            for (column, width) in others where abs(column.width - width) > 0.5 { column.width = width }
+            let width = min(max(available - others.reduce(0) { $0 + $1.1 + spacing }, title.minWidth), title.maxWidth)
             if abs(width - title.width) > 0.5 { title.width = width }
         }
 
