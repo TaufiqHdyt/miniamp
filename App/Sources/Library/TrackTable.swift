@@ -92,7 +92,7 @@ struct TrackTable: NSViewRepresentable {
         // Room after the last row for the floating player bar. AppKit doesn't see SwiftUI's
         // safe area, so it's set by hand; the table sits below the page header, so nothing
         // else needs insetting.
-        let bottom = context.environment.playerBarInset
+        let bottom = app.playerBarInset
         if scroll.contentInsets.bottom != bottom {
             scroll.automaticallyAdjustsContentInsets = false
             scroll.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: bottom, right: 0)

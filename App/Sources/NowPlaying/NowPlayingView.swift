@@ -33,6 +33,9 @@ struct NowPlayingView: View {
                                        description: Text("Double-click a song to play it."))
             }
         }
+        // Room after the last row for the floating player bar (the window's margin doesn't
+        // reach the inspector).
+        .contentMargins(.bottom, app.playerBarInset, for: .scrollContent)
         // The cover's colour, strongest at the top where the song is, fading down the list.
         .scrollContentBackground(app.tint == nil ? .automatic : .hidden)
         .background {

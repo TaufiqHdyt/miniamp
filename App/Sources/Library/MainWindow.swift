@@ -7,21 +7,21 @@ struct MainWindow: View {
     @Bindable var app: AppState
     @SceneStorage("sidebarSelection") private var selection: SidebarItem = .songs
     @FocusState private var searchFocused: Bool
-    /// The floating player bar's height with its margin, as laid out.
-    @State private var barInset: CGFloat = 0
-
     var body: some View {
         Group {
             if #available(macOS 26, *) {
                 // The library runs to the bottom of the window and the bar floats over it, as
-                // glass: lists scroll under it, and leave room after their last row to clear it.
-                split
-                    .environment(\.playerBarInset, barInset)
-                    .contentMargins(.bottom, barInset, for: .scrollContent)
-                    .overlay(alignment: .bottom) {
-                        PlayerBar(app: app)
-                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barInset = $0 }
-                    }
+                // glass: lists scroll under it, fading out before the window's edge, and leave
+                // room after their last row to clear it. Laid over the whole window, not the
+                // split view, which slides about as the sidebar opens and closes.
+                ZStack(alignment: .bottom) {
+                    split
+                        .contentMargins(.bottom, app.playerBarInset, for: .scrollContent)
+                    // Not over full lyrics or the visualizer: their wash runs to the window's edge.
+                    if app.fullView == nil { BarFade(height: app.playerBarInset) }
+                    PlayerBar(app: app)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { app.playerBarInset = $0 }
+                }
             } else {
                 VStack(spacing: 0) {
                     split
@@ -72,6 +72,25 @@ struct MainWindow: View {
         // Nobody sees the position while the window is hidden or covered; stop redrawing it.
         .onWindowVisibilityChange { app.mainWindowVisible = $0 }
         .task { await start() }
+    }
+
+    /// Fades what scrolls under the floating bar into the window's background toward the
+    /// bottom edge, so rows don't show in the gap below the bar.
+    private struct BarFade: View {
+        let height: CGFloat
+
+        var body: some View {
+            Rectangle()
+                .fill(.background)
+                .mask {
+                    LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black.opacity(0.85), location: 0.55),
+                                           .init(color: .black, location: 1)],
+                                   startPoint: .top, endPoint: .bottom)
+                }
+                .frame(height: height + Theme.Spacing.l)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 
     private var split: some View {

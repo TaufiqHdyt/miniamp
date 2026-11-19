@@ -109,6 +109,10 @@ final class AppState {
     }
     /// The playing song's cover colour (set by the player bar as the song changes).
     var artworkTint: ArtworkTint?
+    /// How much of the bottom of the window the floating player bar covers (macOS 26 and
+    /// later; 0 before). What scrolls leaves this much room after its end; what doesn't stays
+    /// above it. Here rather than in the environment, which doesn't reach the inspector.
+    var playerBarInset: CGFloat = 0
     /// How light the playing song's cover is, 0 to 1 (see ArtworkTint.brightness).
     var artworkBrightness: Double?
     /// What to tint with now, if anything.

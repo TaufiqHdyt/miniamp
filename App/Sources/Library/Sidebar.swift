@@ -35,7 +35,6 @@ struct Sidebar: View {
     let app: AppState
     @Binding var selection: SidebarItem
     @State private var deleting: PlaylistSummary?
-    @Environment(\.playerBarInset) private var barInset
     private var library: Library? { app.library }
 
     var body: some View {
@@ -76,7 +75,7 @@ struct Sidebar: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
-            if let library { LibraryStatus(library: library).padding(.bottom, barInset) }
+            if let library { LibraryStatus(library: library).padding(.bottom, app.playerBarInset) }
         }
         .confirmationDialog("Delete the playlist “\(deleting?.name ?? "")”?",
                             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {

@@ -87,13 +87,6 @@ enum Theme {
     }
 }
 
-extension EnvironmentValues {
-    /// How much of the bottom of the window the floating player bar covers (macOS 26 and
-    /// later; 0 before). What scrolls leaves this much room after its end; what doesn't, stays
-    /// above it.
-    @Entry var playerBarInset: CGFloat = 0
-}
-
 extension View {
     func elevation(_ level: Theme.Elevation) -> some View {
         shadow(color: .black.opacity(level.opacity), radius: level.radius, y: level.y)
