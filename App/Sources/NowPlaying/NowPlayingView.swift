@@ -259,6 +259,10 @@ private struct InspectorPanel: ViewModifier {
             content
                 .scrollContentBackground(.hidden)
                 .padding(.trailing, Theme.Spacing.s)
+                // Ends where the panel does, level with the player bar, rather than showing
+                // through below it at the window's edge.
+                .padding(.bottom, Theme.Spacing.s)
+                .clipped()
                 .background {
                     Color.clear
                         .glassEffect(.regular.tint(tint?.opacity(Theme.Tint.inspector.top)), in: shape)
