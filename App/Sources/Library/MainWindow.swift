@@ -113,9 +113,8 @@ struct MainWindow: View {
                 }
         }
         // As in Apple Music: search at the top of the sidebar (in the toolbar while the
-        // sidebar is hidden), and no window title in the toolbar; each page names itself.
+        // sidebar is hidden). Each page names itself in the toolbar (see pageTitle).
         .searchable(text: $app.searchText, placement: .sidebar, prompt: "Search")
-        .toolbar(removing: .title)
         .searchFocused($searchFocused)
         .onChange(of: app.searchFocusRequests) { searchFocused = true }
     }

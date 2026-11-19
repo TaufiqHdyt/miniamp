@@ -12,8 +12,6 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.xl - 4) {
-                PageHeader(title: "Home")
-                    .padding(.bottom, -Theme.Spacing.m)
                 if !shelves.recentlyPlayed.isEmpty {
                     albumShelf("Recently Played", shelves.recentlyPlayed)
                 }
@@ -25,7 +23,7 @@ struct HomeView: View {
                     albumShelf("Rediscover", shelves.rediscover)
                 }
             }
-            .padding(.top, 2)
+            .padding(.top, Theme.Spacing.m)
             .padding(.bottom, Theme.Spacing.xl)
         }
         .overlay {
@@ -34,7 +32,7 @@ struct HomeView: View {
                                        description: Text("Add a music folder with File › Add Music Folder…"))
             }
         }
-        .navigationTitle("Home")
+        .pageTitle("Home")
         .task(id: library.revision) {
             // A scan changes the library many times a second; Home needn't keep up with each.
             if loaded { try? await Task.sleep(for: .seconds(1)) }

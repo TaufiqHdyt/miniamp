@@ -71,6 +71,13 @@ struct TrackTable: NSViewRepresentable {
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.borderType = .noBorder
+        // A layout saved before the artwork column existed leaves it last; it belongs second.
+        let placed = "TrackTable.artworkColumnPlaced"
+        if !UserDefaults.standard.bool(forKey: placed) {
+            let index = table.column(withIdentifier: NSUserInterfaceItemIdentifier(TrackColumn.artwork.rawValue))
+            if index > 1 { table.moveColumn(index, toColumn: 1) }
+            UserDefaults.standard.set(true, forKey: placed)
+        }
         coordinator.table = table
         coordinator.applyResizingMasks(in: table)
         coordinator.fitRowHeight(in: table)

@@ -26,17 +26,8 @@ struct StatsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Lined up with the page below, centred in a wide window.
-            PageHeader(title: "Listening Stats") {
-                PeriodControl(period: $period, years: yearChoices)
-            }
-            .padding(.horizontal, 4)
-            .frame(maxWidth: 980)
-            .frame(maxWidth: .infinity)
-            content
-        }
-        .navigationTitle("Listening Stats")
+        content
+            .pageTitle("Listening Stats") { PeriodControl(period: $period, years: yearChoices) }
         .task(id: LoadKey(period: period, trackStarts: app.player.trackStarts, revision: library.revision)) {
             await load()
         }
@@ -49,7 +40,7 @@ struct StatsView: View {
                 ScrollView {
                     StatsContent(app: app, library: library, stats: stats)
                         .padding(.horizontal, 24)
-                        .padding(.top, 4)
+                        .padding(.top, Theme.Spacing.m)
                         .padding(.bottom, 24)
                         .frame(maxWidth: 980)
                         .frame(maxWidth: .infinity)

@@ -10,8 +10,6 @@ struct ArtistsView: View {
 
     var body: some View {
         ScrollView {
-            PageHeader(title: "Artists", subtitle: artists.isEmpty ? "" : count)
-                .padding(.top, 2)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 130, maximum: 180), spacing: Theme.Spacing.l)],
                       spacing: Theme.Spacing.l + 2) {
                 ForEach(artists) { artist in
@@ -25,13 +23,12 @@ struct ArtistsView: View {
                     }
                 }
             }
-            .padding(.horizontal, Theme.Spacing.page)
-            .padding(.bottom, Theme.Spacing.page)
+            .padding(Theme.Spacing.page)
         }
         .overlay {
             if loaded && artists.isEmpty { ContentUnavailableView("No Artists", systemImage: "music.microphone") }
         }
-        .navigationTitle("Artists")
+        .pageTitle("Artists", subtitle: artists.isEmpty ? "" : count)
         .task(id: library.revision) {
             let found = (try? await library.artists()) ?? []
             if found != artists { artists = found }
@@ -109,15 +106,12 @@ struct AlbumsView: View {
     var body: some View {
         let shown = shown
         ScrollView {
-            PageHeader(title: "Albums", subtitle: albums.isEmpty ? "" : count(shown.count)) { controls }
-                .padding(.top, 2)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: Theme.Spacing.l)], spacing: 22) {
                 ForEach(shown) { album in
                     AlbumLink(app: app, library: library, album: album, width: nil)
                 }
             }
-            .padding(.horizontal, Theme.Spacing.page)
-            .padding(.bottom, Theme.Spacing.page)
+            .padding(Theme.Spacing.page)
         }
         .overlay {
             if loaded && albums.isEmpty {
@@ -126,7 +120,7 @@ struct AlbumsView: View {
                 ContentUnavailableView("No Albums from the \(String(decade))s", systemImage: "square.stack")
             }
         }
-        .navigationTitle("Albums")
+        .pageTitle("Albums", subtitle: albums.isEmpty ? "" : count(shown.count)) { controls }
         .task(id: library.revision) {
             let found = (try? await library.albums()) ?? []
             if found != albums { albums = found }

@@ -11,10 +11,10 @@ struct ArtistPageView: View {
     @State private var loaded = false
 
     var body: some View {
-        ScrollView {
+        UnderToolbarScrollView { toolbarHeight in
             if let page {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xl - 4) {
-                    header(page)
+                    header(page, toolbarHeight: toolbarHeight)
                     if !page.topSongs.isEmpty { topSongs(page) }
                     if !page.albums.isEmpty {
                         Shelf(title: "Albums") {
@@ -44,11 +44,12 @@ struct ArtistPageView: View {
         }
     }
 
-    private func header(_ page: ArtistPage) -> some View {
+    private func header(_ page: ArtistPage, toolbarHeight: CGFloat) -> some View {
         let covers = (page.albums + page.appearsOn).compactMap(\.artworkKey)
         let keys = Array(NSOrderedSet(array: covers).array.compactMap { $0 as? String }.prefix(4))
         return HeroHeader(kind: "Artist", title: page.artist.name, details: details(page.artist),
-                          washKey: keys.first ?? page.artist.artworkKey, artwork: library.artwork) {
+                          washKey: keys.first ?? page.artist.artworkKey, artwork: library.artwork,
+                          toolbarHeight: toolbarHeight) {
             CoverMosaic(keys: keys.isEmpty ? page.artist.artworkKey.map { [$0] } ?? [] : keys, artwork: library.artwork)
         } actions: {
             PlayShuffleButtons(play: { playAll(shuffled: false) }, shuffle: { playAll(shuffled: true) })

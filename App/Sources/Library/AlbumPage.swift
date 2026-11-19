@@ -13,10 +13,10 @@ struct AlbumPageView: View {
     @State private var loaded = false
 
     var body: some View {
-        ScrollView {
+        UnderToolbarScrollView { toolbarHeight in
             if let album {
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    header(album)
+                    header(album, toolbarHeight: toolbarHeight)
                     songs(album)
                     footer(album)
                     if !more.isEmpty {
@@ -36,10 +36,11 @@ struct AlbumPageView: View {
         .task(id: library.revision) { await load() }
     }
 
-    private func header(_ album: AlbumSummary) -> some View {
+    private func header(_ album: AlbumSummary, toolbarHeight: CGFloat) -> some View {
         HeroHeader(kind: kind(album), title: album.title, subtitle: album.artistName ?? "Unknown Artist",
                    openSubtitle: album.artistId == nil ? nil : { app.showArtist(credit: album.artistId) },
-                   details: details(album), washKey: album.artworkKey, artwork: library.artwork) {
+                   details: details(album), washKey: album.artworkKey, artwork: library.artwork,
+                   toolbarHeight: toolbarHeight) {
             ArtworkView(key: album.artworkKey, artwork: library.artwork, size: .medium, cornerRadius: Theme.Radius.large)
         } actions: {
             PlayShuffleButtons(play: { app.play(tracks, from: nil) }, shuffle: { app.play(tracks, from: nil, shuffled: true) })

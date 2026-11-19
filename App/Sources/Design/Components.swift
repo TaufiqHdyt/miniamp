@@ -3,41 +3,17 @@ import SwiftUI
 
 // Pieces the pages share. See Theme for the values they use.
 
-/// A page's name, large at the top of the page as in Apple Music, its count beside it, and
-/// the page's own controls at the trailing edge. (The toolbar carries no title.)
-struct PageHeader<Accessory: View>: View {
-    let title: String
-    var subtitle = ""
-    @ViewBuilder var accessory: Accessory
-
-    var body: some View {
-        HStack(alignment: .center, spacing: Theme.Spacing.m) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(title)
-                    .font(.largeTitle.bold())
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .accessibilityAddTraits(.isHeader)
-                if !subtitle.isEmpty {
-                    Text(subtitle)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .layoutPriority(-1)
-                }
-            }
-            Spacer(minLength: Theme.Spacing.m)
-            accessory
-        }
-        .padding(.horizontal, Theme.Spacing.page)
-        .padding(.top, Theme.Spacing.xs)
-        .padding(.bottom, Theme.Spacing.m)
-        .frame(maxWidth: .infinity, alignment: .leading)
+extension View {
+    /// A page's name in the toolbar, its count under it, and the page's own controls at the
+    /// toolbar's trailing end (as in Finder and Mail).
+    func pageTitle(_ title: String, subtitle: String = "") -> some View {
+        navigationTitle(title).navigationSubtitle(subtitle)
     }
-}
 
-extension PageHeader where Accessory == EmptyView {
-    init(title: String, subtitle: String = "") {
-        self.init(title: title, subtitle: subtitle) { EmptyView() }
+    func pageTitle(_ title: String, subtitle: String = "", @ViewBuilder controls: () -> some View) -> some View {
+        let controls = controls()
+        return pageTitle(title, subtitle: subtitle)
+            .toolbar { ToolbarItem(placement: .primaryAction) { controls } }
     }
 }
 
@@ -149,6 +125,8 @@ struct HeroHeader<Artwork: View, Actions: View>: View {
     let details: String
     let washKey: String?
     let artwork: ArtworkCache?
+    /// Room above for the toolbar, which the header's blur runs under.
+    var toolbarHeight: CGFloat = 0
     @ViewBuilder var cover: Artwork
     @ViewBuilder var actions: Actions
 
@@ -184,7 +162,7 @@ struct HeroHeader<Artwork: View, Actions: View>: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Theme.Spacing.page)
-        .padding(.top, Theme.Spacing.m)
+        .padding(.top, toolbarHeight + Theme.Spacing.m)
         .padding(.bottom, Theme.Spacing.l)
         .background { HeroWash(key: washKey, artwork: artwork) }
     }
@@ -210,7 +188,6 @@ private struct HeroWash: View {
                     .mask { LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom) }
             }
             .clipped()
-            .ignoresSafeArea(edges: .top)
             .accessibilityHidden(true)
         }
     }
@@ -238,5 +215,21 @@ struct CoverMosaic: View {
 
     private func tile(_ key: String?) -> some View {
         ArtworkView(key: key, artwork: artwork, size: .medium, cornerRadius: 0)
+    }
+}
+
+/// A page whose top runs up under the toolbar (an album's or artist's header and its blur),
+/// rather than starting below it on a white strip. `content` gets the toolbar's height, to
+/// keep what matters below it.
+struct UnderToolbarScrollView<Content: View>: View {
+    @ViewBuilder var content: (_ toolbarHeight: CGFloat) -> Content
+    @State private var toolbarHeight: CGFloat = 52
+
+    var body: some View {
+        ScrollView { content(toolbarHeight) }
+            .ignoresSafeArea(edges: .top)
+            .background {
+                Color.clear.onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { toolbarHeight = $0 }
+            }
     }
 }
