@@ -258,4 +258,9 @@ enum Schema {
             try db.execute(sql: "UPDATE track SET modifiedAt = 0 WHERE id = ?", arguments: [id])
         }
     }
+
+    /// As v10, now that text misread as Cyrillic is repaired too (Shift-JIS "エイ" as "ѓGѓC").
+    static func v11(_ db: Database) throws {
+        try v10(db)
+    }
 }

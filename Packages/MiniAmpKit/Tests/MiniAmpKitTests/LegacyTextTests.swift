@@ -22,6 +22,13 @@ import Testing
         #expect(LegacyText.repaired(misread("君の名は。 Original", from: .shiftJIS)) == "君の名は。 Original")
     }
 
+    /// The Initial D box set's album artist: avex trax, in Shift-JIS read as Cyrillic.
+    @Test func shiftJISReadAsCyrillic() {
+        let avex = misread("エイベックス トラックス", from: .shiftJIS, as: .windowsCP1251)
+        #expect(avex.hasPrefix("ѓGѓC"))
+        #expect(LegacyText.repaired(avex) == "エイベックス トラックス")
+    }
+
     @Test func gbkReadAsWestern() {
         let gb = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)))
         #expect(LegacyText.repaired(misread("周杰伦", from: gb, as: .isoLatin1)) == "周杰伦")
@@ -29,7 +36,8 @@ import Testing
 
     @Test func westernTextIsLeftAlone() {
         for name in ["Björk", "Beyoncé", "Sigur Rós", "Mötley Crüe", "Café del Mar", "Ólafur Arnalds", "Aimer", "エイベックス",
-                     "幾田りら", "김진산", "Zoë — “Live”", "Déjà Vu"] {
+                     "幾田りら", "김진산", "Zoë — “Live”", "Déjà Vu",
+                     "Кино", "Земфира", "Сплин — «Выхода нет»", "Ђорђе Балашевић", "Мумий Тролль", "Ёлка"] {
             #expect(LegacyText.repaired(name) == name)
         }
     }
