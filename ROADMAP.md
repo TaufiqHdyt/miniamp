@@ -133,6 +133,11 @@ Modern macOS, Apple Music's layout taken further, in phases. The plan, the basel
 - [x] Phase 1: player bar (fewer buttons, a quality badge in words, times on the seek bar) (#57)
 - [x] Phase 2: browsing (split artist credits, Home, album and artist pages, the inspector hidden when nothing plays) (#58)
 - [ ] Phase 3: full-window Now Playing, with lyrics, Up Next, and the visualizer as its modes (#59)
+  - [x] Up Next floats as glass beside the library, as the sidebar does, pages scrolling under it
+  - [x] Lyrics and the visualizer fill the page, with a switch between them; the visualizer on glass
+  - [x] Lyrics timing as a labelled menu; ∞ in Up Next's Autoplay section
+  - [ ] Full-window Now Playing
+  - [ ] Checks: synced lyrics follow a seek; `make app-bench` no worse than the baseline
 - [ ] Phase 4: Listening Stats, Duplicates, and Settings (#60)
 - [ ] Phase 5: motion and accessibility (#61)
 
