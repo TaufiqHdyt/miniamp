@@ -110,7 +110,9 @@ struct Shelf<Content: View>: View {
                     .padding(.vertical, Theme.Spacing.xs)
             }
             .scrollIndicators(.automatic)
-            // Not out under the sidebar as it scrolls.
+            // Out under Up Next as it scrolls (its content margin keeps the last cover clear),
+            // as under nothing else: not under the sidebar.
+            .extendsUnderUpNext()
             .clipped()
         }
     }
@@ -193,6 +195,7 @@ private struct HeroWash: View {
             }
             .clipped()
             .padding(.top, -HeroWash.reach)
+            .extendsUnderUpNext()
             .accessibilityHidden(true)
         }
     }
@@ -220,5 +223,30 @@ struct CoverMosaic: View {
 
     private func tile(_ key: String?) -> some View {
         ArtworkView(key: key, artwork: artwork, size: .medium, cornerRadius: 0)
+    }
+}
+
+extension EnvironmentValues {
+    /// How much of the library area's trailing side Up Next covers (floating, macOS 26 and
+    /// later), panel and margins; 0 while it's closed. Scroll views keep their content clear
+    /// of it by a content margin and run on under it; see `clearsUpNext` and
+    /// `extendsUnderUpNext` for what isn't a scroll view.
+    @Entry var upNextRoom: CGFloat = 0
+}
+
+extension View {
+    /// Keeps clear of Up Next: for what doesn't scroll, or (tables, lists) ignores content margins.
+    func clearsUpNext() -> some View { modifier(UpNextRoom(clears: true)) }
+
+    /// Runs on under Up Next, out of a scroll view's content: backgrounds, shelves.
+    func extendsUnderUpNext() -> some View { modifier(UpNextRoom(clears: false)) }
+}
+
+private struct UpNextRoom: ViewModifier {
+    let clears: Bool
+    @Environment(\.upNextRoom) private var room
+
+    func body(content: Content) -> some View {
+        content.padding(.trailing, clears ? room : -room)
     }
 }

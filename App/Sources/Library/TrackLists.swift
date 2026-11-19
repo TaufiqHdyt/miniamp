@@ -50,6 +50,7 @@ struct TrackListView: View {
     private var table: some View {
         TrackTable(app: app, rows: rows, playlist: playlist,
                    sort: Binding(get: { sort }, set: { sort = $0 }))
+            .clearsUpNext()
             .overlay {
                 if loaded && tracks.isEmpty {
                     if library.folders.isEmpty {
@@ -116,6 +117,7 @@ struct SearchResultsView: View {
 
     var body: some View {
         TrackTable(app: app, rows: rows, sort: $sort)
+            .clearsUpNext()
             .overlay {
                 if searched && results.isEmpty {
                     ContentUnavailableView.search(text: query)

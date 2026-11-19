@@ -116,8 +116,10 @@ struct MainWindow: View {
             if floatingUpNext {
                 let room = showsUpNext ? Self.upNextWidth + Theme.Spacing.s * 2 : 0
                 detail
-                    // The library keeps clear of the panel; its background still runs under it.
-                    .safeAreaPadding(.trailing, room)
+                    // The library keeps clear of the panel and scrolls on under it, as under the
+                    // sidebar; what doesn't scroll keeps clear by `clearsUpNext`.
+                    .contentMargins(.trailing, room, for: .scrollContent)
+                    .environment(\.upNextRoom, room)
                     .overlay(alignment: .topTrailing) {
                         if showsUpNext {
                             NowPlayingView(app: app, floating: true)

@@ -111,6 +111,7 @@ struct DuplicatesView: View {
                 }
                 .listStyle(.inset)
                 .clearsPlayerBar(app)
+                .clearsUpNext()
             } else if groups != nil {
                 ContentUnavailableView("No Duplicates", systemImage: "checkmark.circle",
                                        description: Text(mode == .tags
