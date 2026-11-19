@@ -53,7 +53,7 @@ Phases 1 and 2 can go in either order; 1 first is suggested, since it's small, a
 
 - `App/Sources/Design/`: tokens for spacing, corner radii, type, shadows, and how strongly each surface takes the cover tint.
 - A `Glass` modifier: Liquid Glass on macOS 26 and later, the current material on 15.
-- Components: `PageHeader`, `HeroHeader` (a large cover over a wash of its colours), `Shelf` (a horizontal row with See All), `ArtworkTile`, `PlayShuffleButtons`, `StatCard`.
+- Components: `pageTitle` (the page's name, count, and controls in the toolbar), `HeroHeader` (a large cover over a wash of its colours), `Shelf` (a horizontal row with See All), `ArtworkTile`, `PlayShuffleButtons`, `StatCard`.
 - The 21 hard-coded colours and font sizes in views move to tokens.
 - A wash that holds up on low-saturation covers: a dark neutral wash when the cover has little colour, and text contrast of at least 4.5:1 over it.
 - Fixes from the baseline: the stats rounding, the empty Time of day chart, "miniamp" as the title of the full views, the sidebar toggle's focus ring, and Songs showing Artist, Album, and Time by default.
