@@ -130,6 +130,14 @@ public final class Library {
         try await database.writer.read { try LibraryQueries.leadArtist(ofCredit: credit, $0) }
     }
 
+    /// The lead artist of a credit (see `leadArtist`), with their name.
+    public func leadArtistNamed(ofCredit credit: Int64) async throws -> (id: Int64, name: String)? {
+        try await database.writer.read { db in
+            let id = try LibraryQueries.leadArtist(ofCredit: credit, db)
+            return try String.fetchOne(db, sql: "SELECT name FROM artist WHERE id = ?", arguments: [id]).map { (id, $0) }
+        }
+    }
+
     public func artistPage(_ id: Int64) async throws -> ArtistPage? {
         try await database.writer.read { try LibraryQueries.artistPage(id, $0) }
     }

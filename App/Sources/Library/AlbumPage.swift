@@ -10,17 +10,19 @@ struct AlbumPageView: View {
     @State private var album: AlbumSummary?
     @State private var tracks: [TrackInfo] = []
     @State private var more: [AlbumSummary] = []
+    /// Whose other albums `more` are: the album's lead artist.
+    @State private var moreBy = ""
     @State private var loaded = false
 
     var body: some View {
-        UnderToolbarScrollView { toolbarHeight in
+        ScrollView {
             if let album {
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    header(album, toolbarHeight: toolbarHeight)
+                    header(album)
                     songs(album)
                     footer(album)
                     if !more.isEmpty {
-                        Shelf(title: "More by \(album.artistName ?? "This Artist")") {
+                        Shelf(title: "More by \(moreBy)") {
                             ForEach(more) { AlbumLink(app: app, library: library, album: $0, subtitle: .year) }
                         }
                         .padding(.top, Theme.Spacing.s)
@@ -36,11 +38,10 @@ struct AlbumPageView: View {
         .task(id: library.revision) { await load() }
     }
 
-    private func header(_ album: AlbumSummary, toolbarHeight: CGFloat) -> some View {
+    private func header(_ album: AlbumSummary) -> some View {
         HeroHeader(kind: kind(album), title: album.title, subtitle: album.artistName ?? "Unknown Artist",
                    openSubtitle: album.artistId == nil ? nil : { app.showArtist(credit: album.artistId) },
-                   details: details(album), washKey: album.artworkKey, artwork: library.artwork,
-                   toolbarHeight: toolbarHeight) {
+                   details: details(album), washKey: album.artworkKey, artwork: library.artwork) {
             ArtworkView(key: album.artworkKey, artwork: library.artwork, size: .medium, cornerRadius: Theme.Radius.large)
         } actions: {
             PlayShuffleButtons(play: { app.play(tracks, from: nil) }, shuffle: { app.play(tracks, from: nil, shuffled: true) })
@@ -84,12 +85,19 @@ struct AlbumPageView: View {
             .padding(.horizontal, Theme.Spacing.page)
     }
 
+    /// From the title, as stores name them ("Routine - Single", "Nights EP"): how many of its
+    /// songs are in the library says nothing about what it is.
     private func kind(_ album: AlbumSummary) -> String {
-        switch album.trackCount {
-        case ...3: "Single"
-        case ...6: "EP"
-        default: "Album"
-        }
+        let title = album.title.lowercased()
+        if title.hasSuffix("single") || title.hasSuffix("(single)") { return "Single" }
+        if title.hasSuffix(" ep") || title.hasSuffix("(ep)") || title.hasSuffix("- ep") { return "EP" }
+        return "Album"
+    }
+
+    /// "Various Artists" and the like: a label for compilations, not someone with more albums.
+    static func isCompilationArtist(_ name: String?) -> Bool {
+        guard let name = name?.lowercased() else { return false }
+        return ["various artists", "various", "va", "v.a.", "soundtrack"].contains(name)
     }
 
     private func details(_ album: AlbumSummary) -> String {
@@ -109,9 +117,10 @@ struct AlbumPageView: View {
             tracks = try await library.tracks(in: .album(albumID))
             album = found
             loaded = true
-            if let credit = found.artistId {
-                let artist = try await library.leadArtist(ofCredit: credit)
-                more = try await library.albums(artistId: artist).filter { $0.id != albumID }
+            if let credit = found.artistId, !Self.isCompilationArtist(found.artistName),
+               let lead = try await library.leadArtistNamed(ofCredit: credit) {
+                more = try await library.albums(artistId: lead.id).filter { $0.id != albumID }
+                moreBy = lead.name
             } else {
                 more = []
             }

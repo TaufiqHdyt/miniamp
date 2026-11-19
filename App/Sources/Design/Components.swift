@@ -110,6 +110,8 @@ struct Shelf<Content: View>: View {
                     .padding(.vertical, Theme.Spacing.xs)
             }
             .scrollIndicators(.automatic)
+            // Not out under the sidebar as it scrolls.
+            .clipped()
         }
     }
 }
@@ -125,8 +127,6 @@ struct HeroHeader<Artwork: View, Actions: View>: View {
     let details: String
     let washKey: String?
     let artwork: ArtworkCache?
-    /// Room above for the toolbar, which the header's blur runs under.
-    var toolbarHeight: CGFloat = 0
     @ViewBuilder var cover: Artwork
     @ViewBuilder var actions: Actions
 
@@ -162,14 +162,18 @@ struct HeroHeader<Artwork: View, Actions: View>: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Theme.Spacing.page)
-        .padding(.top, toolbarHeight + Theme.Spacing.m)
+        .padding(.top, Theme.Spacing.m)
         .padding(.bottom, Theme.Spacing.l)
         .background { HeroWash(key: washKey, artwork: artwork) }
     }
 }
 
-/// A blur of the cover behind a header, fading into the page toward the bottom.
+/// A blur of the cover behind a header, fading into the page toward the bottom. It reaches
+/// up past the header, under the toolbar (which the page scrolls beneath), so no white strip
+/// shows there.
 private struct HeroWash: View {
+    /// More than any toolbar is tall.
+    static let reach: CGFloat = 120
     let key: String?
     let artwork: ArtworkCache?
 
@@ -188,6 +192,7 @@ private struct HeroWash: View {
                     .mask { LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom) }
             }
             .clipped()
+            .padding(.top, -HeroWash.reach)
             .accessibilityHidden(true)
         }
     }
@@ -215,21 +220,5 @@ struct CoverMosaic: View {
 
     private func tile(_ key: String?) -> some View {
         ArtworkView(key: key, artwork: artwork, size: .medium, cornerRadius: 0)
-    }
-}
-
-/// A page whose top runs up under the toolbar (an album's or artist's header and its blur),
-/// rather than starting below it on a white strip. `content` gets the toolbar's height, to
-/// keep what matters below it.
-struct UnderToolbarScrollView<Content: View>: View {
-    @ViewBuilder var content: (_ toolbarHeight: CGFloat) -> Content
-    @State private var toolbarHeight: CGFloat = 52
-
-    var body: some View {
-        ScrollView { content(toolbarHeight) }
-            .ignoresSafeArea(edges: .top)
-            .background {
-                Color.clear.onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { toolbarHeight = $0 }
-            }
     }
 }
