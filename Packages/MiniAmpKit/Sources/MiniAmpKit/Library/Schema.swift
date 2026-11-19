@@ -231,4 +231,10 @@ enum Schema {
             """)
         try ArtistCredits.rebuild(db)
     }
+
+    /// Splits the credits again, after the splitter stopped making artists of stray
+    /// separators ("A, & B" had an artist "&"), and removes artists left with nothing.
+    static func v9(_ db: Database) throws {
+        try LibraryScanner.deleteOrphans(db)
+    }
 }

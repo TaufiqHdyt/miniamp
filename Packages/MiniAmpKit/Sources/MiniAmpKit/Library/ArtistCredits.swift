@@ -27,7 +27,9 @@ public enum ArtistCredits {
         pieces = pieces.flatMap { piece in
             maybeSplit.reduce([piece]) { names, separator in names.flatMap { split($0, at: separator) } }
         }
-        let names = pieces.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        // A stray separator ("A & & B", "A, & B") leaves bits that are no one's name.
+        let names = pieces.map { $0.trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: "&,;/"))) }
+            .filter { $0.contains { $0.isLetter || $0.isNumber } }
         var seen = Set<String>()
         let unique = names.filter { seen.insert($0.lowercased()).inserted }
         return (unique, certain && unique.count > 1)

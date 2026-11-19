@@ -12,6 +12,9 @@ import Testing
         #expect(ArtistCredits.parts(of: "A; B; A").names == ["A", "B"])
         #expect(ArtistCredits.parts(of: "Simon & Garfunkel") == (["Simon", "Garfunkel"], false))
         #expect(ArtistCredits.parts(of: "Aimer").names == ["Aimer"])
+        #expect(ArtistCredits.parts(of: "A feat. B & & C").names == ["A", "B", "C"])
+        #expect(ArtistCredits.parts(of: "A feat. B, & C").names == ["A", "B", "C"])
+        #expect(ArtistCredits.parts(of: "A / &").names == ["A"])
     }
 
     @Test func commasAndAmpersandsSplitOnlyWhenAPartIsKnown() {
