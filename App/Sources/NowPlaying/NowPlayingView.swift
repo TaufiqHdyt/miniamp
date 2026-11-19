@@ -1,10 +1,13 @@
 import MiniAmpKit
 import SwiftUI
 
-/// The inspector: Up Next, what plays after the song playing (which the player bar shows),
-/// each with its cover; then what autoplay adds.
+/// Up Next: what plays after the song playing (which the player bar shows), each with its
+/// cover; then what autoplay adds. On macOS 26 and later a glass panel floating over the
+/// library, as the sidebar does; before that, the inspector.
 struct NowPlayingView: View {
     let app: AppState
+    /// The floating panel (macOS 26 and later), rather than the inspector.
+    var floating = false
     @State private var entries: [URL: QueueEntry] = [:]
     /// The library revision `entries` were read at.
     @State private var entriesRevision = 0
@@ -21,9 +24,10 @@ struct NowPlayingView: View {
             } else {
                 ContentUnavailableView("Nothing Playing", systemImage: "music.note",
                                        description: Text("Double-click a song to play it."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .modifier(InspectorPanel(tint: app.tint))
+        .modifier(UpNextPanel(tint: app.tint, floating: floating))
         // Read the tags of what's shown when the queue moves, or when the library changes (a retag).
         .task(id: Shown(urls: upcoming.map(\.url), revision: app.library?.revision ?? 0)) {
             let urls = upcoming.map(\.url)
@@ -94,7 +98,10 @@ struct NowPlayingView: View {
             }
         }
         .listStyle(.inset)
-        .clearsPlayerBar(app)
+        // The floating panel ends above the player bar; the inspector runs on under it.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear.frame(height: floating ? Theme.Spacing.s : app.playerBarInset).allowsHitTesting(false)
+        }
     }
 
     private func note(_ text: String) -> some View {
@@ -237,32 +244,21 @@ private struct AutoplayToggle: View {
     }
 }
 
-/// The inspector's look. On macOS 26 and later, a glass panel floating like the sidebar:
-/// inset from the window's edges and the library, rounded all round, running its full height,
-/// tinted with the cover. Before that, the column itself takes the cover's colour, strongest at
-/// the top where the song is.
-private struct InspectorPanel: ViewModifier {
+/// Up Next's look. Floating (macOS 26 and later): a glass card tinted with the cover, rounded
+/// like the sidebar. In the inspector: the column takes the cover's colour, strongest at the
+/// top.
+private struct UpNextPanel: ViewModifier {
     let tint: Color?
+    let floating: Bool
 
     func body(content: Content) -> some View {
-        if #available(macOS 26, *) {
+        if #available(macOS 26, *), floating {
             let shape = RoundedRectangle(cornerRadius: Theme.Radius.floatingPanel, style: .continuous)
             content
                 .scrollContentBackground(.hidden)
-                .padding(.horizontal, Theme.Spacing.s)
-                // Ends where the panel does, level with the player bar, rather than showing
-                // through below it at the window's edge.
-                .padding(.bottom, Theme.Spacing.s)
-                .clipped()
-                .background {
-                    Color.clear
-                        .glassEffect(.regular.tint(tint?.opacity(Theme.Tint.inspector.top)), in: shape)
-                        .padding(Theme.Spacing.s)
-                        .ignoresSafeArea()
-                }
-                // The library doesn't run on under the column as it does under the sidebar: the
-                // margin around the glass is the library's background, not a strip of another.
-                .background { Rectangle().fill(.background).ignoresSafeArea() }
+                .padding(.top, Theme.Spacing.xs)
+                .clipShape(shape)
+                .glassEffect(.regular.tint(tint?.opacity(Theme.Tint.inspector.top)), in: shape)
                 .animation(.easeInOut(duration: 0.6), value: tint)
         } else {
             content

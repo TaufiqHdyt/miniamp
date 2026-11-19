@@ -78,8 +78,11 @@ extension View {
             .toolbar {
                 ToolbarItem(placement: .navigation) { heading }
                     .fullViewHeadingBackground()
-                // .automatic, not .primaryAction: on macOS that's next to the title.
+                // Pushes what follows to the window's trailing edge, away from the song.
+                FullViewSpacer(flexible: true)
                 ToolbarItemGroup(placement: .automatic) { controls }
+                // Back to the library on a glass of its own, apart from the page's buttons.
+                FullViewSpacer(flexible: false)
                 ToolbarItem(placement: .automatic) {
                     Button(action: close) { Label("Back to the Library", systemImage: "arrow.down.right.and.arrow.up.left") }
                         .keyboardShortcut(.cancelAction)
@@ -87,6 +90,17 @@ extension View {
                 }
             }
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+    }
+}
+
+/// A toolbar spacer on macOS 26 and later, where toolbar items sit on glass; nothing before.
+private struct FullViewSpacer: ToolbarContent {
+    let flexible: Bool
+
+    var body: some ToolbarContent {
+        if #available(macOS 26, *) {
+            ToolbarSpacer(flexible ? .flexible : .fixed, placement: .automatic)
+        }
     }
 }
 

@@ -15,7 +15,7 @@ struct MainWindow: View {
                 // room after their last row to clear it. Laid over the whole window, not the
                 // split view, which slides about as the sidebar opens and closes.
                 ZStack(alignment: .bottom) {
-                    split
+                    split(floatingUpNext: true)
                         .contentMargins(.bottom, app.playerBarInset, for: .scrollContent)
                     // Not over full lyrics or the visualizer: their wash runs to the window's edge.
                     if app.fullView == nil { BarFade(height: app.playerBarInset) }
@@ -24,7 +24,7 @@ struct MainWindow: View {
                 }
             } else {
                 VStack(spacing: 0) {
-                    split
+                    split(floatingUpNext: false)
                     Divider()
                     PlayerBar(app: app)
                 }
@@ -99,19 +99,43 @@ struct MainWindow: View {
         }
     }
 
-    private var split: some View {
+    /// Up Next floating over the library's trailing side, as wide as this, inset like the sidebar.
+    static let upNextWidth: CGFloat = 300
+
+    /// `floatingUpNext`: Up Next as a glass panel over the library (macOS 26 and later), rather
+    /// than the inspector, so it floats like the sidebar instead of being a column beside it.
+    private func split(floatingUpNext: Bool) -> some View {
         // Read here, in the body: read only inside the binding, SwiftUI doesn't redraw when it
         // changes. Open or closed as it was left, whether or not anything is playing.
-        let showsInspector = app.showsNowPlaying
+        let showsUpNext = app.showsNowPlaying
         return NavigationSplitView {
             Sidebar(app: app, selection: $selection)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 300)
         } detail: {
-            detail
-                .inspector(isPresented: Binding(get: { showsInspector }, set: { app.showsNowPlaying = $0 })) {
-                    NowPlayingView(app: app)
-                        .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
-                }
+            if floatingUpNext {
+                let room = showsUpNext ? Self.upNextWidth + Theme.Spacing.s * 2 : 0
+                detail
+                    // The library keeps clear of the panel; its background still runs under it.
+                    .safeAreaPadding(.trailing, room)
+                    .overlay(alignment: .topTrailing) {
+                        if showsUpNext {
+                            NowPlayingView(app: app, floating: true)
+                                .frame(width: Self.upNextWidth)
+                                .padding(.top, Theme.Spacing.s)
+                                .padding(.trailing, Theme.Spacing.s)
+                                .padding(.bottom, app.playerBarInset + Theme.Spacing.s)
+                                .ignoresSafeArea(.container, edges: .trailing)
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
+                    }
+                    .animation(.smooth(duration: 0.3), value: showsUpNext)
+            } else {
+                detail
+                    .inspector(isPresented: Binding(get: { showsUpNext }, set: { app.showsNowPlaying = $0 })) {
+                        NowPlayingView(app: app)
+                            .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
+                    }
+            }
         }
         // As in Apple Music: search at the top of the sidebar (in the toolbar while the
         // sidebar is hidden). Each page names itself in the toolbar (see pageTitle).
