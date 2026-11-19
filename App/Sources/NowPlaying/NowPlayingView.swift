@@ -243,22 +243,26 @@ private struct AutoplayToggle: View {
     }
 }
 
-/// The inspector's look. On macOS 26 and later, a glass panel inset from the window's edges
-/// and running its full height, as the sidebar does, tinted with the cover. Before that, the
+/// The inspector's look. On macOS 26 and later, a glass panel against the library and inset
+/// from the window's edges, running its full height, tinted with the cover. Before that, the
 /// column itself takes the cover's colour, strongest at the top where the song is.
 private struct InspectorPanel: ViewModifier {
     let tint: Color?
 
     func body(content: Content) -> some View {
         if #available(macOS 26, *) {
-            let shape = RoundedRectangle(cornerRadius: Theme.Radius.floatingPanel, style: .continuous)
+            // Against the library on the leading side, with no gap: the library doesn't run on
+            // under the column, as it does under the sidebar, so a gap would show as a strip.
+            let radius = Theme.Radius.floatingPanel
+            let shape = UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0,
+                                               bottomTrailingRadius: radius, topTrailingRadius: radius, style: .continuous)
             content
                 .scrollContentBackground(.hidden)
-                .padding(.horizontal, Theme.Spacing.s)
+                .padding(.trailing, Theme.Spacing.s)
                 .background {
                     Color.clear
                         .glassEffect(.regular.tint(tint?.opacity(Theme.Tint.inspector.top)), in: shape)
-                        .padding(Theme.Spacing.s)
+                        .padding([.top, .trailing, .bottom], Theme.Spacing.s)
                         .ignoresSafeArea()
                 }
                 .animation(.easeInOut(duration: 0.6), value: tint)
