@@ -29,34 +29,17 @@ final class AppState {
     /// Whether the main window is on screen: the position is only updated while it shows.
     var mainWindowVisible = true { didSet { player.updatesPosition = mainWindowVisible } }
 
-    /// The now-playing inspector. Remembered across launches, but not its closing for a full
-    /// view. Read with bool(forKey:), not `as? Bool`: a launch argument (-showsNowPlaying NO)
-    /// arrives as a string.
+    /// Up Next, floating over the library and full views alike. Remembered across launches.
+    /// Read with bool(forKey:), not `as? Bool`: a launch argument (-showsNowPlaying NO) arrives
+    /// as a string.
     var showsNowPlaying = UserDefaults.standard.object(forKey: "showsNowPlaying") == nil
         ? true : UserDefaults.standard.bool(forKey: "showsNowPlaying") {
-        didSet { if fullView == nil { UserDefaults.standard.set(showsNowPlaying, forKey: "showsNowPlaying") } }
+        didSet { UserDefaults.standard.set(showsNowPlaying, forKey: "showsNowPlaying") }
     }
 
     /// What fills the library area in place of the library, on the playing song's cover: the
     /// lyrics, big, or the visualizer. Not remembered: each launch opens on the library.
-    ///
-    /// The inspector closes meanwhile (the full view already names the song) and comes back
-    /// after, if it was open. Closed and opened as its buttons do it, by `showsNowPlaying`:
-    /// hiding it from the binding alone left it stuck closed.
-    var fullView: FullView? {
-        didSet {
-            guard (oldValue == nil) != (fullView == nil) else { return }
-            if fullView != nil {
-                inspectorBeforeFullView = showsNowPlaying
-                showsNowPlaying = false
-            } else if inspectorBeforeFullView {
-                showsNowPlaying = true
-            }
-        }
-    }
-
-    /// Whether the inspector was open when a full view opened.
-    private var inspectorBeforeFullView = false
+    var fullView: FullView?
 
     var showsFullLyrics: Bool {
         get { fullView == .lyrics }
@@ -413,20 +396,12 @@ final class AppState {
 
     // MARK: Lyrics
 
-    /// Opens Up Next in the inspector, or closes it. It takes over from a full view.
+    /// Opens Up Next, or closes it; over a full view too.
     func toggleUpNext() {
-        if showsNowPlaying {
-            showsNowPlaying = false
-        } else {
-            switchingViews {
-                fullView = nil
-                showsNowPlaying = true
-            }
-        }
+        showsNowPlaying.toggle()
     }
 
-    /// Between a full view and the library with Up Next, at once: the inspector sliding while
-    /// the library area changes under it jumps about.
+    /// Between a full view and the library at once, rather than one fading into the other.
     private func switchingViews(_ change: () -> Void) {
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true

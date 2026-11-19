@@ -7,6 +7,7 @@ struct MainWindow: View {
     @Bindable var app: AppState
     @SceneStorage("sidebarSelection") private var selection: SidebarItem = .home
     @FocusState private var searchFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
     var body: some View {
         Group {
             if #available(macOS 26, *) {
@@ -120,6 +121,8 @@ struct MainWindow: View {
                     .overlay(alignment: .topTrailing) {
                         if showsUpNext {
                             NowPlayingView(app: app, floating: true)
+                                // Dark over a full view's wash, as the full view is.
+                                .environment(\.colorScheme, app.fullView != nil && app.player.queue.current != nil ? .dark : colorScheme)
                                 .frame(width: Self.upNextWidth)
                                 .padding(.top, Theme.Spacing.s)
                                 .padding(.trailing, Theme.Spacing.s)
