@@ -72,14 +72,14 @@ private struct NowPlayingSummary: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Button { app.showsNowPlaying.toggle() } label: {
+            Button { app.toggle(app.inspectorPane) } label: {
                 ArtworkView(key: entry?.artworkKey, artwork: artwork,
                             fileURL: entry?.inLibrary == false ? entry?.url : nil, size: .small, cornerRadius: Theme.Radius.small)
                     .frame(width: 52, height: 52)
                     .elevation(.hairline)
             }
             .buttonStyle(.plain)
-            .help(app.showsNowPlaying ? "Hide \(app.inspectorPane == .lyrics ? "Lyrics" : "Up Next")"
+            .help(app.inspectorVisible ? "Hide \(app.inspectorPane == .lyrics ? "Lyrics" : "Up Next")"
                                       : "Show \(app.inspectorPane == .lyrics ? "Lyrics" : "Up Next")")
 
             VStack(alignment: .leading, spacing: 3) {

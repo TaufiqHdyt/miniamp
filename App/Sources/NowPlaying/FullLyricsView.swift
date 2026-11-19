@@ -17,8 +17,7 @@ struct FullLyricsView: View {
         .background { CoverWash(app: app, entry: entry) }
         // Light text on the dark wash, whatever the system appearance.
         .environment(\.colorScheme, .dark)
-        // The wash runs up under the toolbar, as in Apple Music, rather than stopping at a grey bar.
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        .fullViewToolbar()
         .modifier(FullViewEntry(app: app, url: url, entry: $entry))
     }
 }
@@ -42,25 +41,58 @@ struct FullViewEntry: ViewModifier {
     }
 }
 
-/// The song named at the top of a full view: its cover, title and artist.
+/// The song named at the top of a full view: its cover, title, and artist and album.
 struct FullViewHeading: View {
     let app: AppState
     let entry: QueueEntry
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             ArtworkView(key: entry.artworkKey, artwork: app.library?.artwork,
                         fileURL: entry.inLibrary ? nil : entry.url, size: .small, cornerRadius: Theme.Radius.medium)
-                .frame(width: 56, height: 56)
+                .frame(width: 64, height: 64)
                 .elevation(.floating)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(entry.title).font(.title3.weight(.semibold))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry.title).font(.title2.bold())
                 if let subtitle = entry.subtitle {
-                    Text(subtitle).foregroundStyle(.secondary)
+                    Text(subtitle).font(.title3).foregroundStyle(.secondary)
                 }
             }
             .lineLimit(1)
         }
+    }
+}
+
+/// A full view's buttons, on glass at the top right, ending in the one back to the library.
+struct FullViewControls<Content: View>: View {
+    let close: () -> Void
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        let controls = HStack(spacing: 14) {
+            content
+            Button(action: close) { Image(systemName: "arrow.down.right.and.arrow.up.left") }
+                .buttonStyle(.borderless)
+                .keyboardShortcut(.cancelAction)
+                .help("Back to the library (Esc)")
+        }
+        .imageScale(.large)
+        .padding(.horizontal, 14)
+        .frame(height: 36)
+        if #available(macOS 26, *) {
+            controls.glassEffect(.regular.interactive(), in: Capsule())
+        } else {
+            controls.background(.regularMaterial, in: Capsule())
+        }
+    }
+}
+
+extension View {
+    /// A full view's chrome: no title in the toolbar (the heading names the song) and the
+    /// wash running up under it, as in Apple Music, rather than stopping at a grey bar.
+    func fullViewToolbar() -> some View {
+        toolbar(removing: .title)
+            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
     }
 }
 

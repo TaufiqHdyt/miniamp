@@ -149,7 +149,7 @@ struct LyricsView<NowPlaying: View>: View {
     }
 
     private var fullControls: some View {
-        HStack(spacing: 10) {
+        FullViewControls(close: { app.showsFullLyrics = false }) {
             if case .found(let found) = state, !found.lyrics.isInstrumental {
                 if found.lyrics.isSynced { TimingControl(app: app, url: url) }
                 extrasMenu
@@ -159,14 +159,7 @@ struct LyricsView<NowPlaying: View>: View {
                 editButton
                 Divider().frame(height: 14)
             }
-            Button { app.showsFullLyrics = false } label: { Image(systemName: "arrow.down.right.and.arrow.up.left") }
-                .buttonStyle(.borderless)
-                .keyboardShortcut(.cancelAction)
-                .help("Back to the library (Esc)")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.regularMaterial, in: Capsule())
     }
 
     @ViewBuilder

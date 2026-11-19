@@ -10,18 +10,14 @@ struct FullVisualizerView: View {
 
     var body: some View {
         let entry = entry?.url == url ? entry : nil
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(alignment: .top) {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .center, spacing: 12) {
                 FullViewHeading(app: app, entry: entry ?? QueueEntry(fileName: url))
-                Spacer()
-                Button { app.showsVisualizer = false } label: { Image(systemName: "arrow.down.right.and.arrow.up.left") }
-                    .buttonStyle(.borderless)
-                    .keyboardShortcut(.cancelAction)
-                    .help("Back to the library (Esc)")
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(.regularMaterial, in: Capsule())
+                Spacer(minLength: 12)
+                FullViewControls(close: { app.showsVisualizer = false }) {}
             }
+            // As much of the page as there is: the bars stretch to the height, and more of
+            // them fit the width.
             SpectrumView(player: app.player)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.panel))
                 .elevation(.panel)
@@ -38,17 +34,15 @@ struct FullVisualizerView: View {
                     .transition(.opacity)
                 }
                 .animation(.easeInOut(duration: 0.2), value: app.player.state == .paused)
-                .frame(maxHeight: 520)
-            Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(.horizontal, 48)
-        .padding(.top, 28)
-        .padding(.bottom, 40 + app.playerBarInset)
+        .padding(.horizontal, 32)
+        .padding(.top, 20)
+        .padding(.bottom, Theme.Spacing.l + app.playerBarInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background { CoverWash(app: app, entry: entry) }
         .environment(\.colorScheme, .dark)
-        // The wash runs up under the toolbar, as in Apple Music, rather than stopping at a grey bar.
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        .fullViewToolbar()
         .modifier(FullViewEntry(app: app, url: url, entry: $entry))
     }
 }

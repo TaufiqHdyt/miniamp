@@ -400,8 +400,12 @@ final class AppState {
 
     // MARK: Lyrics
 
+    /// Whether the inspector shows: it's closed while a full view (full lyrics, the
+    /// visualizer) is open, which already names the song, and comes back after.
+    var inspectorVisible: Bool { showsNowPlaying && fullView == nil }
+
     /// Whether the inspector is open on `pane`.
-    func isShowing(_ pane: InspectorPane) -> Bool { showsNowPlaying && inspectorPane == pane }
+    func isShowing(_ pane: InspectorPane) -> Bool { inspectorVisible && inspectorPane == pane }
 
     /// Up Next and Lyrics each have a button: it opens the inspector on its pane, switches to
     /// it from the other, or closes the inspector when it's already showing.
@@ -409,20 +413,18 @@ final class AppState {
         if isShowing(pane) {
             showsNowPlaying = false
         } else {
-            // Lyrics in the inspector take over from the full-size ones.
-            if pane == .lyrics { showsFullLyrics = false }
+            // The inspector takes over from a full view.
+            fullView = nil
             inspectorPane = pane
             showsNowPlaying = true
         }
     }
 
     /// Opens the full-size lyrics (while something is playing) or goes back to the library.
-    /// The inspector moves off Lyrics meanwhile: the same lyrics twice would be one too many.
     func toggleFullLyrics() {
         if showsFullLyrics {
             showsFullLyrics = false
         } else if player.queue.current != nil {
-            if inspectorPane == .lyrics { inspectorPane = .upNext }
             showsFullLyrics = true
         }
     }
