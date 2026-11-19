@@ -141,6 +141,11 @@ private struct BarLinkStyle: ButtonStyle {
 }
 
 struct TransportButtons: View {
+    /// Previous, play and next in the text's own colour: borderless buttons draw their symbols
+    /// in a dimmed, vibrant tone on the glass, which read as disabled beside the song's title.
+    /// (Shuffle and repeat keep theirs: dim is how they say they're off.)
+    static let transportColour = Color.primary
+
     let app: AppState
     /// Clicks, each bouncing its arrows as in Apple Music.
     @State private var previousClicks = 0
@@ -161,6 +166,7 @@ struct TransportButtons: View {
                 app.perform { try await player.previous() }
             } label: {
                 Image(systemName: "backward.fill").symbolEffect(.bounce.down, value: previousClicks)
+                    .foregroundStyle(Self.transportColour)
             }
             .help("Previous (⌘←)")
             .disabled(player.queue.isEmpty)
@@ -168,6 +174,7 @@ struct TransportButtons: View {
                 // Pause while the next song loads too: it's about to play.
                 Image(systemName: player.state == .playing || player.state == .preparing ? "pause.fill" : "play.fill")
                     .contentTransition(.symbolEffect(.replace))
+                    .foregroundStyle(Self.transportColour)
                     .font(.title2)
                     .frame(width: 24)
             }
@@ -178,6 +185,7 @@ struct TransportButtons: View {
                 app.perform { try await player.next() }
             } label: {
                 Image(systemName: "forward.fill").symbolEffect(.bounce.down, value: nextClicks)
+                    .foregroundStyle(Self.transportColour)
             }
             .help("Next (⌘→)")
             .disabled(player.queue.isEmpty)
