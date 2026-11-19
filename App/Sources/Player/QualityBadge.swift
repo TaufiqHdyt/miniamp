@@ -10,16 +10,18 @@ struct QualityBadge: View {
 
     var body: some View {
         Button { showsDetails.toggle() } label: {
-            HStack(spacing: Theme.Spacing.xs) {
-                Image(systemName: symbol)
-                    .imageScale(.medium)
-                    .foregroundStyle(color)
-                Text(short)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            // The format beside the symbol when there's room; the symbol alone in a narrow window.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Theme.Spacing.xs) {
+                    icon
+                    Text(short)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .fixedSize()
+                icon
             }
-            .fixedSize()
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -34,6 +36,12 @@ struct QualityBadge: View {
         if path.dsd != nil { return path.codec }
         let rate = FormatSelection.formatRate(path.fileSampleRate)
         return path.fileBitDepth.map { "\(path.codec) \(rate)/\($0)" } ?? "\(path.codec) \(rate)"
+    }
+
+    private var icon: some View {
+        Image(systemName: symbol)
+            .imageScale(.medium)
+            .foregroundStyle(color)
     }
 
     /// The format, and what happens to it when that's more than "plays as it is", written as

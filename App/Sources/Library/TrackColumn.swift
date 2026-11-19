@@ -54,8 +54,8 @@ enum TrackColumn: String, CaseIterable {
         switch self {
         case .playing: (20, 20, 20)
         case .number: (24, 32, 50)
-        case .title: (120, 280, 2000)
-        case .artist, .album: (80, 180, 1000)
+        case .title: (80, 280, 2000)
+        case .artist, .album: (60, 180, 1000)
         case .year: (36, 44, 70)
         case .genre: (60, 110, 400)
         case .time: (40, 50, 80)

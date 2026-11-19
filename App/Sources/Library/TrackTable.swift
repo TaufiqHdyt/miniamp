@@ -495,8 +495,10 @@ struct TrackTable: NSViewRepresentable {
             distributeWidths(in: table)
         }
 
-        /// Artist, Album, and Genre give up width before anything is pushed out of view.
+        /// Artist, Album, and Genre give up width before anything is pushed out of view; then
+        /// Quality, whose text truncates sooner.
         static let yieldingColumns: Set<TrackColumn> = [.artist, .album, .genre]
+        static let yieldingTiers: [Set<TrackColumn>] = [yieldingColumns, [.quality]]
 
         /// Lays the measured widths out across the table's width. Title takes what's left and
         /// truncates, rather than growing to its longest title (one long "… (feat. …) (Album
@@ -510,16 +512,16 @@ struct TrackTable: NSViewRepresentable {
             var others = shown.filter { $0 !== title }.map { ($0, fittedWidths[$0.identifier.rawValue] ?? $0.width) }
             let available = scroll.contentSize.width - spacing
             let used = others.reduce(0) { $0 + $1.1 + spacing }
-            let excess = used + title.minWidth - available
-            if excess > 0 {
+            var excess = used + title.minWidth - available
+            for tier in Self.yieldingTiers where excess > 0 {
                 let yielding = others.indices.filter {
-                    TrackColumn(rawValue: others[$0].0.identifier.rawValue).map(Self.yieldingColumns.contains) ?? false
+                    TrackColumn(rawValue: others[$0].0.identifier.rawValue).map(tier.contains) ?? false
                 }
                 let slack = yielding.reduce(0) { $0 + max(others[$1].1 - others[$1].0.minWidth, 0) }
-                if slack > 0 {
-                    let share = min(excess / slack, 1)
-                    for i in yielding { others[i].1 -= max(others[i].1 - others[i].0.minWidth, 0) * share }
-                }
+                guard slack > 0 else { continue }
+                let share = min(excess / slack, 1)
+                for i in yielding { others[i].1 -= max(others[i].1 - others[i].0.minWidth, 0) * share }
+                excess -= slack * share
             }
             fitting = true
             defer { fitting = false }
