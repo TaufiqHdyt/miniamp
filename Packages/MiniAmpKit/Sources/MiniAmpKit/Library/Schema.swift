@@ -237,4 +237,25 @@ enum Schema {
     static func v9(_ db: Database) throws {
         try LibraryScanner.deleteOrphans(db)
     }
+
+    /// Tags in a legacy East Asian encoding are read properly now (see LegacyText). Tracks
+    /// whose names show the misreading forget when their files changed, so the next scan
+    /// reads them again.
+    static func v10(_ db: Database) throws {
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT track.id, track.title, track.genre, artist.name AS artist, album.title AS album, albumArtist.name AS albumArtist
+            FROM track
+            LEFT JOIN artist ON artist.id = track.artistId
+            LEFT JOIN album ON album.id = track.albumId
+            LEFT JOIN artist AS albumArtist ON albumArtist.id = album.artistId
+            """)
+        let misread = rows.filter { row in
+            ["title", "genre", "artist", "album", "albumArtist"].contains { column in
+                (row[column] as String?).map { LegacyText.repaired($0) != $0 } ?? false
+            }
+        }.map { $0["id"] as Int64 }
+        for id in misread {
+            try db.execute(sql: "UPDATE track SET modifiedAt = 0 WHERE id = ?", arguments: [id])
+        }
+    }
 }

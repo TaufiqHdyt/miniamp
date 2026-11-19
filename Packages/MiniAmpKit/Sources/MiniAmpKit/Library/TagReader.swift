@@ -36,7 +36,8 @@ public enum TagReader {
         guard ok else { return nil }
         defer { ma_taglib_free(&info) }
 
-        func str(_ p: UnsafeMutablePointer<CChar>?) -> String? { p.map { String(cString: $0) } }
+        // Names old taggers wrote in Shift-JIS or GBK come back readable (see LegacyText).
+        func str(_ p: UnsafeMutablePointer<CChar>?) -> String? { p.map { LegacyText.repaired(String(cString: $0)) } }
         func num(_ n: UInt32) -> Int? { n == 0 ? nil : Int(n) }
         func real(_ x: Double) -> Double? { x.isNaN ? nil : x }
 
