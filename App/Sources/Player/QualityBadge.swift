@@ -36,17 +36,18 @@ struct QualityBadge: View {
         return path.fileBitDepth.map { "\(path.codec) \(rate)/\($0)" } ?? "\(path.codec) \(rate)"
     }
 
-    /// The format, and what happens to it when that's more than "plays as it is".
+    /// The format, and what happens to it when that's more than "plays as it is", written as
+    /// the library writes formats ("FLAC 48/24", no "kHz").
     private var short: String {
+        let rate = { (hz: Double) in FormatSelection.formatRate(hz).replacingOccurrences(of: " kHz", with: "") }
+        let file = path.fileBitDepth.map { "\(path.codec) \(rate(path.fileSampleRate))/\($0)" } ?? "\(path.codec) \(rate(path.fileSampleRate))"
         switch path.verdict {
-        case .resampled(let from, let to):
-            "\(path.codec) \(FormatSelection.formatRate(from)) → \(FormatSelection.formatRate(to))"
-        case .reducedBitDepth(_, let to): "\(format) → \(to)"
-        case .dsdOverPCM: "\(path.codec) DoP"
-        case .dsdConverted: "\(path.codec) → PCM"
-        case .processed where path.isResampled:
-            "\(path.codec) \(FormatSelection.formatRate(path.fileSampleRate)) → \(FormatSelection.formatRate(path.deviceSampleRate))"
-        default: format
+        case .resampled(let from, let to): return "\(path.codec) \(rate(from)) → \(rate(to))"
+        case .reducedBitDepth(_, let to): return "\(file) → \(to)"
+        case .dsdOverPCM: return "\(path.codec) DoP"
+        case .dsdConverted: return "\(path.codec) → PCM"
+        case .processed where path.isResampled: return "\(path.codec) \(rate(path.fileSampleRate)) → \(rate(path.deviceSampleRate))"
+        default: return path.dsd != nil ? path.codec : file
         }
     }
 
