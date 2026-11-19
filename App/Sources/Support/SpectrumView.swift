@@ -3,8 +3,8 @@ import MiniAmpKit
 import SwiftUI
 
 /// A Winamp-style spectrum analyser of what's playing: green bars turning yellow, then red,
-/// as they rise, made of thin segments, with grey peak caps that hang and fall, on a black
-/// panel with a dotted grid.
+/// as they rise, made of thin segments, with grey peak caps that hang and fall, and a dotted
+/// grid. See-through: it sits on whatever panel is behind it (glass, or `background`).
 ///
 /// Drawn by `SpectrumNSView` with Core Animation, so a frame costs an FFT and moving a layer
 /// per bar and per cap, not a SwiftUI update. (Shape layers whose paths change every frame
@@ -53,6 +53,9 @@ final class SpectrumNSView: NSView {
 
     private let grid = CAShapeLayer()
     private let gradient = CAGradientLayer()
+    /// Holds the bars; masked by `segments`, so the gaps between segments show what's behind
+    /// (glass, or the panel's black) rather than being painted over in a colour.
+    private let barsLayer = CALayer()
     /// The gradient shows through these: a layer per bar.
     private let barMask = CALayer()
     private var bars: [CALayer] = []
@@ -78,7 +81,8 @@ final class SpectrumNSView: NSView {
         self.tap = tap
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.backgroundColor = Self.background.cgColor
+        // Clear: the panel behind it is SwiftUI's (glass, or `background` before macOS 26).
+        layer?.backgroundColor = NSColor.clear.cgColor
         layer?.masksToBounds = true
 
         grid.fillColor = NSColor(white: 1, alpha: 0.09).cgColor
@@ -87,9 +91,13 @@ final class SpectrumNSView: NSView {
         gradient.startPoint = CGPoint(x: 0.5, y: 0)
         gradient.endPoint = CGPoint(x: 0.5, y: 1)
         gradient.mask = barMask
-        // The gaps between segments, painted over the bars in the panel's colour.
-        segments.fillColor = Self.background.cgColor
-        for sublayer in [grid, gradient, segments, capLayer] {
+        // The segments, as a mask: the bars show only within them.
+        segments.fillColor = NSColor.black.cgColor
+        segments.actions = Self.noActions
+        gradient.actions = Self.noActions
+        barsLayer.addSublayer(gradient)
+        barsLayer.mask = segments
+        for sublayer in [grid, barsLayer, capLayer] {
             sublayer.actions = Self.noActions
             layer?.addSublayer(sublayer)
         }
@@ -140,7 +148,7 @@ final class SpectrumNSView: NSView {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for sublayer in [grid, segments, capLayer] { sublayer.frame = bounds }
+        for sublayer in [grid, barsLayer, segments, capLayer] { sublayer.frame = bounds }
         gradient.frame = plot
         barMask.frame = CGRect(origin: .zero, size: plot.size)
         if analyzer?.bandCount != barCount { analyzer = SpectrumAnalyzer(bandCount: barCount) }
@@ -166,12 +174,12 @@ final class SpectrumNSView: NSView {
         return path
     }
 
-    /// Horizontal lines across the plot, splitting the bars into segments.
+    /// Bands across the plot, a segment tall with a gap between: where the bars show.
     private func segmentPath() -> CGPath {
         let path = CGMutablePath()
-        var y = plot.minY + Self.segment
+        var y = plot.minY
         while y < plot.maxY {
-            path.addRect(CGRect(x: plot.minX, y: y, width: plot.width, height: Self.segmentGap))
+            path.addRect(CGRect(x: plot.minX, y: y, width: plot.width, height: min(Self.segment, plot.maxY - y)))
             y += Self.segment + Self.segmentGap
         }
         return path

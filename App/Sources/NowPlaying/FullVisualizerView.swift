@@ -13,8 +13,8 @@ struct FullVisualizerView: View {
         // As much of the page as there is: the bars stretch to the height, and more of
         // them fit the width.
         SpectrumView(player: app.player)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.floatingPanel, style: .continuous))
-            .elevation(.panel)
+            .padding(Theme.Spacing.s)
+            .modifier(SpectrumPanel(tint: app.tint))
             .overlay {
                 Group {
                     if app.player.isSendingDoP {
@@ -39,5 +39,26 @@ struct FullVisualizerView: View {
         .environment(\.colorScheme, .dark)
         .fullViewToolbar(app: app)
         .modifier(FullViewEntry(app: app, url: url, entry: $entry))
+    }
+}
+
+/// Behind the bars: glass tinted with the cover, as Up Next is beside it (macOS 26 and later);
+/// before that, the classic black panel.
+private struct SpectrumPanel: ViewModifier {
+    let tint: Color?
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.floatingPanel, style: .continuous)
+        if #available(macOS 26, *) {
+            content
+                .clipShape(shape)
+                .glassEffect(.regular.tint(tint?.opacity(Theme.Tint.inspector.top)), in: shape)
+                .animation(.easeInOut(duration: 0.6), value: tint)
+        } else {
+            content
+                .background(Color(nsColor: SpectrumNSView.background), in: shape)
+                .clipShape(shape)
+                .elevation(.panel)
+        }
     }
 }

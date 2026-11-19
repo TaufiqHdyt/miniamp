@@ -18,6 +18,8 @@ struct LyricsView: View {
     @State private var translated: [Int: String] = [:]
     @State private var translation: TranslationSession.Configuration?
     @State private var translationError: String?
+    /// How far the toolbar reaches down over the lyrics, which fade out below it.
+    @State private var toolbarHeight: CGFloat = 0
     /// The lines being made into a card, while the share sheet is open.
     @State private var sharing: LyricsShareTarget?
 
@@ -89,12 +91,17 @@ struct LyricsView: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.never)
-            // Not on under the toolbar, behind its buttons: the lines fade out below it.
-            .clipped()
+            // Not on under the toolbar, behind its buttons: the scroll view runs up under it, so
+            // the lines fade out from its bottom edge, not the window's top.
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { toolbarHeight = $0 }
             .mask {
-                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.1),
-                                       .init(color: .black, location: 0.9), .init(color: .clear, location: 1)],
-                               startPoint: .top, endPoint: .bottom)
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: toolbarHeight)
+                    LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.08),
+                                           .init(color: .black, location: 0.9), .init(color: .clear, location: 1)],
+                                   startPoint: .top, endPoint: .bottom)
+                }
+                .ignoresSafeArea()
             }
         }
         .fullViewToolbar(app: app) {
