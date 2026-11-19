@@ -33,15 +33,7 @@ struct NowPlayingView: View {
                                        description: Text("Double-click a song to play it."))
             }
         }
-        // The cover's colour, strongest at the top where the song is, fading down the list.
-        .scrollContentBackground(app.tint == nil ? .automatic : .hidden)
-        .background {
-            if let tint = app.tint {
-                LinearGradient(colors: [tint.opacity(Theme.Tint.inspector.top), tint.opacity(Theme.Tint.inspector.bottom)], startPoint: .top, endPoint: .bottom)
-                    .ignoresSafeArea()
-            }
-        }
-        .animation(.easeInOut(duration: 0.6), value: app.tint)
+        .modifier(InspectorPanel(tint: app.tint))
         // Read the tags of what's shown when the queue moves, or when the library changes (a retag).
         .task(id: Shown(urls: [player.queue.current].compactMap { $0 } + upcoming.map(\.url),
                         revision: app.library?.revision ?? 0)) {
@@ -248,5 +240,39 @@ private struct AutoplayToggle: View {
             .help(app.autoplays ? "Autoplay is on: when Up Next runs out, songs like the last ones keep playing"
                                 : "Turn on autoplay: when Up Next runs out, keep playing songs like the last ones")
             .accessibilityLabel("Autoplay")
+    }
+}
+
+/// The inspector's look. On macOS 26 and later, a glass panel inset from the window's edges
+/// and running its full height, as the sidebar does, tinted with the cover. Before that, the
+/// column itself takes the cover's colour, strongest at the top where the song is.
+private struct InspectorPanel: ViewModifier {
+    let tint: Color?
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            let shape = RoundedRectangle(cornerRadius: Theme.Radius.floatingPanel, style: .continuous)
+            content
+                .scrollContentBackground(.hidden)
+                .padding(.horizontal, Theme.Spacing.s)
+                .background {
+                    Color.clear
+                        .glassEffect(.regular.tint(tint?.opacity(Theme.Tint.inspector.top)), in: shape)
+                        .padding(Theme.Spacing.s)
+                        .ignoresSafeArea()
+                }
+                .animation(.easeInOut(duration: 0.6), value: tint)
+        } else {
+            content
+                .scrollContentBackground(tint == nil ? .automatic : .hidden)
+                .background {
+                    if let tint {
+                        LinearGradient(colors: [tint.opacity(Theme.Tint.inspector.top), tint.opacity(Theme.Tint.inspector.bottom)],
+                                       startPoint: .top, endPoint: .bottom)
+                            .ignoresSafeArea()
+                    }
+                }
+                .animation(.easeInOut(duration: 0.6), value: tint)
+        }
     }
 }
