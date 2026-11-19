@@ -137,8 +137,7 @@ struct LyricsView<NowPlaying: View>: View {
     }
 
     private var shareButton: some View {
-        Button { share(from: follower?.position.line) } label: { Image(systemName: "square.and.arrow.up") }
-            .buttonStyle(.borderless)
+        Button { share(from: follower?.position.line) } label: { Label("Share", systemImage: "square.and.arrow.up") }
             .help("Share up to five lines as an image")
     }
 
@@ -158,8 +157,7 @@ struct LyricsView<NowPlaying: View>: View {
     }
 
     private var editButton: some View {
-        Button { app.editLyrics() } label: { Image(systemName: "pencil") }
-            .buttonStyle(.borderless)
+        Button { app.editLyrics() } label: { Label("Edit", systemImage: "pencil") }
             .help("Edit the lyrics, or time them to the song")
     }
 
@@ -186,11 +184,9 @@ struct LyricsView<NowPlaying: View>: View {
         Menu {
             extrasToggles
         } label: {
-            Image(systemName: "character.bubble")
+            Label("Romanization and Translation", systemImage: "character.bubble")
         }
-        .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
         .help("Show the lyrics in Latin letters, or translated")
     }
 
@@ -375,26 +371,31 @@ struct LyricsView<NowPlaying: View>: View {
 }
 
 /// Nudges one song's lyrics sooner or later, 0.1 s a click; the readout resets it.
+/// The song's lyrics timing, as a menu: sooner, later, or back as they were. Its label says how
+/// far they're moved, once they are; the shortcuts nudge them without opening it.
 private struct TimingControl: View {
     let app: AppState
     let url: URL
 
     var body: some View {
         let offset = app.lyricsOffset(for: url)
-        HStack(spacing: 2) {
-            Button { app.adjustLyricsTiming(by: .zero - AppState.lyricsStep) } label: { Image(systemName: "minus") }
-                .help("Show the lyrics later (⌥⌘])")
-            Button(Self.label(offset)) { app.adjustLyricsTiming(by: nil) }
-                .monospacedDigit()
-                .frame(minWidth: 64)
+        Menu {
+            // The shortcuts (⌥⌘[ and ⌥⌘]) are the View menu's.
+            Button("Show Lyrics Sooner") { app.adjustLyricsTiming(by: AppState.lyricsStep) }
+            Button("Show Lyrics Later") { app.adjustLyricsTiming(by: .zero - AppState.lyricsStep) }
+            Divider()
+            Button("Reset for This Song") { app.adjustLyricsTiming(by: nil) }
                 .disabled(offset == .zero)
-                .help(offset == .zero ? "Use − and + if the lyrics are out of step with this song"
-                                      : "Click to put this song's lyrics back as they were")
-            Button { app.adjustLyricsTiming(by: AppState.lyricsStep) } label: { Image(systemName: "plus") }
-                .help("Show the lyrics sooner (⌥⌘[)")
+        } label: {
+            if offset == .zero {
+                Label("Timing", systemImage: "timer")
+            } else {
+                Label(Self.label(offset), systemImage: "timer").labelStyle(.titleAndIcon).monospacedDigit()
+            }
         }
-        .buttonStyle(.borderless)
-        .accessibilityElement(children: .contain)
+        .menuIndicator(.hidden)
+        .help(offset == .zero ? "Timing: if the lyrics are out of step with this song, show them sooner or later"
+                              : "Timing: \(Self.label(offset)) for this song")
         .accessibilityLabel("Lyrics timing")
     }
 

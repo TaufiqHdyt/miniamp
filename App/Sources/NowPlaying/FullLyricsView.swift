@@ -82,8 +82,8 @@ extension View {
                     .fullViewHeadingBackground()
                 // Pushes what follows to the window's trailing edge, away from the song.
                 FullViewSpacer(flexible: true)
-                // On a glass of its own: a group's glass sized to icons cut it off.
-                ToolbarItem(placement: .automatic) { timing.fixedSize() }
+                // On a glass of its own, apart from the buttons about the words.
+                ToolbarItem(placement: .automatic) { timing }
                 FullViewSpacer(flexible: false)
                 ToolbarItemGroup(placement: .automatic) { controls }
                 // Back to the library on a glass of its own, apart from the page's buttons.

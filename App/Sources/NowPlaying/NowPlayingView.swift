@@ -54,62 +54,77 @@ struct NowPlayingView: View {
         let chosen = upcoming.filter { !player.autoplayItems.contains($0.item) }
         let autoplayed = upcoming.filter { player.autoplayItems.contains($0.item) }
         let remaining = remainingCount(player.queue, shown: upcoming.count)
+        // Headings and notes are rows, laid out as the songs are, so everything shares one
+        // edge on each side (section headers sit apart, with their own insets).
         return List {
-            Section {
-                rows(chosen)
-                if remaining > 0, autoplayed.isEmpty { note("and \(remaining) more") }
-                if chosen.isEmpty {
-                    note(!autoplayed.isEmpty ? "Nothing queued: Play Next and Play Last add songs here."
-                         : player.repeatMode != .off ? "The queue starts over."
-                         : "This is the last song.")
+            heading("Up Next", first: true) {
+                if player.queue.isShuffled { Image(systemName: "shuffle").help("Shuffled") }
+                if player.repeatMode != .off {
+                    Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
+                        .help(player.repeatMode == .one ? "Repeating one" : "Repeating all")
                 }
-            } header: {
-                HStack {
-                    Text("Up Next")
-                    Spacer()
-                    if player.queue.isShuffled { Image(systemName: "shuffle").help("Shuffled") }
-                    if player.repeatMode != .off {
-                        Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
-                            .help(player.repeatMode == .one ? "Repeating one" : "Repeating all")
-                    }
-                    if !chosen.isEmpty {
-                        Button("Clear") { Task { await player.clearUpNext() } }
-                            .buttonStyle(.link)
-                            .help("Take the songs you queued out of Up Next; the song playing and autoplay's stay")
-                    }
+                if !chosen.isEmpty {
+                    Button("Clear") { Task { await player.clearUpNext() } }
+                        .buttonStyle(.link)
+                        .help("Take the songs you queued out of Up Next; the song playing and autoplay's stay")
                 }
             }
-            Section {
-                rows(autoplayed)
-                if remaining > 0, !autoplayed.isEmpty { note("and \(remaining) more") }
-                if autoplayed.isEmpty {
-                    note(app.autoplays ? "When Up Next runs out, songs like the last ones keep playing."
-                         : "Off. Turn it on to keep playing songs like the last ones when Up Next runs out.")
+            rows(chosen)
+            if remaining > 0, autoplayed.isEmpty { note("and \(remaining) more") }
+            if chosen.isEmpty {
+                note(!autoplayed.isEmpty ? "Nothing queued: Play Next and Play Last add songs here."
+                     : player.repeatMode != .off ? "The queue starts over."
+                     : "This is the last song.")
+            }
+            heading("Autoplay", first: false) {
+                if !autoplayed.isEmpty {
+                    Button("Clear") { Task { await player.clearAutoplay() } }
+                        .buttonStyle(.link)
+                        .help("Take autoplay's songs out of Up Next")
                 }
-            } header: {
-                HStack {
-                    Text("Autoplay")
-                    Spacer()
-                    if !autoplayed.isEmpty {
-                        Button("Clear") { Task { await player.clearAutoplay() } }
-                            .buttonStyle(.link)
-                            .help("Take autoplay's songs out of Up Next")
-                    }
-                    AutoplayToggle(app: app)
-                }
+                AutoplayToggle(app: app)
+            }
+            rows(autoplayed)
+            if remaining > 0, !autoplayed.isEmpty { note("and \(remaining) more") }
+            if autoplayed.isEmpty {
+                note(app.autoplays ? "When Up Next runs out, songs like the last ones keep playing."
+                     : "Off. Turn it on to keep playing songs like the last ones when Up Next runs out.")
             }
         }
-        .listStyle(.inset)
+        .listStyle(.plain)
         // The floating panel ends above the player bar; the inspector runs on under it.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Color.clear.frame(height: floating ? Theme.Spacing.s : app.playerBarInset).allowsHitTesting(false)
         }
     }
 
+    /// Every row's inset from the list's edges; each pads its content by `rowPadding` inside
+    /// that, so a song's hover highlight has room and text lines up across rows.
+    static let rowInsets = EdgeInsets(top: 1, leading: Theme.Spacing.xs, bottom: 1, trailing: Theme.Spacing.xs)
+    static let rowPadding: CGFloat = Theme.Spacing.s
+
+    private func heading(_ title: String, first: Bool, @ViewBuilder accessories: () -> some View) -> some View {
+        HStack(spacing: Theme.Spacing.s) {
+            Text(title).font(.headline)
+            Spacer()
+            accessories()
+        }
+        .padding(.horizontal, Self.rowPadding)
+        .padding(.top, first ? Theme.Spacing.s : Theme.Spacing.l)
+        .padding(.bottom, Theme.Spacing.xs)
+        .listRowInsets(Self.rowInsets)
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .accessibilityAddTraits(.isHeader)
+    }
+
     private func note(_ text: String) -> some View {
         Text(text)
             .foregroundStyle(QueueRow.dimmed)
             .font(.callout)
+            .padding(.horizontal, Self.rowPadding)
+            .padding(.vertical, Theme.Spacing.xs)
+            .listRowInsets(Self.rowInsets)
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
     }
@@ -126,7 +141,7 @@ struct NowPlayingView: View {
             QueueRow(entry: entries[row.url] ?? QueueEntry(fileName: row.url), artwork: artwork)
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets(top: 1, leading: 4, bottom: 1, trailing: 4))
+                .listRowInsets(Self.rowInsets)
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { play(row) }
                 .contextMenu {
@@ -224,7 +239,7 @@ private struct QueueRow: View {
                 Text(TimeFormat.minutes(ms / 1000)).monospacedDigit().font(.caption).foregroundStyle(Self.dimmed)
             }
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, NowPlayingView.rowPadding)
         .padding(.vertical, 5)
         .background {
             RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
