@@ -8,9 +8,7 @@ struct NowPlayingView: View {
     let app: AppState
     /// The floating panel (macOS 26 and later), rather than the inspector.
     var floating = false
-    @State private var entries: [URL: QueueEntry] = [:]
-    /// The library revision `entries` were read at.
-    @State private var entriesRevision = 0
+    private var entries: [URL: QueueEntry] { app.upNextEntries }
 
     /// Rows shown in Up Next. A whole-library queue is thousands long; nobody scrolls that far.
     static let upcomingLimit = 200
@@ -33,17 +31,21 @@ struct NowPlayingView: View {
             let urls = upcoming.map(\.url)
             let revision = app.library?.revision ?? 0
             // After a library change, read everything again so retagged files show their new tags.
-            let stale = revision != entriesRevision
+            let stale = revision != app.upNextEntriesRevision
             let wanted = stale ? urls : urls.filter { entries[$0] == nil }
             guard !wanted.isEmpty else { return }
             let loaded = await QueueEntry.load(wanted, from: app.library)
             guard !Task.isCancelled else { return }
+            // Only ever over what's there: a read that comes back short (the library busy
+            // recording a play) leaves the rows as they were, not as file names.
+            var merged = entries
             if stale {
-                entries = loaded
-                entriesRevision = revision
-            } else {
-                entries.merge(loaded) { _, new in new }
+                let shown = Set(urls)
+                merged = merged.filter { shown.contains($0.key) }
+                app.upNextEntriesRevision = revision
             }
+            merged.merge(loaded.filter { $0.value.inLibrary || merged[$0.key] == nil }) { _, new in new }
+            if merged != entries { app.upNextEntries = merged }
         }
     }
 

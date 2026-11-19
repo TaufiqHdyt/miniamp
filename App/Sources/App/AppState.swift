@@ -41,6 +41,12 @@ final class AppState {
     /// lyrics, big, or the visualizer. Not remembered: each launch opens on the library.
     var fullView: FullView?
 
+    /// Up Next's rows' tags, by file. Kept here rather than in the panel, so the rows don't
+    /// fall back to file names for a moment when the panel is rebuilt (a song change).
+    var upNextEntries: [URL: QueueEntry] = [:]
+    /// The library revision `upNextEntries` were last read at.
+    @ObservationIgnored var upNextEntriesRevision = 0
+
     var showsFullLyrics: Bool {
         get { fullView == .lyrics }
         set { if newValue { fullView = .lyrics } else if fullView == .lyrics { fullView = nil } }
