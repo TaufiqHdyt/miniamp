@@ -20,9 +20,16 @@ struct MainWindow: View {
                         .contentMargins(.bottom, app.playerBarInset, for: .scrollContent)
                     // Not over full lyrics or the visualizer: their wash runs to the window's edge.
                     if app.fullView == nil { BarFade(height: app.playerBarInset) }
+                    // Over the whole window, as the bar is, rather than in the library area:
+                    // there, album and artist pages (pushed onto a navigation stack) covered it.
+                    if app.showsNowPlaying {
+                        upNextPanel
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
                     PlayerBar(app: app)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { app.playerBarInset = $0 }
                 }
+                .animation(.smooth(duration: 0.3), value: app.showsNowPlaying)
             } else {
                 VStack(spacing: 0) {
                     split(floatingUpNext: false)
@@ -103,6 +110,24 @@ struct MainWindow: View {
     /// Up Next floating over the library's trailing side, as wide as this, inset like the sidebar.
     static let upNextWidth: CGFloat = 300
 
+    /// How much of the library area's trailing side Up Next covers, margins and all.
+    private var upNextRoom: CGFloat {
+        guard #available(macOS 26, *), app.showsNowPlaying else { return 0 }
+        return Self.upNextWidth + Theme.Spacing.s * 2
+    }
+
+    /// Up Next, floating at the window's trailing side between the toolbar and the player bar.
+    private var upNextPanel: some View {
+        NowPlayingView(app: app, floating: true)
+            // Dark over a full view's wash, as the full view is.
+            .environment(\.colorScheme, app.fullView != nil && app.player.queue.current != nil ? .dark : colorScheme)
+            .frame(width: Self.upNextWidth)
+            .padding(.top, Theme.Spacing.s)
+            .padding(.trailing, Theme.Spacing.s)
+            .padding(.bottom, app.playerBarInset + Theme.Spacing.s)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
     /// `floatingUpNext`: Up Next as a glass panel over the library (macOS 26 and later), rather
     /// than the inspector, so it floats like the sidebar instead of being a column beside it.
     private func split(floatingUpNext: Bool) -> some View {
@@ -114,26 +139,8 @@ struct MainWindow: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 300)
         } detail: {
             if floatingUpNext {
-                let room = showsUpNext ? Self.upNextWidth + Theme.Spacing.s * 2 : 0
+                // Up Next floats over the whole window instead (see body).
                 detail
-                    // The library keeps clear of the panel and scrolls on under it, as under the
-                    // sidebar; what doesn't scroll keeps clear by `clearsUpNext`.
-                    .contentMargins(.trailing, room, for: .scrollContent)
-                    .environment(\.upNextRoom, room)
-                    .overlay(alignment: .topTrailing) {
-                        if showsUpNext {
-                            NowPlayingView(app: app, floating: true)
-                                // Dark over a full view's wash, as the full view is.
-                                .environment(\.colorScheme, app.fullView != nil && app.player.queue.current != nil ? .dark : colorScheme)
-                                .frame(width: Self.upNextWidth)
-                                .padding(.top, Theme.Spacing.s)
-                                .padding(.trailing, Theme.Spacing.s)
-                                .padding(.bottom, app.playerBarInset + Theme.Spacing.s)
-                                .ignoresSafeArea(.container, edges: .trailing)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
-                        }
-                    }
-                    .animation(.smooth(duration: 0.3), value: showsUpNext)
             } else {
                 detail
                     .inspector(isPresented: Binding(get: { showsUpNext }, set: { app.showsNowPlaying = $0 })) {
@@ -153,15 +160,19 @@ struct MainWindow: View {
     private var detail: some View {
         if let full = app.fullView, let url = app.player.queue.current {
             switch full {
-            case .lyrics: FullLyricsView(app: app, url: url)
-            case .visualizer: FullVisualizerView(app: app, url: url)
+            case .lyrics: FullLyricsView(app: app, url: url).clearingUpNext(upNextRoom)
+            case .visualizer: FullVisualizerView(app: app, url: url).clearingUpNext(upNextRoom)
             }
         } else if let library = app.library {
             // Album and artist pages open over the page showing, with Back to return.
             NavigationStack(path: $app.libraryPath) {
+                // Each page keeps clear of Up Next itself: a page pushed onto the stack doesn't
+                // take margins set around the stack.
                 page(library)
+                    .clearingUpNext(upNextRoom)
                     .navigationDestination(for: LibraryDestination.self) { destination in
                         LibraryDestinationView(app: app, library: library, destination: destination)
+                            .clearingUpNext(upNextRoom)
                     }
             }
         } else {
@@ -228,5 +239,15 @@ struct MainWindow: View {
                 if defaults.bool(forKey: "sleepAtEndOfTrack") { app.sleepTimer.stopAtEndOfTrack() }
             }
         }
+    }
+}
+
+private extension View {
+    /// Keeps a page's content clear of Up Next, `room` wide at the trailing side: scroll views
+    /// by a content margin, running on under it as under the sidebar; what doesn't scroll by
+    /// `clearsUpNext`.
+    func clearingUpNext(_ room: CGFloat) -> some View {
+        contentMargins(.trailing, room, for: .scrollContent)
+            .environment(\.upNextRoom, room)
     }
 }
