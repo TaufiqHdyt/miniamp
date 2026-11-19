@@ -10,7 +10,7 @@ struct FullLyricsView: View {
 
     var body: some View {
         let entry = entry?.url == url ? entry : nil
-        LyricsView(app: app, url: url, close: { app.showsFullLyrics = false }) {
+        LyricsView(app: app, url: url, close: { app.toggleFullLyrics() }) {
             FullViewHeading(app: app, entry: entry ?? QueueEntry(fileName: url))
         }
         .id(url)
@@ -78,8 +78,9 @@ extension View {
             .toolbar {
                 ToolbarItem(placement: .navigation) { heading }
                     .fullViewHeadingBackground()
-                ToolbarItemGroup(placement: .primaryAction) { controls }
-                ToolbarItem(placement: .primaryAction) {
+                // .automatic, not .primaryAction: on macOS that's next to the title.
+                ToolbarItemGroup(placement: .automatic) { controls }
+                ToolbarItem(placement: .automatic) {
                     Button(action: close) { Label("Back to the Library", systemImage: "arrow.down.right.and.arrow.up.left") }
                         .keyboardShortcut(.cancelAction)
                         .help("Back to the library (Esc)")

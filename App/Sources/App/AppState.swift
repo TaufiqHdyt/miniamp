@@ -418,18 +418,28 @@ final class AppState {
         if showsNowPlaying {
             showsNowPlaying = false
         } else {
-            fullView = nil
-            showsNowPlaying = true
+            switchingViews {
+                fullView = nil
+                showsNowPlaying = true
+            }
         }
+    }
+
+    /// Between a full view and the library with Up Next, at once: the inspector sliding while
+    /// the library area changes under it jumps about.
+    private func switchingViews(_ change: () -> Void) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction, change)
     }
 
     /// Opens the lyrics, filling the library area (while something is playing), or goes back
     /// to the library.
     func toggleFullLyrics() {
         if showsFullLyrics {
-            showsFullLyrics = false
+            switchingViews { showsFullLyrics = false }
         } else if player.queue.current != nil {
-            showsFullLyrics = true
+            switchingViews { showsFullLyrics = true }
         }
     }
 
@@ -437,9 +447,9 @@ final class AppState {
     /// goes back to the library.
     func toggleVisualizer() {
         if showsVisualizer {
-            showsVisualizer = false
+            switchingViews { showsVisualizer = false }
         } else if player.queue.current != nil {
-            showsVisualizer = true
+            switchingViews { showsVisualizer = true }
         }
     }
 

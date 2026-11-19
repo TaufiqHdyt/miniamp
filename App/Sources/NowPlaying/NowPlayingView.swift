@@ -237,22 +237,19 @@ private struct AutoplayToggle: View {
     }
 }
 
-/// The inspector's look. On macOS 26 and later, a glass panel against the library and inset
-/// from the window's edges, running its full height, tinted with the cover. Before that, the
-/// column itself takes the cover's colour, strongest at the top where the song is.
+/// The inspector's look. On macOS 26 and later, a glass panel floating like the sidebar:
+/// inset from the window's edges and the library, rounded all round, running its full height,
+/// tinted with the cover. Before that, the column itself takes the cover's colour, strongest at
+/// the top where the song is.
 private struct InspectorPanel: ViewModifier {
     let tint: Color?
 
     func body(content: Content) -> some View {
         if #available(macOS 26, *) {
-            // Against the library on the leading side, with no gap: the library doesn't run on
-            // under the column, as it does under the sidebar, so a gap would show as a strip.
-            let radius = Theme.Radius.floatingPanel
-            let shape = UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0,
-                                               bottomTrailingRadius: radius, topTrailingRadius: radius, style: .continuous)
+            let shape = RoundedRectangle(cornerRadius: Theme.Radius.floatingPanel, style: .continuous)
             content
                 .scrollContentBackground(.hidden)
-                .padding(.trailing, Theme.Spacing.s)
+                .padding(.horizontal, Theme.Spacing.s)
                 // Ends where the panel does, level with the player bar, rather than showing
                 // through below it at the window's edge.
                 .padding(.bottom, Theme.Spacing.s)
@@ -260,9 +257,12 @@ private struct InspectorPanel: ViewModifier {
                 .background {
                     Color.clear
                         .glassEffect(.regular.tint(tint?.opacity(Theme.Tint.inspector.top)), in: shape)
-                        .padding([.top, .trailing, .bottom], Theme.Spacing.s)
+                        .padding(Theme.Spacing.s)
                         .ignoresSafeArea()
                 }
+                // The library doesn't run on under the column as it does under the sidebar: the
+                // margin around the glass is the library's background, not a strip of another.
+                .background { Rectangle().fill(.background).ignoresSafeArea() }
                 .animation(.easeInOut(duration: 0.6), value: tint)
         } else {
             content

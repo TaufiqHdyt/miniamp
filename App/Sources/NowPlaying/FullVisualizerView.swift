@@ -34,7 +34,7 @@ struct FullVisualizerView: View {
                 .padding(.bottom, Theme.Spacing.l + app.playerBarInset)
         .background { CoverWash(app: app, entry: entry) }
         .environment(\.colorScheme, .dark)
-        .fullViewToolbar(close: { app.showsVisualizer = false }) {
+        .fullViewToolbar(close: { app.toggleVisualizer() }) {
             FullViewHeading(app: app, entry: entry ?? QueueEntry(fileName: url))
         }
         .modifier(FullViewEntry(app: app, url: url, entry: $entry))
