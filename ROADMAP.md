@@ -147,7 +147,9 @@ Modern macOS, Apple Music's layout taken further, in phases. The plan, the basel
   - [x] Now Playing and hero transitions respect Reduce Motion
   - [x] Solid panels under Reduce Transparency, stronger borders and lyric contrast under Increase Contrast
   - [x] Keyboard shelf scrolling and accessible labels and actions for the new playback controls
-  - [ ] Verify light and dark appearances on macOS 15 and 27, including VoiceOver and keyboard navigation
+  - [x] On macOS 27.2.1, Tab reaches album buttons in the Home shelf and Right Arrow scrolls it
+  - [ ] Verify light and dark appearances and spoken VoiceOver output on macOS 27
+  - [ ] Verify light and dark appearances, VoiceOver, and keyboard navigation on macOS 15
 
 **Done when:** every phase meets its check in DESIGN.md, and `make app-bench` is no worse than the baseline.
 
