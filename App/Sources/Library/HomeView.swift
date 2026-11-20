@@ -47,7 +47,7 @@ struct HomeView: View {
     }
 
     private func albumShelf(_ title: String, _ albums: [AlbumSummary], seeAll: (() -> Void)? = nil) -> some View {
-        Shelf(title: title, seeAll: seeAll) {
+        Shelf(title: title, seeAll: seeAll, contents: albums.map(\.id)) {
             ForEach(albums) { AlbumLink(app: app, library: library, album: $0) }
         }
     }

@@ -92,7 +92,11 @@ struct PlayShuffleButtons: View {
 struct Shelf<Content: View>: View {
     let title: String
     var seeAll: (() -> Void)? = nil
+    /// What's on the shelf, in order: when it changes (Recently Played, after each song), the
+    /// shelf goes back to its start, rather than keep an offset that cuts the first cover.
+    var contents: [AnyHashable] = []
     @ViewBuilder var content: Content
+    @State private var position = ScrollPosition(edge: .leading)
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
@@ -107,8 +111,12 @@ struct Shelf<Content: View>: View {
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: Theme.Spacing.l) { content }
                     .padding(.horizontal, Theme.Spacing.page)
-                    .padding(.vertical, Theme.Spacing.xs)
+                    .padding(.top, Theme.Spacing.xs)
+                    // Room for the scroller below the names, not over them.
+                    .padding(.bottom, Theme.Spacing.m)
             }
+            .scrollPosition($position)
+            .onChange(of: contents) { position.scrollTo(edge: .leading) }
             .scrollIndicators(.automatic)
             // Not out under the sidebar as it scrolls, but out under Up Next (its content
             // margin keeps the last cover clear): clipped first, then widened under it.
