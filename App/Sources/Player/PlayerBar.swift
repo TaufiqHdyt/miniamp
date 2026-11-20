@@ -9,10 +9,11 @@ import SwiftUI
 struct PlayerBar: View {
     let app: AppState
     @State private var current: QueueEntry?
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let player = app.player
-        HStack(spacing: 16) {
+        HStack(spacing: Theme.Spacing.m) {
             NowPlayingSummary(entry: current, artwork: app.library?.artwork, app: app)
                 .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
 
@@ -21,11 +22,11 @@ struct PlayerBar: View {
                 // While the next song loads, its length, from its tags.
                 SeekBar(player: player, loadingDurationMs: current?.url == app.currentURL ? current?.durationMs : nil)
             }
-            .frame(minWidth: 300, idealWidth: 520, maxWidth: 560)
+            .frame(minWidth: 270, idealWidth: 490, maxWidth: 560)
             // Sized first, so the two sides split what's left equally and the middle stays centred.
             .layoutPriority(1)
 
-            HStack(spacing: 12) {
+            HStack(spacing: Theme.Spacing.s) {
                 SignalSummary(player: player)
                 PaneButton(app: app, pane: .upNext)
                 PaneButton(app: app, pane: .lyrics)
@@ -39,6 +40,7 @@ struct PlayerBar: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .modifier(PlayerBarBackground(tint: app.tint))
+        .environment(\.colorScheme, app.fullView == nil ? colorScheme : .dark)
         // Re-read when the track changes, or when the library does (a retagged file).
         .task(id: CurrentKey(url: app.currentURL, revision: app.library?.revision ?? 0)) {
             guard let url = app.currentURL else {

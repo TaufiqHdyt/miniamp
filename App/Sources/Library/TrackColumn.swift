@@ -35,8 +35,8 @@ enum TrackColumn: String, CaseIterable {
 
     /// The cover's size in the artwork column, and the rows' height with and without it.
     static let artworkSide: CGFloat = 30
-    static let rowHeight: CGFloat = 22
-    static let rowHeightWithArtwork: CGFloat = artworkSide + 6
+    static let rowHeight: CGFloat = 26
+    static let rowHeightWithArtwork: CGFloat = artworkSide + 10
 
     /// Columns the header menu can hide.
     var isOptional: Bool { self != .playing && self != .title }
@@ -94,6 +94,7 @@ enum TrackColumn: String, CaseIterable {
 
     @MainActor var font: NSFont {
         switch self {
+        case .title: .systemFont(ofSize: NSFont.systemFontSize, weight: .medium)
         case .number, .year, .time: .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         case .quality: .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
         default: .systemFont(ofSize: NSFont.systemFontSize)

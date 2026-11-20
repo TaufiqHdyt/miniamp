@@ -54,7 +54,7 @@ struct LyricsShareSheet: View {
                     Spacer(minLength: 0)
                 }
             }
-            .padding(20)
+            .padding(Theme.Spacing.page)
             Divider()
             HStack {
                 Button("Cancel", role: .cancel) { dismiss() }

@@ -18,8 +18,6 @@ struct LyricsView: View {
     @State private var translated: [Int: String] = [:]
     @State private var translation: TranslationSession.Configuration?
     @State private var translationError: String?
-    /// How far the toolbar reaches down over the lyrics, which fade out below it.
-    @State private var toolbarHeight: CGFloat = 0
     /// The lines being made into a card, while the share sheet is open.
     @State private var sharing: LyricsShareTarget?
 
@@ -81,28 +79,26 @@ struct LyricsView: View {
     private var full: some View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 22) {
+                LazyVStack(alignment: .leading, spacing: Theme.Spacing.l) {
                     fullRows
                 }
                 .frame(maxWidth: 760, alignment: .leading)
-                .padding(.horizontal, 48)
-                .padding(.top, 32)
+                .padding(.horizontal, Theme.Spacing.page)
+                .padding(.top, Theme.Spacing.l)
                 .padding(.bottom, 280)
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.never)
-            // Not on under the toolbar, behind its buttons: the scroll view runs up under it, so
-            // the lines fade out from its bottom edge, not the window's top.
-            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { toolbarHeight = $0 }
             .mask {
                 VStack(spacing: 0) {
-                    Color.clear.frame(height: toolbarHeight)
-                    LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.08),
-                                           .init(color: .black, location: 0.9), .init(color: .clear, location: 1)],
-                                   startPoint: .top, endPoint: .bottom)
+                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                        .frame(height: Theme.Spacing.m)
+                    Rectangle().fill(.black)
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                        .frame(height: Theme.Spacing.xl)
                 }
-                .ignoresSafeArea()
             }
+            .padding(.bottom, app.playerBarInset + Theme.Spacing.s)
         }
         .fullViewToolbar(app: app) {
             if case .found(let found) = state, !found.lyrics.isInstrumental, found.lyrics.isSynced {
@@ -424,15 +420,17 @@ private struct LyricLine: View {
 
     var body: some View {
         let current = position == nil || position?.line == line.id
+        let elapsed = position?.line.map { line.id < $0 } == true
+        let color = lineColor(current: current, elapsed: elapsed)
         let side = VoiceSide(line)
         VStack(alignment: side.alignment, spacing: style == .full ? 4 : 2) {
-            text(current: current).font(lineFont(current: current))
+            text(current: current, color: color).font(lineFont(current: current))
             ForEach(extras, id: \.self) { extra in
                 Text(verbatim: extra).font(style == .full ? .title3.weight(.semibold) : .callout)
-                    .foregroundStyle(current ? .primary : .secondary)
+                    .foregroundStyle(style == .full ? color : (current ? Color.primary : Color.secondary))
             }
         }
-        .opacity(current || position?.line.map { line.id > $0 } ?? true ? 1 : (style == .full ? 0.4 : 0.55))
+        .opacity(style == .pane && elapsed ? 0.55 : 1)
         .multilineTextAlignment(side.textAlignment)
         .frame(maxWidth: .infinity, alignment: side.frameAlignment)
         .animation(.easeOut(duration: 0.2), value: current)
@@ -442,24 +440,31 @@ private struct LyricLine: View {
     private func lineFont(current: Bool) -> Font {
         switch style {
         case .pane: .title3.weight(current ? .bold : .regular)
-        // As in Apple Music: every line bold, the one being sung lit.
-        case .full: .system(size: 30, weight: .bold)
+        case .full: .system(size: 30, weight: current ? .bold : .semibold)
+        }
+    }
+
+    private func lineColor(current: Bool, elapsed: Bool) -> Color {
+        switch style {
+        case .pane: current ? .primary : .secondary
+        case .full: .white.opacity(current ? 1 : (elapsed ? 0.5 : 0.65))
         }
     }
 
     @ViewBuilder
-    private func text(current: Bool) -> some View {
+    private func text(current: Bool, color: Color) -> some View {
         Group {
             if line.text.isEmpty {
-                Text("♪").foregroundStyle(current ? .primary : .tertiary)
+                Text("♪").foregroundStyle(style == .pane && !current ? Color(nsColor: .tertiaryLabelColor) : color)
             } else if current, position != nil, !line.words.isEmpty {
                 // Sung words lit; the rest still to come.
+                let upcoming = style == .full ? Color.white.opacity(0.7) : .secondary
                 line.words.enumerated().reduce(Text(verbatim: "")) { text, item in
                     let sung = item.offset <= (position?.word ?? -1)
-                    return Text("\(text)\(Text(verbatim: item.element.text).foregroundStyle(sung ? .primary : .secondary))")
+                    return Text("\(text)\(Text(verbatim: item.element.text).foregroundStyle(sung ? color : upcoming))")
                 }
             } else {
-                Text(verbatim: line.text).foregroundStyle(current ? .primary : .secondary)
+                Text(verbatim: line.text).foregroundStyle(color)
             }
         }
     }

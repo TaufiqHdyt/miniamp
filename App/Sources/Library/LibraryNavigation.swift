@@ -129,10 +129,10 @@ struct SongRow: View {
             }
             VStack(alignment: .leading, spacing: 1) {
                 Text(info.track.title)
-                    .fontWeight(isCurrent ? .semibold : .regular)
+                    .fontWeight(isCurrent ? .semibold : .medium)
                     .foregroundStyle(isCurrent ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
                 if let line = secondLine {
-                    Text(line).font(.callout).foregroundStyle(.secondary)
+                    Text(line).font(.caption).foregroundStyle(.secondary)
                 }
             }
             .lineLimit(1)

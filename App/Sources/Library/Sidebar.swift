@@ -179,7 +179,8 @@ private struct LibraryStatus: View {
             } else if library.folders.isEmpty {
                 Button("Add Music Folder…") { openSettings() }
             } else {
-                Text(CountFormat.songs(library.trackCount))
+                Label(CountFormat.songs(library.trackCount), systemImage: "music.note.list")
+                    .monospacedDigit()
             }
             if let message = library.lastError {
                 Label(message, systemImage: "exclamationmark.triangle")
@@ -191,7 +192,9 @@ private struct LibraryStatus: View {
         .font(.caption)
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Theme.Spacing.m)
+        .padding(.vertical, Theme.Spacing.s)
+        .panelSurface()
+        .padding(.horizontal, Theme.Spacing.s)
     }
 }

@@ -101,11 +101,12 @@ struct NowPlayingView: View {
     /// Every row's inset from the list's edges; each pads its content by `rowPadding` inside
     /// that, so a song's hover highlight has room and text lines up across rows.
     static let rowInsets = EdgeInsets(top: 1, leading: Theme.Spacing.xs, bottom: 1, trailing: Theme.Spacing.xs)
-    static let rowPadding: CGFloat = Theme.Spacing.s
+    static let rowPadding: CGFloat = Theme.Spacing.m
 
     private func heading(_ title: String, first: Bool, @ViewBuilder accessories: () -> some View) -> some View {
         HStack(spacing: Theme.Spacing.s) {
-            Text(title).font(.headline)
+            Text(title).font(first ? .title3.weight(.semibold) : .headline)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             accessories()
         }

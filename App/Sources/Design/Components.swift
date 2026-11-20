@@ -49,8 +49,8 @@ struct ArtworkTile: View {
                     }
                 }
                 .elevation(hovering ? .lifted : .tile)
-            Text(title).lineLimit(1).padding(.top, 3)
-            Text(subtitle).lineLimit(1).font(.callout).foregroundStyle(.secondary)
+            Text(title).font(.callout.weight(.semibold)).lineLimit(1).padding(.top, Theme.Spacing.xs)
+            Text(subtitle).lineLimit(1).font(.caption).foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
@@ -65,12 +65,12 @@ struct StatCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-            Text(value).font(.title2.bold().monospacedDigit()).lineLimit(1).minimumScaleFactor(0.6)
+            Text(value).font(.title2.weight(.semibold).monospacedDigit()).lineLimit(1).minimumScaleFactor(0.6)
             Text(label).font(.callout).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Spacing.m)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: Theme.Radius.large))
+        .panelSurface()
     }
 }
 
@@ -82,6 +82,7 @@ struct PlayShuffleButtons: View {
     var body: some View {
         HStack {
             Button(action: play) { Label("Play", systemImage: "play.fill") }
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
             Button(action: shuffle) { Label("Shuffle", systemImage: "shuffle") }
         }
@@ -102,7 +103,7 @@ struct Shelf<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
             HStack(alignment: .firstTextBaseline) {
-                Text(title).font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                Text(title).font(.title2.weight(.semibold)).accessibilityAddTraits(.isHeader)
                 Spacer()
                 if let seeAll {
                     Button("See All", action: seeAll).buttonStyle(.link)
@@ -148,11 +149,12 @@ struct HeroHeader<Artwork: View, Actions: View>: View {
                 .frame(width: 200, height: 200)
                 .elevation(.floating)
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text(kind.uppercased())
-                    .font(.caption.weight(.semibold))
+                Text(kind)
+                    .font(.callout.weight(.medium))
                     .foregroundStyle(.secondary)
                 Text(title)
-                    .font(.system(size: 34, weight: .bold))
+                    .font(.system(size: 36, weight: .bold))
+                    .tracking(-0.8)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
                     .accessibilityAddTraits(.isHeader)
@@ -175,7 +177,7 @@ struct HeroHeader<Artwork: View, Actions: View>: View {
         }
         .padding(.horizontal, Theme.Spacing.page)
         .padding(.top, Theme.Spacing.m)
-        .padding(.bottom, Theme.Spacing.l)
+        .padding(.bottom, Theme.Spacing.xl)
         .background { HeroWash(key: washKey, artwork: artwork) }
     }
 }

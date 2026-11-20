@@ -13,19 +13,19 @@ enum Theme {
         static let l: CGFloat = 20
         static let xl: CGFloat = 32
         /// Between the edge of a page and its content.
-        static let page: CGFloat = 20
+        static let page: CGFloat = 24
     }
 
     enum Radius {
         /// Covers in rows and the player bar.
         static let small: CGFloat = 4
         /// Album covers, text fields, tooltips.
-        static let medium: CGFloat = 6
+        static let medium: CGFloat = 8
         /// Cards.
-        static let large: CGFloat = 8
+        static let large: CGFloat = 12
         /// The big panels, all alike: the player bar (glass, macOS 26 and later), Up Next
         /// (floating like the sidebar), the visualizer. Continuous corners.
-        static let floatingPanel: CGFloat = 18
+        static let floatingPanel: CGFloat = 20
         static let bar: CGFloat = floatingPanel
     }
 
@@ -98,6 +98,12 @@ extension View {
 
     func elevation(_ level: Theme.Elevation) -> some View {
         shadow(color: .black.opacity(level.opacity), radius: level.radius, y: level.y)
+    }
+
+    func panelSurface() -> some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous)
+        return background(.primary.opacity(0.035), in: shape)
+            .overlay { shape.strokeBorder(.primary.opacity(0.09)).allowsHitTesting(false) }
     }
 
     /// Liquid Glass on macOS 26 and later; the material it replaces before that.

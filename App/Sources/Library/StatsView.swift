@@ -39,9 +39,9 @@ struct StatsView: View {
             if let stats, !stats.isEmpty {
                 ScrollView {
                     StatsContent(app: app, library: library, stats: stats)
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, Theme.Spacing.page)
                         .padding(.top, Theme.Spacing.m)
-                        .padding(.bottom, 24)
+                        .padding(.bottom, Theme.Spacing.l)
                         .frame(maxWidth: 980)
                         .frame(maxWidth: .infinity)
                 }
@@ -58,6 +58,7 @@ struct StatsView: View {
             }
         }
         .frame(maxHeight: .infinity)
+        .environment(\.statsChartColor, app.tint ?? .accentColor)
     }
 
     private func load() async {
@@ -128,19 +129,20 @@ private struct StatsContent: View {
     let app: AppState
     let library: Library
     let stats: ListeningStats
+    @State private var width: CGFloat = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.l) {
             headline
             tiles
             ChartSection(title: stats.year == nil ? "Listening by year" : "Listening by month") {
                 TimelineChart(stats: stats)
             }
-            HStack(alignment: .top, spacing: 24) {
+            pairedSections {
                 ChartSection(title: "Time of day") { HourChart(byHour: stats.byHour) }
                 ChartSection(title: "Day of the week") { WeekdayChart(byWeekday: stats.byWeekday) }
             }
-            HStack(alignment: .top, spacing: 24) {
+            pairedSections {
                 ChartSection(title: "Top songs") { TopSongs(app: app, library: library, ranked: stats.topTracks) }
                 ChartSection(title: "Top artists") { RankedList(ranked: stats.topArtists, name: { $0 }) }
             }
@@ -152,6 +154,14 @@ private struct StatsContent: View {
                     .frame(maxWidth: 460, alignment: .leading)
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+
+    private func pairedSections(@ViewBuilder content: () -> some View) -> some View {
+        let layout = width >= 620
+            ? AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Spacing.m))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Spacing.l))
+        return layout { content() }
     }
 
     private var headline: some View {
@@ -172,7 +182,8 @@ private struct StatsContent: View {
     }
 
     private var tiles: some View {
-        HStack(spacing: 12) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 108), spacing: Theme.Spacing.s)],
+                  spacing: Theme.Spacing.s) {
             StatCard(value: Listening.short(stats.listened), label: "Listening")
             StatCard(value: stats.plays.formatted(), label: stats.plays == 1 ? "Play" : "Plays")
             StatCard(value: stats.tracks.formatted(), label: stats.tracks == 1 ? "Song" : "Songs")
@@ -221,10 +232,12 @@ private struct ChartSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.headline)
+            Text(title).font(.headline).accessibilityAddTraits(.isHeader)
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Spacing.l)
+        .panelSurface()
     }
 }
 
@@ -251,6 +264,8 @@ private struct TimelineChart: View {
     let stats: ListeningStats
     @State private var selected: Date?
 
+    @Environment(\.statsChartColor) private var chartColor
+
     var body: some View {
         let byYear = stats.year == nil
         let unit = Listening.unit(for: stats.timeline.map(\.listened))
@@ -262,7 +277,7 @@ private struct TimelineChart: View {
                 BarMark(x: .value(byYear ? "Year" : "Month", bucket.start, unit: byYear ? .year : .month),
                         y: .value(unit.label, unit.value(bucket.listened)), width: .ratio(0.6))
                     .clipShape(barShape)
-                    .foregroundStyle(Color.accentColor.opacity(hovered == nil || hovered?.start == bucket.start ? 1 : 0.45))
+                    .foregroundStyle(chartColor.opacity(hovered == nil || hovered?.start == bucket.start ? 1 : 0.45))
             }
             if let hovered {
                 RuleMark(x: .value("Selected", hovered.start, unit: byYear ? .year : .month))
@@ -296,6 +311,8 @@ private struct HourChart: View {
 
     /// The hour under the pointer.
     private var selected: Int? { selectedX.map { min(max(Int($0.rounded()), 0), 23) } }
+
+    @Environment(\.statsChartColor) private var chartColor
 
     var body: some View {
         let unit = Listening.unit(for: byHour)
@@ -340,7 +357,7 @@ private struct HourChart: View {
         return RectangleMark(xStart: .value("Hour", start), xEnd: .value("Hour", end),
                              yStart: .value(unit.label, 0.0), yEnd: .value(unit.label, value))
             .clipShape(barShape)
-            .foregroundStyle(Color.accentColor.opacity(selected == nil || selected == hour ? 1 : 0.45))
+            .foregroundStyle(chartColor.opacity(selected == nil || selected == hour ? 1 : 0.45))
     }
 
     /// "6 AM" or "06", as the locale writes hours.
@@ -354,6 +371,8 @@ private struct WeekdayChart: View {
     let byWeekday: [Duration]
     @State private var selected: String?
 
+    @Environment(\.statsChartColor) private var chartColor
+
     var body: some View {
         let calendar = Calendar.current
         // byWeekday is Sunday-first; show the week as the locale starts it.
@@ -364,7 +383,7 @@ private struct WeekdayChart: View {
             ForEach(order, id: \.self) { day in
                 BarMark(x: .value("Day", names[day]), y: .value(unit.label, unit.value(byWeekday[day])), width: .ratio(0.6))
                     .clipShape(barShape)
-                    .foregroundStyle(Color.accentColor.opacity(selected == nil || selected == names[day] ? 1 : 0.45))
+                    .foregroundStyle(chartColor.opacity(selected == nil || selected == names[day] ? 1 : 0.45))
             }
             if let selected, let day = names.firstIndex(of: selected) {
                 RuleMark(x: .value("Selected", selected))
@@ -391,6 +410,8 @@ private struct RankedList<Item: Sendable & Equatable>: View {
     let ranked: [ListeningStats.Ranked<Item>]
     let name: (Item) -> String
 
+    @Environment(\.statsChartColor) private var chartColor
+
     var body: some View {
         let most = max(ranked.first?.plays ?? 1, 1)
         Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
@@ -400,7 +421,7 @@ private struct RankedList<Item: Sendable & Equatable>: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(name(entry.item)).lineLimit(1)
                         GeometryReader { geometry in
-                            Capsule().fill(Color.accentColor)
+                            Capsule().fill(chartColor)
                                 .frame(width: max(4, geometry.size.width * CGFloat(entry.plays) / CGFloat(most)), height: 4)
                         }
                         .frame(height: 4)
@@ -458,4 +479,8 @@ private struct TopAlbums: View {
             }
         }
     }
+}
+
+private extension EnvironmentValues {
+    @Entry var statsChartColor: Color = .accentColor
 }

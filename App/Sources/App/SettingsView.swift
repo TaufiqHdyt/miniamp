@@ -19,7 +19,7 @@ struct SettingsView: View {
                 LyricsSettings(app: app)
             }
         }
-        .frame(width: 560)
+        .frame(width: 600)
     }
 }
 

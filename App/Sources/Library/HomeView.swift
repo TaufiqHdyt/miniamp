@@ -11,7 +11,7 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xl - 4) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
                 if !shelves.recentlyPlayed.isEmpty {
                     albumShelf("Recently Played", shelves.recentlyPlayed)
                 }
@@ -55,7 +55,7 @@ struct HomeView: View {
 
     private var topThisMonth: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-            Text("Top This Month").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+            Text("Top This Month").font(.title2.weight(.semibold)).accessibilityAddTraits(.isHeader)
                 .padding(.horizontal, Theme.Spacing.page)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: Theme.Spacing.l)], spacing: 0) {
                 ForEach(shelves.topThisMonth) { info in

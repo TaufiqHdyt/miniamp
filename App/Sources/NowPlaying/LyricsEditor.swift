@@ -42,7 +42,7 @@ struct LyricsEditor: View {
             }
             footer
         }
-        .padding(20)
+        .padding(Theme.Spacing.page)
         .frame(minWidth: 640, idealWidth: 720, minHeight: 520, idealHeight: 600)
         .onAppear {
             text = target.text

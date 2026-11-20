@@ -1,8 +1,7 @@
 import MiniAmpKit
 import SwiftUI
 
-/// Now Playing with the lyrics, as in Apple Music: big, beside the playing song's cover, over
-/// the cover blurred into a wash of its colours.
+/// Full-window lyrics over the playing song's colour wash.
 struct FullLyricsView: View {
     let app: AppState
     let url: URL
@@ -10,14 +9,12 @@ struct FullLyricsView: View {
 
     var body: some View {
         let entry = entry?.url == url ? entry : nil
-        NowPlayingLayout(app: app, entry: entry) {
-            LyricsView(app: app, url: url)
-                .id(url)
-        }
-        .background { CoverWash(app: app, entry: entry) }
-        // Light text on the dark wash, whatever the system appearance.
-        .environment(\.colorScheme, .dark)
-        .modifier(FullViewEntry(app: app, url: url, entry: $entry))
+        LyricsView(app: app, url: url)
+            .id(url)
+            .background { CoverWash(app: app, entry: entry) }
+            // Light text on the dark wash, whatever the system appearance.
+            .environment(\.colorScheme, .dark)
+            .modifier(FullViewEntry(app: app, url: url, entry: $entry))
     }
 }
 
@@ -68,6 +65,8 @@ extension View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    // The toolbar's glass is light even over the dark artwork wash.
+                    .environment(\.colorScheme, .light)
                     .labelStyle(.titleAndIcon)
                     .fixedSize()
                     .help("Lyrics (⌥⌘L) or the visualizer (⇧⌥⌘V)")
@@ -114,6 +113,8 @@ struct CoverWash: View {
                 .transition(.opacity)
             }
             Color.black.opacity(Theme.washDarkness(brightness: app.artworkBrightness))
+            LinearGradient(colors: [.black.opacity(0.18), .clear, .black.opacity(0.32)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
         }
         .clipped()
         .ignoresSafeArea()

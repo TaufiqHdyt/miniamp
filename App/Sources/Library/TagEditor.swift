@@ -79,7 +79,7 @@ struct TagEditor: View {
                 .disabled(changes.isEmpty || !numbersAreValid)
             }
         }
-        .padding(20)
+        .padding(Theme.Spacing.page)
         .frame(width: 460)
         .onAppear(perform: load)
         .task {

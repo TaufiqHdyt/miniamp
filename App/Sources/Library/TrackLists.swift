@@ -117,12 +117,12 @@ struct SearchResultsView: View {
 
     var body: some View {
         TrackTable(app: app, rows: rows, sort: $sort)
-            .clearsUpNext()
             .overlay {
                 if searched && results.isEmpty {
                     ContentUnavailableView.search(text: query)
                 }
             }
+            .clearsUpNext()
             .pageTitle("Search", subtitle: subtitle)
         .task(id: SearchQuery(text: query, sort: sort, revision: library.revision)) {
                 // Wait for a pause in typing.

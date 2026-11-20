@@ -58,8 +58,8 @@ private struct ArtistTile: View {
                 .clipShape(Circle())
                 .elevation(hovering ? .lifted : .tile)
                 .scaleEffect(hovering ? 1.02 : 1)
-            Text(artist.name).lineLimit(1).padding(.top, 3)
-            Text(CountFormat.songs(artist.trackCount)).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+            Text(artist.name).font(.callout.weight(.semibold)).lineLimit(1).padding(.top, Theme.Spacing.xs)
+            Text(CountFormat.songs(artist.trackCount)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }

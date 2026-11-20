@@ -33,6 +33,8 @@ struct EqualizerView: View {
                     band(value: $player.equalizer.gains[index], label: Self.label(Equalizer.frequencies[index]))
                 }
             }
+            .padding(Theme.Spacing.m)
+            .panelSurface()
             .disabled(!player.equalizer.isEnabled)
 
             if !player.dspMode {

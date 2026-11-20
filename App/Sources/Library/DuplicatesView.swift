@@ -34,7 +34,7 @@ struct DuplicatesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if mode == .sound { fingerprintBar }
+            if mode == .sound { fingerprintBar.clearsUpNext() }
             content
         }
         .pageTitle("Duplicates",
@@ -95,23 +95,14 @@ struct DuplicatesView: View {
     private var content: some View {
         Group {
             if let groups, !groups.isEmpty {
-                List {
-                    ForEach(groups) { group in
-                        Section {
-                            ForEach(Array(group.entries.enumerated()), id: \.element.id) { index, entry in
-                                DuplicateRow(entry: entry, isKeeper: index == 0)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture(count: 2) { app.play(group.entries.map(\.info), from: entry.info.id) }
-                                    .contextMenu { menu(for: entry, in: group) }
-                            }
-                        } header: {
-                            header(group)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                        ForEach(groups) { group in
+                            groupCard(group)
                         }
                     }
+                    .padding(Theme.Spacing.page)
                 }
-                .listStyle(.inset)
-                .clearsPlayerBar(app)
-                .clearsUpNext()
             } else if groups != nil {
                 ContentUnavailableView("No Duplicates", systemImage: "checkmark.circle",
                                        description: Text(mode == .tags
@@ -124,10 +115,41 @@ struct DuplicatesView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func groupCard(_ group: DuplicateGroup) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            header(group)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: Theme.Spacing.s)],
+                      spacing: Theme.Spacing.s) {
+                ForEach(Array(group.entries.enumerated()), id: \.element.id) { index, entry in
+                    copyCard(entry, in: group, isKeeper: index == 0)
+                }
+            }
+        }
+        .padding(Theme.Spacing.m)
+        .panelSurface()
+    }
+
+    private func copyCard(_ entry: DuplicateGroup.Entry, in group: DuplicateGroup, isKeeper: Bool) -> some View {
+        DuplicateRow(entry: entry, artwork: library.artwork, isKeeper: isKeeper)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) { app.play(group.entries.map(\.info), from: entry.info.id) }
+            .accessibilityAction(named: "Play") { app.play(group.entries.map(\.info), from: entry.info.id) }
+            .contextMenu { menu(for: entry, in: group) }
+    }
+
     private func header(_ group: DuplicateGroup) -> some View {
-        HStack {
-            Text("\(group.title) — \(group.artist)").lineLimit(1)
-            Spacer()
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+                Text(group.title).font(.headline).accessibilityAddTraits(.isHeader)
+                Text(group.artist).foregroundStyle(.secondary)
+            }
+            .lineLimit(1)
+            groupActions(group)
+        }
+    }
+
+    private func groupActions(_ group: DuplicateGroup) -> some View {
+        HStack(spacing: Theme.Spacing.m) {
             Button("Not Duplicates") {
                 app.perform {
                     try await library.database.writer.write { try Duplicates.dismiss(group, $0) }
@@ -176,14 +198,18 @@ struct DuplicatesView: View {
 
 private struct DuplicateRow: View {
     let entry: DuplicateGroup.Entry
+    let artwork: ArtworkCache?
     let isKeeper: Bool
 
     var body: some View {
         let track = entry.info.track
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: Theme.Spacing.s) {
+            ArtworkView(key: track.artworkKey, artwork: artwork, size: .small)
+                .frame(width: 36, height: 36)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
                 HStack(spacing: 6) {
-                    Text(TrackFormat.short(track)).monospacedDigit()
+                    Text(TrackFormat.short(track)).font(.callout.weight(.semibold).monospacedDigit())
                     if isKeeper {
                         Text("Keep")
                             .font(.caption.weight(.semibold))
@@ -206,6 +232,7 @@ private struct DuplicateRow: View {
                 Text("\(entry.plays) play\(entry.plays == 1 ? "" : "s")").font(.caption).foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 2)
+        .padding(Theme.Spacing.s)
+        .panelSurface()
     }
 }
