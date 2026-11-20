@@ -100,19 +100,40 @@ extension View {
         shadow(color: .black.opacity(level.opacity), radius: level.radius, y: level.y)
     }
 
-    func panelSurface() -> some View {
-        let shape = RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous)
-        return background(.primary.opacity(0.035), in: shape)
-            .overlay { shape.strokeBorder(.primary.opacity(0.09)).allowsHitTesting(false) }
-    }
+    func panelSurface() -> some View { modifier(PanelSurface()) }
 
-    /// Liquid Glass on macOS 26 and later; the material it replaces before that.
-    @ViewBuilder
-    func glassBackground(in shape: some Shape, fallback: Material = .regularMaterial) -> some View {
-        if #available(macOS 26, *) {
-            glassEffect(.regular, in: shape)
+    func glassBackground(in shape: some Shape, fallback: Material = .regularMaterial,
+                         tint: Color? = nil) -> some View {
+        modifier(GlassBackground(shape: shape, fallback: fallback, tint: tint))
+    }
+}
+
+private struct PanelSurface: ViewModifier {
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous)
+        return content.background(.primary.opacity(contrast == .increased ? 0.08 : 0.035), in: shape)
+            .overlay {
+                shape.strokeBorder(.primary.opacity(contrast == .increased ? 0.4 : 0.09))
+                    .allowsHitTesting(false)
+            }
+    }
+}
+
+private struct GlassBackground<Surface: Shape>: ViewModifier {
+    let shape: Surface
+    let fallback: Material
+    let tint: Color?
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        if reduceTransparency {
+            content.background(Color(nsColor: .windowBackgroundColor), in: shape)
+        } else if #available(macOS 26, *) {
+            content.glassEffect(.regular.tint(tint), in: shape)
         } else {
-            background(fallback, in: shape)
+            content.background(fallback, in: shape)
         }
     }
 }

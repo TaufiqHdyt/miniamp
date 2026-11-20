@@ -28,7 +28,7 @@ struct AppCommands: Commands {
                 .disabled(app.library == nil)
         }
         CommandGroup(before: .sidebar) {
-            Button(app.showsNowPlaying ? "Hide Up Next" : "Show Up Next") { app.toggleUpNext() }
+            Button(app.showsUpNext ? "Hide Up Next" : "Show Up Next") { app.toggleUpNext() }
                 .keyboardShortcut("i", modifiers: [.command, .option])
             Button(app.showsFullLyrics ? "Hide Lyrics" : "Show Lyrics") { app.toggleFullLyrics() }
                 .keyboardShortcut("l", modifiers: [.command, .option])

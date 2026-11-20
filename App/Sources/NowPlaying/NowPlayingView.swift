@@ -8,6 +8,7 @@ struct NowPlayingView: View {
     let app: AppState
     /// The floating panel (macOS 26 and later), rather than the inspector.
     var floating = false
+    var embedded = false
     private var entries: [URL: QueueEntry] { app.upNextEntries }
 
     /// Rows shown in Up Next. A whole-library queue is thousands long; nobody scrolls that far.
@@ -25,7 +26,7 @@ struct NowPlayingView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .modifier(UpNextPanel(tint: app.tint, floating: floating))
+        .modifier(UpNextPanel(tint: app.tint, floating: floating || embedded))
         // Read the tags of what's shown when the queue moves, or when the library changes (a retag).
         .task(id: Shown(urls: upcoming.map(\.url), revision: app.library?.revision ?? 0)) {
             let urls = upcoming.map(\.url)
@@ -94,7 +95,7 @@ struct NowPlayingView: View {
         .listStyle(.plain)
         // The floating panel ends above the player bar; the inspector runs on under it.
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: floating ? Theme.Spacing.s : app.playerBarInset).allowsHitTesting(false)
+            Color.clear.frame(height: floating || embedded ? Theme.Spacing.s : app.playerBarInset).allowsHitTesting(false)
         }
     }
 
@@ -145,6 +146,7 @@ struct NowPlayingView: View {
                 .listRowInsets(Self.rowInsets)
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { play(row) }
+                .accessibilityAction(named: "Play Now") { play(row) }
                 .contextMenu {
                     Button("Play Now") { play(row) }
                     Button("Play Next") {
@@ -222,6 +224,7 @@ private struct QueueRow: View {
     let entry: QueueEntry
     let artwork: ArtworkCache?
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 10) {
@@ -247,7 +250,8 @@ private struct QueueRow: View {
                 .fill(.primary.opacity(hovering ? 0.08 : 0))
         }
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovering)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -270,6 +274,8 @@ private struct AutoplayToggle: View {
 /// like the sidebar. In the inspector: the column takes the cover's colour, strongest at the
 /// top.
 private struct UpNextPanel: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let tint: Color?
     let floating: Bool
 
@@ -280,19 +286,19 @@ private struct UpNextPanel: ViewModifier {
                 .scrollContentBackground(.hidden)
                 .padding(.top, Theme.Spacing.xs)
                 .clipShape(shape)
-                .glassEffect(.regular.tint(tint?.opacity(Theme.Tint.inspector.top)), in: shape)
-                .animation(.easeInOut(duration: 0.6), value: tint)
+                .glassBackground(in: shape, tint: tint?.opacity(Theme.Tint.inspector.top))
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: tint)
         } else {
             content
-                .scrollContentBackground(tint == nil ? .automatic : .hidden)
+                .scrollContentBackground(tint == nil || reduceTransparency ? .automatic : .hidden)
                 .background {
-                    if let tint {
+                    if let tint, !reduceTransparency {
                         LinearGradient(colors: [tint.opacity(Theme.Tint.inspector.top), tint.opacity(Theme.Tint.inspector.bottom)],
                                        startPoint: .top, endPoint: .bottom)
                             .ignoresSafeArea()
                     }
                 }
-                .animation(.easeInOut(duration: 0.6), value: tint)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: tint)
         }
     }
 }

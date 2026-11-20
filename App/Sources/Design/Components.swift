@@ -15,6 +15,17 @@ extension View {
         return pageTitle(title, subtitle: subtitle)
             .toolbar { ToolbarItem(placement: .primaryAction) { controls } }
     }
+    func lyricsTextEditorStyle() -> some View {
+        let shape = RoundedRectangle(cornerRadius: Theme.Radius.medium)
+        return font(.system(.body, design: .monospaced))
+            .accessibilityLabel("Lyrics Text")
+            .autocorrectionDisabled()
+            .scrollContentBackground(.hidden)
+            .padding(Theme.Spacing.xs)
+            .background(Color(nsColor: .textBackgroundColor), in: shape)
+            .overlay { shape.strokeBorder(.quaternary).allowsHitTesting(false) }
+    }
+
 }
 
 /// A cover with a title and a line under it (an album and its artist). Hovering dims the cover a little and shows a
@@ -26,6 +37,7 @@ struct ArtworkTile: View {
     let artwork: ArtworkCache?
     let play: () -> Void
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -44,6 +56,7 @@ struct ArtworkTile: View {
                         }
                         .buttonStyle(.plain)
                         .padding(8)
+                        .accessibilityLabel("Play \(title)")
                         .help("Play \(title)")
                         .transition(.opacity)
                     }
@@ -54,7 +67,7 @@ struct ArtworkTile: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovering)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
     }
 }
 
@@ -98,6 +111,8 @@ struct Shelf<Content: View>: View {
     var contents: [AnyHashable] = []
     @ViewBuilder var content: Content
     @State private var position = ScrollPosition(edge: .leading)
+    @State private var viewport = CGRect.zero
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.upNextRoom) private var upNextRoom
 
     var body: some View {
@@ -119,6 +134,12 @@ struct Shelf<Content: View>: View {
                     .padding(.bottom, Theme.Spacing.m)
             }
             .scrollPosition($position)
+            .onScrollGeometryChange(for: CGRect.self) { $0.visibleRect } action: { _, rect in viewport = rect }
+            .focusable()
+            .accessibilityLabel(title)
+            .accessibilityHint("Use the arrow keys to scroll")
+            .onKeyPress(.leftArrow) { scrollShelf(-1) }
+            .onKeyPress(.rightArrow) { scrollShelf(1) }
             .onChange(of: contents) { position.scrollTo(edge: .leading) }
             .scrollIndicators(.automatic)
             // Out under Up Next (the page runs to the window's edge, see `runsUnderUpNext`),
@@ -126,6 +147,13 @@ struct Shelf<Content: View>: View {
             .contentMargins(.trailing, upNextRoom, for: .scrollContent)
             .clipped()
         }
+    }
+
+    private func scrollShelf(_ direction: CGFloat) -> KeyPress.Result {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+            position.scrollTo(x: max(0, viewport.minX + direction * viewport.width * 0.8))
+        }
+        return .handled
     }
 }
 
@@ -142,6 +170,8 @@ struct HeroHeader<Artwork: View, Actions: View>: View {
     let artwork: ArtworkCache?
     @ViewBuilder var cover: Artwork
     @ViewBuilder var actions: Actions
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var visible = false
 
     var body: some View {
         HStack(alignment: .bottom, spacing: Theme.Spacing.l + 4) {
@@ -179,6 +209,8 @@ struct HeroHeader<Artwork: View, Actions: View>: View {
         .padding(.top, Theme.Spacing.m)
         .padding(.bottom, Theme.Spacing.xl)
         .background { HeroWash(key: washKey, artwork: artwork) }
+        .opacity(visible ? 1 : 0)
+        .onAppear { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { visible = true } }
     }
 }
 
@@ -190,9 +222,10 @@ private struct HeroWash: View {
     static let reach: CGFloat = 120
     let key: String?
     let artwork: ArtworkCache?
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
-        if let key {
+        if !reduceTransparency, let key {
             GeometryReader { geometry in
                 ArtworkView(key: key, artwork: artwork, size: .small, cornerRadius: 0)
                     .frame(width: geometry.size.width, height: geometry.size.width)

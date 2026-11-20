@@ -65,7 +65,7 @@ struct LyricsEditor: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Lyrics: \(target.info.track.title)").font(.headline).lineLimit(1)
+            Text("Lyrics: \(target.info.track.title)").font(.headline).lineLimit(1).accessibilityAddTraits(.isHeader)
             Text([target.info.artistName, target.info.albumTitle].compactMap { $0 }.joined(separator: " — "))
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
@@ -78,12 +78,7 @@ struct LyricsEditor: View {
         return HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 TextEditor(text: $text)
-                    .font(.system(.body, design: .monospaced))
-                    .autocorrectionDisabled()
-                    .scrollContentBackground(.hidden)
-                    .padding(4)
-                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.Radius.medium).strokeBorder(.quaternary))
+                    .lyricsTextEditorStyle()
                 ForEach(notes(lyrics), id: \.self) { note in
                     Label(note, systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
                 }

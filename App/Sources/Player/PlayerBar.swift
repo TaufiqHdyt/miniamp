@@ -18,7 +18,7 @@ struct PlayerBar: View {
                 .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 4) {
-                TransportButtons(app: app)
+                if app.fullView == nil { TransportButtons(app: app) }
                 // While the next song loads, its length, from its tags.
                 SeekBar(player: player, loadingDurationMs: current?.url == app.currentURL ? current?.durationMs : nil)
             }
@@ -87,6 +87,7 @@ private struct NowPlayingSummary: View {
             }
             .buttonStyle(.plain)
             .disabled(entry == nil)
+            .accessibilityLabel(app.fullView == nil ? "Show Now Playing" : "Back to the Library")
             .help(app.fullView == nil ? "Show Now Playing" : "Back to the library")
 
             VStack(alignment: .leading, spacing: 3) {
@@ -150,6 +151,7 @@ struct TransportButtons: View {
     static let transportColour = Color.primary
 
     let app: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Clicks, each bouncing its arrows as in Apple Music.
     @State private var previousClicks = 0
     @State private var nextClicks = 0
@@ -159,37 +161,40 @@ struct TransportButtons: View {
         HStack(spacing: 18) {
             Toggle(isOn: Binding(get: { player.isShuffled }, set: { player.setShuffle($0) })) {
                 Image(systemName: "shuffle")
-                    .symbolEffect(.bounce, value: player.isShuffled)
+                    .symbolEffect(.bounce, value: reduceMotion ? false : player.isShuffled)
             }
             .toggleStyle(.button)
             .help(player.isShuffled ? "Shuffle is on (⌥⌘S)" : "Shuffle is off (⌥⌘S)")
             .accessibilityLabel("Shuffle")
             Button {
-                previousClicks += 1
+                if !reduceMotion { previousClicks += 1 }
                 app.perform { try await player.previous() }
             } label: {
                 Image(systemName: "backward.fill").symbolEffect(.bounce.down, value: previousClicks)
                     .foregroundStyle(Self.transportColour)
             }
+            .accessibilityLabel("Previous Track")
             .help("Previous (⌘←)")
             .disabled(player.queue.isEmpty)
             Button { app.perform { try await player.togglePlayPause() } } label: {
                 // Pause while the next song loads too: it's about to play.
                 Image(systemName: player.state == .playing || player.state == .preparing ? "pause.fill" : "play.fill")
-                    .contentTransition(.symbolEffect(.replace))
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
                     .foregroundStyle(Self.transportColour)
                     .font(.title2)
                     .frame(width: 24)
             }
+            .accessibilityLabel(player.state == .playing || player.state == .preparing ? "Pause" : "Play")
             .help(player.state == .playing ? "Pause (Space)" : "Play (Space)")
             .disabled(player.queue.isEmpty)
             Button {
-                nextClicks += 1
+                if !reduceMotion { nextClicks += 1 }
                 app.perform { try await player.next() }
             } label: {
                 Image(systemName: "forward.fill").symbolEffect(.bounce.down, value: nextClicks)
                     .foregroundStyle(Self.transportColour)
             }
+            .accessibilityLabel("Next Track")
             .help("Next (⌘→)")
             .disabled(player.queue.isEmpty)
             RepeatButton(player: player)
@@ -201,14 +206,15 @@ struct TransportButtons: View {
 
 /// One button that cycles off → all → one, lit only while repeat is on (like the shuffle toggle).
 struct RepeatButton: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let player: Player
 
     var body: some View {
         let mode = player.repeatMode
         Toggle(isOn: Binding(get: { mode != .off }, set: { _ in player.repeatMode = mode.next })) {
             Image(systemName: mode == .one ? "repeat.1" : "repeat")
-                .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, value: mode != .off)
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .symbolEffect(.bounce, value: !reduceMotion && mode != .off)
         }
         .toggleStyle(.button)
         .help("\(mode.help) (⌥⌘R)")
@@ -246,6 +252,7 @@ extension PlayQueue<URL>.Repeat {
 /// Up Next (the inspector) or Lyrics (filling the library area, as the visualizer does), lit
 /// while showing; again closes it.
 private struct PaneButton: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     enum Pane { case upNext, lyrics }
 
     let app: AppState
@@ -256,10 +263,10 @@ private struct PaneButton: View {
         case .upNext: ("Up Next", "list.bullet", "⌥⌘I")
         case .lyrics: ("Lyrics", "quote.bubble", "⌥⌘L")
         }
-        let showing = pane == .upNext ? app.showsNowPlaying : app.showsFullLyrics
+        let showing = pane == .upNext ? app.showsUpNext : app.showsFullLyrics
         Toggle(isOn: Binding(get: { showing }, set: { _ in pane == .upNext ? app.toggleUpNext() : app.toggleFullLyrics() })) {
             Label(name, systemImage: symbol)
-                .symbolEffect(.bounce, value: showing)
+                .symbolEffect(.bounce, value: !reduceMotion && showing)
         }
         .toggleStyle(.button)
         .buttonStyle(.borderless)
@@ -311,26 +318,32 @@ private struct MoreMenu: View {
 /// tinted with the cover; before that, the bar material across the window with the tint
 /// fading from the left.
 private struct PlayerBarBackground: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let tint: Color?
     private let shape = RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
 
     func body(content: Content) -> some View {
         if #available(macOS 26, *) {
             content
-                .glassEffect(.regular.tint(tint?.opacity(Theme.Tint.playerBar.leading)), in: shape)
+                .glassBackground(in: shape, tint: tint?.opacity(Theme.Tint.playerBar.leading))
                 .padding(.horizontal, Theme.Spacing.s)
                 .padding(.bottom, Theme.Spacing.s)
-                .animation(.easeInOut(duration: 0.6), value: tint)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: tint)
         } else {
             content.background {
                 ZStack {
-                    Rectangle().fill(.bar)
-                    if let tint {
+                    if reduceTransparency {
+                        Color(nsColor: .windowBackgroundColor)
+                    } else {
+                        Rectangle().fill(.bar)
+                    }
+                    if let tint, !reduceTransparency {
                         LinearGradient(colors: [tint.opacity(Theme.Tint.playerBar.leading), tint.opacity(Theme.Tint.playerBar.trailing)],
                                        startPoint: .leading, endPoint: .trailing)
                     }
                 }
-                .animation(.easeInOut(duration: 0.6), value: tint)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: tint)
             }
         }
     }

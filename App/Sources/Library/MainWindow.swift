@@ -7,7 +7,8 @@ struct MainWindow: View {
     @Bindable var app: AppState
     @SceneStorage("sidebarSelection") private var selection: SidebarItem = .home
     @FocusState private var searchFocused: Bool
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         Group {
             if #available(macOS 26, *) {
@@ -16,23 +17,24 @@ struct MainWindow: View {
                 // room after their last row to clear it. Laid over the whole window, not the
                 // split view, which slides about as the sidebar opens and closes.
                 ZStack(alignment: .bottom) {
-                    split(floatingUpNext: true)
-                        .contentMargins(.bottom, app.playerBarInset, for: .scrollContent)
+                    windowContent(floatingUpNext: true)
                     // Not over full lyrics or the visualizer: their wash runs to the window's edge.
                     if app.fullView == nil { BarFade(height: app.playerBarInset) }
                     // Over the whole window, as the bar is, rather than in the library area:
                     // there, album and artist pages (pushed onto a navigation stack) covered it.
-                    if app.showsNowPlaying {
+                    if app.showsNowPlaying && app.fullView == nil {
                         upNextPanel
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                     PlayerBar(app: app)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { app.playerBarInset = $0 }
                 }
-                .animation(.smooth(duration: 0.3), value: app.showsNowPlaying)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: app.showsNowPlaying)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: app.fullView != nil)
             } else {
                 VStack(spacing: 0) {
-                    split(floatingUpNext: false)
+                    windowContent(floatingUpNext: false)
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: app.fullView != nil)
                     Divider()
                     PlayerBar(app: app)
                 }
@@ -120,13 +122,22 @@ struct MainWindow: View {
     /// Up Next, floating at the window's trailing side between the toolbar and the player bar.
     private var upNextPanel: some View {
         NowPlayingView(app: app, floating: true)
-            // Dark over a full view's wash, as the full view is.
-            .environment(\.colorScheme, app.fullView != nil && app.player.queue.current != nil ? .dark : colorScheme)
             .frame(width: Self.upNextWidth)
             .padding(.top, Theme.Spacing.s)
             .padding(.trailing, Theme.Spacing.s)
             .padding(.bottom, app.playerBarInset + Theme.Spacing.s)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
+    @ViewBuilder
+    private func windowContent(floatingUpNext: Bool) -> some View {
+        if let mode = app.fullView, let url = app.player.queue.current {
+            FullPlayingView(app: app, url: url, mode: mode)
+                .transition(.opacity)
+        } else {
+            split(floatingUpNext: floatingUpNext)
+                .contentMargins(.bottom, app.playerBarInset, for: .scrollContent)
+        }
     }
 
     /// `floatingUpNext`: Up Next as a glass panel over the library (macOS 26 and later), rather
@@ -159,17 +170,14 @@ struct MainWindow: View {
 
     @ViewBuilder
     private var detail: some View {
-        if let full = app.fullView, let url = app.player.queue.current {
-            switch full {
-            case .lyrics: FullLyricsView(app: app, url: url).clearingUpNext(upNextRoom)
-            case .visualizer: FullVisualizerView(app: app, url: url).clearingUpNext(upNextRoom)
-            }
-        } else if let library = app.library {
+        if let library = app.library {
             // Album and artist pages open over the page showing, with Back to return.
             NavigationStack(path: $app.libraryPath) {
                 // Each page keeps clear of Up Next itself: a page pushed onto the stack doesn't
                 // take margins set around the stack.
                 page(library)
+                    .transition(.opacity)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: selection)
                     .clearingUpNext(upNextRoom)
                     .navigationDestination(for: LibraryDestination.self) { destination in
                         LibraryDestinationView(app: app, library: library, destination: destination)
@@ -231,10 +239,11 @@ struct MainWindow: View {
             if defaults.object(forKey: "hog") != nil { app.player.hogMode = defaults.bool(forKey: "hog") }
             app.perform {
                 try await app.player.setQueue(paths.map { URL(fileURLWithPath: $0) })
-                //   ... -fullView visualizer   (or lyrics)
+                //   ... -fullView visualizer   (or lyrics / upNext)
                 switch defaults.string(forKey: "fullView") {
                 case "visualizer": app.fullView = .visualizer
                 case "lyrics": app.fullView = .lyrics
+                case "upNext": app.fullView = .upNext
                 default: break
                 }
                 if defaults.bool(forKey: "sleepAtEndOfTrack") { app.sleepTimer.stopAtEndOfTrack() }

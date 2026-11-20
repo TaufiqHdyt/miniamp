@@ -48,7 +48,6 @@ final class SpectrumNSView: NSView {
     private var analyzer: SpectrumAnalyzer?
     /// Whether this view counts among the tap's users.
     private var capturing = false
-    private var windowVisible = false
     private var occlusionObserver: NSObjectProtocol?
 
     private let grid = CAShapeLayer()
@@ -59,6 +58,7 @@ final class SpectrumNSView: NSView {
     /// The gradient shows through these: a layer per bar.
     private let barMask = CALayer()
     private var bars: [CALayer] = []
+    private var barFrames: [(x: CGFloat, width: CGFloat)] = []
     private let segments = CAShapeLayer()
     private let capLayer = CALayer()
     private var caps: [CALayer] = []
@@ -153,6 +153,7 @@ final class SpectrumNSView: NSView {
         barMask.frame = CGRect(origin: .zero, size: plot.size)
         if analyzer?.bandCount != barCount { analyzer = SpectrumAnalyzer(bandCount: barCount) }
         if bars.count != barCount { makeBars(barCount) }
+        barFrames = (0..<barCount).map { barFrame($0, of: barCount) }
         grid.path = gridPath()
         segments.path = segmentPath()
         draw()
@@ -162,11 +163,10 @@ final class SpectrumNSView: NSView {
     /// Dots at each bar's centre, every four segments up.
     private func gridPath() -> CGPath {
         let path = CGMutablePath()
-        let count = barCount, pitch = (Self.segment + Self.segmentGap) * 4
+        let pitch = (Self.segment + Self.segmentGap) * 4
         var y = plot.minY + pitch / 2
         while y < plot.maxY {
-            for index in 0..<count {
-                let bar = barFrame(index, of: count)
+            for bar in barFrames {
                 path.addRect(CGRect(x: (bar.x + bar.width / 2).rounded(.down), y: y.rounded(.down), width: 1, height: 1))
             }
             y += pitch
@@ -210,11 +210,11 @@ final class SpectrumNSView: NSView {
 
     /// Bars and caps where the analyser has them.
     private func draw() {
-        guard let analyzer, bars.count == analyzer.bandCount else { return }
+        guard let analyzer, barFrames.count == analyzer.bandCount else { return }
         let count = analyzer.bandCount, height = plot.height
         let pitch = Self.segment + Self.segmentGap
         for index in 0..<count {
-            let frame = barFrame(index, of: count)
+            let frame = barFrames[index]
             // Whole segments only, as on a real LED meter.
             let level = (CGFloat(analyzer.levels[index]) * height / pitch).rounded() * pitch
             // Only what moved: an unchanged layer still costs the commit.
@@ -294,15 +294,19 @@ final class SpectrumNSView: NSView {
         let now = CACurrentMediaTime()
         let dt = lastTick.map { min(max(now - $0, 0), 0.1) } ?? 1 / (timerRate ?? Self.frameRate)
         lastTick = now
+        let wasSettled = analyzer.isSettled
         if let tap, capturing {
             analyzer.update(from: tap, dt: dt)
         } else {
             analyzer.fade(by: dt)
         }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        draw()
-        CATransaction.commit()
-        if !isPlaying, analyzer.isSettled { run(nil) }
+        let settled = analyzer.isSettled
+        if !wasSettled || !settled {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            draw()
+            CATransaction.commit()
+        }
+        if !isPlaying, settled { run(nil) }
     }
 }

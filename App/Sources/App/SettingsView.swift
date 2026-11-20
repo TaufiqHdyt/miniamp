@@ -6,17 +6,17 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
-            Tab("Library", systemImage: "music.note.house") {
-                LibrarySettings(app: app)
-            }
             Tab("Playback", systemImage: "hifispeaker") {
                 PlaybackSettings(app: app, player: app.player)
             }
-            Tab("Sound", systemImage: "slider.vertical.3") {
-                SoundSettings(app: app, player: app.player)
+            Tab("Library", systemImage: "music.note.house") {
+                LibrarySettings(app: app)
             }
             Tab("Lyrics", systemImage: "quote.bubble") {
                 LyricsSettings(app: app)
+            }
+            Tab("Advanced", systemImage: "slider.vertical.3") {
+                AdvancedSettings(app: app, player: app.player)
             }
         }
         .frame(width: 600)
@@ -159,14 +159,14 @@ private struct LibrarySettings: View {
 }
 
 /// Bit-perfect or DSP mode, the EQ, and ReplayGain.
-private struct SoundSettings: View {
+private struct AdvancedSettings: View {
     let app: AppState
     @Bindable var player: Player
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Form {
-            Section {
+            Section("Signal path") {
                 Picker("Signal path", selection: $player.dspMode) {
                     Text("Bit-perfect").tag(false)
                     Text("DSP").tag(true)
@@ -281,32 +281,36 @@ private struct PlaybackSettings: View {
 
     var body: some View {
         Form {
-            Picker("Output device", selection: Binding(get: { player.preferredDeviceUID },
-                                                       set: { Preferences.setOutputDevice($0, on: player) })) {
-                Text("System default").tag(String?.none)
-                ForEach(player.availableDevices) { device in
-                    Text(device.name).tag(Optional(device.uid))
+            Section("Audio output") {
+                Picker("Output device", selection: Binding(get: { player.preferredDeviceUID },
+                                                           set: { Preferences.setOutputDevice($0, on: player) })) {
+                    Text("System default").tag(String?.none)
+                    ForEach(player.availableDevices) { device in
+                        Text(device.name).tag(Optional(device.uid))
+                    }
+                }
+                Toggle(isOn: Binding(get: { player.hogMode }, set: { on in
+                    player.hogMode = on
+                    UserDefaults.standard.set(on, forKey: Preferences.hogModeKey)
+                })) {
+                    Text("Exclusive access (hog mode)")
+                    Text("While playing, other apps can't use the device and system sounds don't mix in.")
+                }
+                Toggle(isOn: $player.sendsDSDAsDoP) {
+                    Text("Send DSD to the DAC as DoP")
+                    Text("For DACs that play DSD (DSD over PCM). In bit-perfect mode, on a device that runs at the DoP rate, DSF and DFF files reach the DAC as DSD; miniamp's volume doesn't apply. Otherwise they're converted to PCM. Turn this off if DSD plays as noise.")
+                }
+                LabeledContent("Sample rate") {
+                    Text("Matches each file. When the device can't play a file's rate, miniamp picks the closest rate it can and says so.")
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
                 }
             }
-            Toggle(isOn: Binding(get: { player.hogMode }, set: { on in
-                player.hogMode = on
-                UserDefaults.standard.set(on, forKey: Preferences.hogModeKey)
-            })) {
-                Text("Exclusive access (hog mode)")
-                Text("While playing, other apps can't use the device and system sounds don't mix in.")
-            }
-            Toggle(isOn: $player.sendsDSDAsDoP) {
-                Text("Send DSD to the DAC as DoP")
-                Text("For DACs that play DSD (DSD over PCM). In bit-perfect mode, on a device that runs at the DoP rate, DSF and DFF files reach the DAC as DSD; miniamp's volume doesn't apply. Otherwise they're converted to PCM. Turn this off if DSD plays as noise.")
-            }
-            Toggle(isOn: $app.autoplays) {
-                Text("Autoplay")
-                Text("When Up Next runs out, keep playing songs like the last ones, picked from your library and what you've played, on this Mac. Not while repeating.")
-            }
-            LabeledContent("Sample rate") {
-                Text("Matches each file. When the device can't play a file's rate, miniamp picks the closest rate it can and says so.")
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.trailing)
+            Section("Queue") {
+                Toggle(isOn: $app.autoplays) {
+                    Text("Autoplay")
+                    Text("When Up Next runs out, keep playing songs like the last ones, picked from your library and what you've played, on this Mac. Not while repeating.")
+                }
             }
         }
         .formStyle(.grouped)

@@ -115,7 +115,7 @@ struct QualityBadge: View {
                 + (path.isResampled ? " and resampled to \(FormatSelection.formatRate(to)), the closest rate \(path.deviceName) can play" : "")
                 + ". A DAC that plays DSD over PCM can get the DSD itself: turn on DoP in Settings › Playback."
         case .processed:
-            "DSP mode: the samples are changed on the way (\(path.processing?.description ?? "gain")). Choose Bit-perfect in Settings › Sound to hear the file unchanged."
+            "DSP mode: the samples are changed on the way (\(path.processing?.description ?? "gain")). Choose Bit-perfect in Settings › Advanced to hear the file unchanged."
                 + (path.isResampled ? " The device can't play \(FormatSelection.formatRate(path.fileSampleRate)), so it's also resampled to \(FormatSelection.formatRate(path.deviceSampleRate))." : "")
         }
     }

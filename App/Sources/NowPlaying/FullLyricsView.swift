@@ -1,20 +1,60 @@
 import MiniAmpKit
 import SwiftUI
 
-/// Full-window lyrics over the playing song's colour wash.
-struct FullLyricsView: View {
+/// Full-window Now Playing, with one shared cover and transport column across modes.
+struct FullPlayingView: View {
     let app: AppState
     let url: URL
+    let mode: FullView
     @State private var entry: QueueEntry?
 
     var body: some View {
-        let entry = entry?.url == url ? entry : nil
-        LyricsView(app: app, url: url)
-            .id(url)
-            .background { CoverWash(app: app, entry: entry) }
-            // Light text on the dark wash, whatever the system appearance.
-            .environment(\.colorScheme, .dark)
-            .modifier(FullViewEntry(app: app, url: url, entry: $entry))
+        let song = entry?.url == url ? entry : app.upNextEntries[url]
+        HStack(spacing: Theme.Spacing.l) {
+            ViewThatFits(in: .vertical) {
+                songColumn(song, coverSize: 270)
+                songColumn(song, coverSize: 160)
+                songColumn(song, coverSize: 96)
+            }
+            .frame(minWidth: 220, idealWidth: 280, maxWidth: 340)
+            .frame(maxHeight: .infinity)
+            Group {
+                switch mode {
+                case .lyrics: LyricsView(app: app, url: url).id(url)
+                case .upNext: NowPlayingView(app: app, embedded: true).fullViewToolbar(app: app)
+                case .visualizer: FullVisualizerView(app: app)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(.horizontal, Theme.Spacing.l)
+        .padding(.vertical, Theme.Spacing.s)
+        .padding(.bottom, app.playerBarInset)
+        .background { CoverWash(app: app, entry: song) }
+        .environment(\.colorScheme, .dark)
+        .modifier(FullViewEntry(app: app, url: url, entry: $entry))
+    }
+
+    private func songColumn(_ song: QueueEntry?, coverSize: CGFloat) -> some View {
+        VStack(spacing: Theme.Spacing.m) {
+            ArtworkView(key: song?.artworkKey, artwork: app.library?.artwork,
+                        fileURL: song?.inLibrary == false ? url : nil, size: .large,
+                        cornerRadius: Theme.Radius.large)
+                .frame(width: coverSize, height: coverSize)
+                .elevation(.floating)
+                .accessibilityHidden(true)
+            VStack(spacing: Theme.Spacing.xs) {
+                Text(song?.title ?? QueueEntry(fileName: url).title)
+                    .font(.title2.bold())
+                    .accessibilityAddTraits(.isHeader)
+                if let subtitle = song?.subtitle {
+                    Text(subtitle).foregroundStyle(.secondary)
+                }
+            }
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            TransportButtons(app: app)
+        }
     }
 }
 
@@ -39,11 +79,7 @@ struct FullViewEntry: ViewModifier {
 }
 
 extension View {
-    /// A full view's toolbar: back to the library where a pushed page's Back is, a switch
-    /// between lyrics and the visualizer in the middle, the page's buttons at the trailing
-    /// end. Not the song: the player bar under the page names it (and opens its album and
-    /// artist). The wash runs up under the toolbar, as in Apple Music, rather than stopping at
-    /// a grey bar.
+    /// The library back button, mode picker, and controls for the selected mode.
     func fullViewToolbar<Timing: View, Controls: View>(
         app: AppState,
         @ViewBuilder timing: () -> Timing = { EmptyView() },
@@ -59,7 +95,7 @@ extension View {
                         .help("Back to the library (Esc)")
                 }
                 ToolbarItem(placement: .principal) {
-                    Picker("Show", selection: Binding(get: { app.fullView ?? .lyrics }, set: { app.showFullView($0) })) {
+                    Picker("Now Playing Mode", selection: Binding(get: { app.fullView ?? .lyrics }, set: { app.showFullView($0) })) {
                         ForEach(FullView.allCases, id: \.self) { view in
                             Label(view.label, systemImage: view.symbol).tag(view)
                         }
@@ -69,7 +105,7 @@ extension View {
                     .environment(\.colorScheme, .light)
                     .labelStyle(.titleAndIcon)
                     .fixedSize()
-                    .help("Lyrics (⌥⌘L) or the visualizer (⇧⌥⌘V)")
+                    .help("Switch between Lyrics, Up Next, and Visualizer")
                 }
                 ToolbarItem(placement: .automatic) { timing }
                 // On a glass of its own, apart from the timing.
@@ -96,11 +132,13 @@ private struct FullViewSpacer: ToolbarContent {
 struct CoverWash: View {
     let app: AppState
     let entry: QueueEntry?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         ZStack {
             (app.artworkTint?.color ?? Color(white: 0.18))
-            if let entry, entry.artworkKey != nil || !entry.inLibrary {
+            if !reduceTransparency, let entry, entry.artworkKey != nil || !entry.inLibrary {
                 GeometryReader { geometry in
                     let side = max(geometry.size.width, geometry.size.height) * 1.2
                     ArtworkView(key: entry.artworkKey, artwork: app.library?.artwork,
@@ -118,7 +156,7 @@ struct CoverWash: View {
         }
         .clipped()
         .ignoresSafeArea()
-        .animation(.easeInOut(duration: 0.6), value: entry?.artworkKey)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: entry?.artworkKey)
         .accessibilityHidden(true)
     }
 }

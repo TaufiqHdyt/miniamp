@@ -142,19 +142,72 @@ private struct StatsContent: View {
                 ChartSection(title: "Time of day") { HourChart(byHour: stats.byHour) }
                 ChartSection(title: "Day of the week") { WeekdayChart(byWeekday: stats.byWeekday) }
             }
-            pairedSections {
-                ChartSection(title: "Top songs") { TopSongs(app: app, library: library, ranked: stats.topTracks) }
-                ChartSection(title: "Top artists") { RankedList(ranked: stats.topArtists, name: { $0 }) }
+            if !stats.topTracks.isEmpty {
+                Shelf(title: "Top songs", contents: stats.topTracks.map { AnyHashable($0.item.id) }) {
+                    ForEach(stats.topTracks, id: \.item.id) { entry in
+                        Button {
+                            app.play(stats.topTracks.map(\.item), from: entry.item.id)
+                        } label: {
+                            rankCard(entry.item.track.title, subtitle: entry.item.artistName,
+                                     artworkKey: entry.item.track.artworkKey, plays: entry.plays, listened: entry.listened)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Plays the top songs from here")
+                    }
+                }
+            }
+            if !stats.topArtists.isEmpty {
+                Shelf(title: "Top artists", contents: stats.topArtists.map { AnyHashable($0.item) }) {
+                    ForEach(stats.topArtists, id: \.item) { entry in
+                        rankCard(entry.item, plays: entry.plays, listened: entry.listened, symbol: "person")
+                    }
+                }
             }
             if !stats.topAlbums.isEmpty {
-                ChartSection(title: "Top albums") { TopAlbums(library: library, ranked: stats.topAlbums) }
+                Shelf(title: "Top albums", contents: stats.topAlbums.map { AnyHashable($0.item.id) }) {
+                    ForEach(stats.topAlbums, id: \.item.id) { entry in
+                        NavigationLink(value: LibraryDestination.album(entry.item.id)) {
+                            rankCard(entry.item.title, subtitle: entry.item.artist,
+                                     artworkKey: entry.item.artworkKey, plays: entry.plays, listened: entry.listened)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
             if !stats.topGenres.isEmpty {
-                ChartSection(title: "Top genres") { RankedList(ranked: stats.topGenres, name: { $0 }) }
-                    .frame(maxWidth: 460, alignment: .leading)
+                Shelf(title: "Top genres", contents: stats.topGenres.map { AnyHashable($0.item) }) {
+                    ForEach(stats.topGenres, id: \.item) { entry in
+                        rankCard(entry.item, plays: entry.plays, listened: entry.listened, symbol: "music.note")
+                    }
+                }
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+
+    private func rankCard(_ title: String, subtitle: String? = nil, artworkKey: String? = nil,
+                          plays: Int, listened: Duration, symbol: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            Group {
+                if let symbol {
+                    Image(systemName: symbol)
+                        .font(.largeTitle)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
+                } else {
+                    ArtworkView(key: artworkKey, artwork: library.artwork, size: .small,
+                                cornerRadius: Theme.Radius.medium)
+                }
+            }
+            .frame(width: 128, height: 128)
+            .accessibilityHidden(true)
+            Text(title).font(.callout.weight(.semibold)).lineLimit(1)
+            if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+            Text(plays == 1 ? "1 play" : "\(plays) plays").font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(width: 128, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .help(Listening.long(listened))
     }
 
     private func pairedSections(@ViewBuilder content: () -> some View) -> some View {
@@ -406,81 +459,6 @@ private struct WeekdayChart: View {
 }
 
 /// Ranked names with a bar for their plays.
-private struct RankedList<Item: Sendable & Equatable>: View {
-    let ranked: [ListeningStats.Ranked<Item>]
-    let name: (Item) -> String
-
-    @Environment(\.statsChartColor) private var chartColor
-
-    var body: some View {
-        let most = max(ranked.first?.plays ?? 1, 1)
-        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
-            ForEach(Array(ranked.enumerated()), id: \.offset) { index, entry in
-                GridRow {
-                    Text("\(index + 1)").foregroundStyle(.secondary).monospacedDigit().gridColumnAlignment(.trailing)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(name(entry.item)).lineLimit(1)
-                        GeometryReader { geometry in
-                            Capsule().fill(chartColor)
-                                .frame(width: max(4, geometry.size.width * CGFloat(entry.plays) / CGFloat(most)), height: 4)
-                        }
-                        .frame(height: 4)
-                    }
-                    Text("\(entry.plays)").foregroundStyle(.secondary).monospacedDigit().gridColumnAlignment(.trailing)
-                        .help(Listening.long(entry.listened))
-                }
-            }
-        }
-    }
-}
-
-private struct TopSongs: View {
-    let app: AppState
-    let library: Library
-    let ranked: [ListeningStats.Ranked<TrackInfo>]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(ranked.enumerated()), id: \.offset) { index, entry in
-                HStack(spacing: 10) {
-                    Text("\(index + 1)").foregroundStyle(.secondary).monospacedDigit().frame(width: 20, alignment: .trailing)
-                    ArtworkView(key: entry.item.track.artworkKey, artwork: library.artwork, size: .small)
-                        .frame(width: 32, height: 32)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(entry.item.track.title).lineLimit(1)
-                        Text(entry.item.artistName ?? "Unknown Artist").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                    Spacer()
-                    Text("\(entry.plays)").foregroundStyle(.secondary).monospacedDigit()
-                        .help("\(entry.plays) play\(entry.plays == 1 ? "" : "s"), \(Listening.long(entry.listened))")
-                }
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) { app.play(ranked.map(\.item), from: entry.item.id) }
-                .help("Double-click to play the top songs from here")
-            }
-        }
-    }
-}
-
-private struct TopAlbums: View {
-    let library: Library
-    let ranked: [ListeningStats.Ranked<ListeningStats.AlbumItem>]
-
-    var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 120, maximum: 160), spacing: 16, alignment: .top)],
-                  alignment: .leading, spacing: 16) {
-            ForEach(ranked, id: \.item.id) { entry in
-                VStack(alignment: .leading, spacing: 4) {
-                    ArtworkView(key: entry.item.artworkKey, artwork: library.artwork, size: .small, cornerRadius: Theme.Radius.medium)
-                    Text(entry.item.title).font(.callout).lineLimit(1)
-                    Text("\(entry.item.artist ?? "Unknown Artist") · \(entry.plays) play\(entry.plays == 1 ? "" : "s")")
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-        }
-    }
-}
-
 private extension EnvironmentValues {
     @Entry var statsChartColor: Color = .accentColor
 }

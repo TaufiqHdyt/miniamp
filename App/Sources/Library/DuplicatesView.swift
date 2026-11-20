@@ -133,6 +133,7 @@ struct DuplicatesView: View {
         DuplicateRow(entry: entry, artwork: library.artwork, isKeeper: isKeeper)
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { app.play(group.entries.map(\.info), from: entry.info.id) }
+            .accessibilityElement(children: .combine)
             .accessibilityAction(named: "Play") { app.play(group.entries.map(\.info), from: entry.info.id) }
             .contextMenu { menu(for: entry, in: group) }
     }
@@ -218,7 +219,8 @@ private struct DuplicateRow: View {
                             .foregroundStyle(.green)
                     }
                     if track.isEvicted {
-                        Image(systemName: "icloud").foregroundStyle(.secondary).help("Only in iCloud")
+                        Image(systemName: "icloud").foregroundStyle(.secondary)
+                            .accessibilityLabel("Only in iCloud").help("Only in iCloud")
                     }
                 }
                 Text(track.path)

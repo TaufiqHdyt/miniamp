@@ -129,17 +129,25 @@ Gaps found by comparing with other local-library players.
 
 Modern macOS, Apple Music's layout taken further, in phases. The plan, the baseline screenshots, and what they show are in [DESIGN.md](DESIGN.md).
 
-- [ ] Phase 0: design tokens and components, a glass modifier with a macOS 15 fallback, a wash for low-saturation covers, and the baseline's bugs (stats rounding, empty Time of day chart, "miniamp" title in the full views, Songs columns) (#56)
+- [x] Phase 0: design tokens and components, a glass modifier with a macOS 15 fallback, a wash for low-saturation covers, and the baseline's bugs (stats rounding, empty Time of day chart, "miniamp" title in the full views, Songs columns) (#56)
 - [x] Phase 1: player bar (fewer buttons, a quality badge in words, times on the seek bar) (#57)
 - [x] Phase 2: browsing (split artist credits, Home, album and artist pages, the inspector hidden when nothing plays) (#58)
-- [ ] Phase 3: full-window Now Playing, with lyrics, Up Next, and the visualizer as its modes (#59)
+- [x] Phase 3: full-window Now Playing, with lyrics, Up Next, and the visualizer as its modes (#59)
   - [x] Up Next floats as glass beside the library, as the sidebar does, pages scrolling under it
   - [x] Lyrics and the visualizer fill the page, with a switch between them; the visualizer on glass
   - [x] Lyrics timing as a labelled menu; ∞ in Up Next's Autoplay section
-  - [ ] Full-window Now Playing
-  - [ ] Checks: synced lyrics follow a seek; `make app-bench` no worse than the baseline
-- [ ] Phase 4: Listening Stats, Duplicates, and Settings (#60)
+  - [x] Full-window Now Playing with shared artwork and transport, and one Up Next queue
+  - [x] Synced lyrics follow a seek in the lyrics follower test
+  - [x] Synced lyrics and visualizer CPU below the recorded baseline ([benchmark results](docs/design/baseline-2026-11-18/bench.txt))
+- [x] Phase 4: Listening Stats, Duplicates, and Settings (#60)
+  - [x] Headline cards, tinted charts, and top-list shelves
+  - [x] Duplicate copies shown together with covers and formats
+  - [x] Grouped Playback, Library, Lyrics, and Advanced settings
 - [ ] Phase 5: motion and accessibility (#61)
+  - [x] Now Playing and hero transitions respect Reduce Motion
+  - [x] Solid panels under Reduce Transparency, stronger borders and lyric contrast under Increase Contrast
+  - [x] Keyboard shelf scrolling and accessible labels and actions for the new playback controls
+  - [ ] Verify light and dark appearances on macOS 15 and 27, including VoiceOver and keyboard navigation
 
 **Done when:** every phase meets its check in DESIGN.md, and `make app-bench` is no worse than the baseline.
 

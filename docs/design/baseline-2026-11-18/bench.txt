@@ -34,3 +34,18 @@ The lyrics went from semibold to bold as each line came up, and every frame of t
 glyph by glyph on the CPU. With one weight for every line (the current one lit by colour), two
 runs each, after the earlier build:
 playing 96/24, lyrics (synced)  9.76 / 9.68  ->  7.68 / 7.90
+
+M10 verification on macOS 27.2.1: make app-bench, 30 seconds per case, Debug.
+This run used the signed development build and the script's silent 96/24 FLAC
+fixture, with a synced line every two seconds. The earlier baseline above used
+an ad hoc signed copy and a silent WAV at the same rate and depth.
+
+case                                  cpu%   energy wakeup/s   mem MB
+idle, window open                     0.01     0.01     13.0     64.0
+playing 96/24, Up Next                0.56     0.58     24.1     67.0
+playing 96/24, Up Next closed         0.54     0.56     47.2     66.0
+playing 96/24, lyrics (synced)        3.46     3.93    209.7     73.0
+playing 96/24, visualizer             0.55     0.55     24.1     70.0
+
+All 227 MiniAmpKit tests passed serially, including
+followerWakesForEachLineAndResyncsOnSeek.

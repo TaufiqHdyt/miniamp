@@ -97,12 +97,7 @@ struct TagEditor: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Lyrics").font(.callout)
             TextEditor(text: Binding(get: { lyrics ?? "" }, set: { lyrics = $0 }))
-                .font(.system(.callout, design: .monospaced))
-                .autocorrectionDisabled()
-                .scrollContentBackground(.hidden)
-                .padding(4)
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
-                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.medium).strokeBorder(.quaternary))
+                .lyricsTextEditorStyle()
                 .frame(height: 140)
             Text(sidecar.map { "\($0.lastPathComponent) beside the song is shown instead when it's timed. Edit Lyrics in Lyrics can save there." }
                  ?? "Plain, or LRC with times ([01:23.45]). Edit Lyrics in Lyrics times them to the song.")
@@ -114,6 +109,7 @@ struct TagEditor: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(tracks.count == 1 ? tracks[0].track.title : CountFormat.songs(tracks.count))
+                .accessibilityAddTraits(.isHeader)
                 .font(.headline)
                 .lineLimit(1)
             Text(tracks.count == 1 ? tracks[0].track.url.lastPathComponent : "Fields marked Mixed differ between them.")

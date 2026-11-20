@@ -37,8 +37,7 @@ final class AppState {
         didSet { UserDefaults.standard.set(showsNowPlaying, forKey: "showsNowPlaying") }
     }
 
-    /// What fills the library area in place of the library, on the playing song's cover: the
-    /// lyrics, big, or the visualizer. Not remembered: each launch opens on the library.
+    /// The selected Now Playing mode. Each launch starts in the library.
     var fullView: FullView? {
         didSet { if let fullView { lastFullView = fullView } }
     }
@@ -51,15 +50,8 @@ final class AppState {
     /// The library revision `upNextEntries` were last read at.
     @ObservationIgnored var upNextEntriesRevision = 0
 
-    var showsFullLyrics: Bool {
-        get { fullView == .lyrics }
-        set { if newValue { fullView = .lyrics } else if fullView == .lyrics { fullView = nil } }
-    }
-
-    var showsVisualizer: Bool {
-        get { fullView == .visualizer }
-        set { if newValue { fullView = .visualizer } else if fullView == .visualizer { fullView = nil } }
-    }
+    var showsFullLyrics: Bool { fullView == .lyrics }
+    var showsVisualizer: Bool { fullView == .visualizer }
 
     /// No crossfade between songs from the same album, which are often meant to run together
     /// (live albums, DJ mixes). On by default.
@@ -406,16 +398,22 @@ final class AppState {
 
     // MARK: Lyrics
 
-    /// Opens Up Next, or closes it; over a full view too.
+    var showsUpNext: Bool { fullView.map { $0 == .upNext } ?? showsNowPlaying }
+
+    /// Toggles the library queue or switches to the queue in Now Playing.
     func toggleUpNext() {
-        showsNowPlaying.toggle()
+        if fullView != nil {
+            showFullView(fullView == .upNext ? .lyrics : .upNext)
+        } else {
+            showsNowPlaying.toggle()
+        }
     }
 
     /// Opens `view` filling the library area (while something is playing), or goes back to the
     /// library (nil): from the full views' switch and back button.
     func showFullView(_ view: FullView?) {
         guard view == nil || player.queue.current != nil else { return }
-        switchingViews { fullView = view }
+        fullView = view
     }
 
     /// Opens Now Playing (the full view open last) or goes back to the library: the player
@@ -424,31 +422,12 @@ final class AppState {
         showFullView(fullView == nil ? lastFullView : nil)
     }
 
-    /// Between a full view and the library at once, rather than one fading into the other.
-    private func switchingViews(_ change: () -> Void) {
-        var transaction = Transaction(animation: nil)
-        transaction.disablesAnimations = true
-        withTransaction(transaction, change)
-    }
-
-    /// Opens the lyrics, filling the library area (while something is playing), or goes back
-    /// to the library.
     func toggleFullLyrics() {
-        if showsFullLyrics {
-            switchingViews { showsFullLyrics = false }
-        } else if player.queue.current != nil {
-            switchingViews { showsFullLyrics = true }
-        }
+        showFullView(showsFullLyrics ? nil : .lyrics)
     }
 
-    /// Opens the spectrum visualizer in the library area (while something is playing), or
-    /// goes back to the library.
     func toggleVisualizer() {
-        if showsVisualizer {
-            switchingViews { showsVisualizer = false }
-        } else if player.queue.current != nil {
-            switchingViews { showsVisualizer = true }
-        }
+        showFullView(showsVisualizer ? nil : .visualizer)
     }
 
     /// How far ⌥⌘← and ⌥⌘→ move within the song.
@@ -632,11 +611,12 @@ final class AppState {
 }
 
 enum FullView: CaseIterable {
-    case lyrics, visualizer
+    case lyrics, upNext, visualizer
 
     var label: String {
         switch self {
         case .lyrics: "Lyrics"
+        case .upNext: "Up Next"
         case .visualizer: "Visualizer"
         }
     }
@@ -644,6 +624,7 @@ enum FullView: CaseIterable {
     var symbol: String {
         switch self {
         case .lyrics: "quote.bubble"
+        case .upNext: "list.bullet"
         case .visualizer: "chart.bar.xaxis"
         }
     }

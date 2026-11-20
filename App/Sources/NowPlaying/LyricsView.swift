@@ -9,6 +9,7 @@ struct LyricsView: View {
     let app: AppState
     let url: URL
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var state: LoadState = .loading
     @State private var follower: LyricsFollower?
     /// The lyrics' language, and each line in Latin letters and translated (by line id).
@@ -98,7 +99,6 @@ struct LyricsView: View {
                         .frame(height: Theme.Spacing.xl)
                 }
             }
-            .padding(.bottom, app.playerBarInset + Theme.Spacing.s)
         }
         .fullViewToolbar(app: app) {
             if case .found(let found) = state, !found.lyrics.isInstrumental, found.lyrics.isSynced {
@@ -128,6 +128,11 @@ struct LyricsView: View {
                     .contentShape(Rectangle())
                     .onTapGesture {
                         if synced, let time = line.time, let follower { app.player.seek(to: follower.playbackTime(for: time)) }
+                    }
+                    .accessibilityActions {
+                        if synced, let time = line.time, let follower {
+                            Button("Seek to Lyric") { app.player.seek(to: follower.playbackTime(for: time)) }
+                        }
                     }
                     .contextMenu { shareMenuItem(from: line) }
             }
@@ -317,8 +322,8 @@ struct LyricsView: View {
     /// Keeps the line being sung a third of the way down.
     private func scroll(_ proxy: ScrollViewProxy, animated: Bool) {
         guard case .found(let found) = state, found.lyrics.isSynced, let line = follower?.position.line else { return }
-        if animated {
-            withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(line, anchor: UnitPoint(x: 0.5, y: 0.35)) }
+        if animated && !reduceMotion {
+            withAnimation(.easeInOut(duration: 0.22)) { proxy.scrollTo(line, anchor: UnitPoint(x: 0.5, y: 0.35)) }
         } else {
             proxy.scrollTo(line, anchor: UnitPoint(x: 0.5, y: 0.35))
         }
@@ -417,6 +422,7 @@ private struct LyricLine: View {
     /// Romanization and translation, under the line.
     var extras: [String] = []
     var style: LyricsStyle
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         let current = position == nil || position?.line == line.id
@@ -433,7 +439,6 @@ private struct LyricLine: View {
         .opacity(style == .pane && elapsed ? 0.55 : 1)
         .multilineTextAlignment(side.textAlignment)
         .frame(maxWidth: .infinity, alignment: side.frameAlignment)
-        .animation(.easeOut(duration: 0.2), value: current)
         .help(line.time.map { "Play from \(TimeFormat.minutes(Int($0.components.seconds)))" } ?? "")
     }
 
@@ -449,7 +454,7 @@ private struct LyricLine: View {
     private func lineColor(current: Bool, elapsed: Bool) -> Color {
         switch style {
         case .pane: current ? .primary : .secondary
-        case .full: .white.opacity(current ? 1 : (elapsed ? 0.5 : 0.65))
+        case .full: .white.opacity(current ? 1 : (contrast == .increased ? 0.85 : (elapsed ? 0.5 : 0.65)))
         }
     }
 
