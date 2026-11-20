@@ -440,7 +440,9 @@ private struct LyricLine: View {
     private func lineFont(current: Bool) -> Font {
         switch style {
         case .pane: .title3.weight(current ? .bold : .regular)
-        case .full: .system(size: 30, weight: current ? .bold : .semibold)
+        // One weight for every line, the current one lit by colour alone: a weight animating
+        // between lines was redrawn glyph by glyph on the CPU, a frame at a time.
+        case .full: .system(size: 30, weight: .bold)
         }
     }
 

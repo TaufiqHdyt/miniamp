@@ -17,3 +17,20 @@ FLAC 96/24 DSP               0.77     1.22    195.3      7.4       4.28
 DSD64 → PCM 88.2             1.96     2.46    188.9      6.5       4.69
 DSD128 → PCM 88.2            2.73     3.22    215.0      6.5       4.75
 DSD64 → PCM, DSP             1.97     2.40    194.2      6.5       4.62
+
+make app-bench (scripts/app-bench.sh 30, Debug), taken 2026-11-20: the build before the redesign
+(ef1a659) and Phase 3 (d28baee), one after the other. macOS keeps the terminal out of the app's
+container, so each ran as an ad hoc signed copy without the sandbox, playing a silent 96/24 WAV
+with a synced line every two seconds.
+
+case                               before cpu%  energy wakeup/s  |  after cpu%  energy wakeup/s
+idle, window open                        0.26     0.27     36.6  |       0.00     0.00    107.8
+playing 96/24, Up Next                   0.66     0.68     50.2  |       0.89     0.94     78.7
+playing 96/24, Up Next closed            0.67     0.69     51.0  |       0.89     0.93     78.9
+playing 96/24, lyrics (synced)           7.35     8.61    508.9  |      10.00    11.21    508.6
+playing 96/24, visualizer                2.44     3.45    421.8  |       2.66     3.66    490.9
+
+The lyrics went from semibold to bold as each line came up, and every frame of that was drawn
+glyph by glyph on the CPU. With one weight for every line (the current one lit by colour), two
+runs each, after the earlier build:
+playing 96/24, lyrics (synced)  9.76 / 9.68  ->  7.68 / 7.90
