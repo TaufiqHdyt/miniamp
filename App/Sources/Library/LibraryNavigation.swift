@@ -155,6 +155,7 @@ struct SongRow: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture(count: 2, perform: play)
+        .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(named: "Play", play)
         .contextMenu { TrackMenuItems(app: app, tracks: [info], offersAlbum: offersAlbum, offersArtist: offersArtist) }
