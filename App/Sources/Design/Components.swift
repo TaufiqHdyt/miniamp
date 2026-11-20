@@ -97,6 +97,7 @@ struct Shelf<Content: View>: View {
     var contents: [AnyHashable] = []
     @ViewBuilder var content: Content
     @State private var position = ScrollPosition(edge: .leading)
+    @Environment(\.upNextRoom) private var upNextRoom
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
@@ -108,6 +109,7 @@ struct Shelf<Content: View>: View {
                 }
             }
             .padding(.horizontal, Theme.Spacing.page)
+            .clearsUpNext()
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: Theme.Spacing.l) { content }
                     .padding(.horizontal, Theme.Spacing.page)
@@ -118,10 +120,10 @@ struct Shelf<Content: View>: View {
             .scrollPosition($position)
             .onChange(of: contents) { position.scrollTo(edge: .leading) }
             .scrollIndicators(.automatic)
-            // Not out under the sidebar as it scrolls, but out under Up Next (its content
-            // margin keeps the last cover clear): clipped first, then widened under it.
+            // Out under Up Next (the page runs to the window's edge, see `runsUnderUpNext`),
+            // the last cover clear of it; not out under the sidebar.
+            .contentMargins(.trailing, upNextRoom, for: .scrollContent)
             .clipped()
-            .extendsUnderUpNext()
         }
     }
 }
@@ -236,25 +238,26 @@ struct CoverMosaic: View {
 extension EnvironmentValues {
     /// How much of the library area's trailing side Up Next covers (floating, macOS 26 and
     /// later), panel and margins; 0 while it's closed. Scroll views keep their content clear
-    /// of it by a content margin and run on under it; see `clearsUpNext` and
-    /// `extendsUnderUpNext` for what isn't a scroll view.
+    /// of it by a content margin and run on under it; see `clearsUpNext` for what isn't a
+    /// scroll view, and `runsUnderUpNext` for pages of shelves.
     @Entry var upNextRoom: CGFloat = 0
 }
 
 extension View {
     /// Keeps clear of Up Next: for what doesn't scroll, or (tables, lists) ignores content margins.
-    func clearsUpNext() -> some View { modifier(UpNextRoom(clears: true)) }
+    func clearsUpNext() -> some View { modifier(UpNextRoom()) }
 
-    /// Runs on under Up Next, out of a scroll view's content: shelves. Not for backgrounds:
-    /// one widened the album page's layout past the window, Up Next with it.
-    func extendsUnderUpNext() -> some View { modifier(UpNextRoom(clears: false)) }
+    /// A page with shelves: its scroll view's content runs to the window's edge, under Up
+    /// Next, so the shelves can; all else on it clears Up Next itself (`clearsUpNext`). Not
+    /// the shelves widened past the page instead: a shelf so widened came up scrolled
+    /// partway, its first cover cut.
+    func runsUnderUpNext() -> some View { contentMargins(.trailing, 0, for: .scrollContent) }
 }
 
 private struct UpNextRoom: ViewModifier {
-    let clears: Bool
     @Environment(\.upNextRoom) private var room
 
     func body(content: Content) -> some View {
-        content.padding(.trailing, clears ? room : -room)
+        content.padding(.trailing, room)
     }
 }

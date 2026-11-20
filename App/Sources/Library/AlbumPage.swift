@@ -18,9 +18,12 @@ struct AlbumPageView: View {
         ScrollView {
             if let album {
                 VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    header(album)
-                    songs(album)
-                    footer(album)
+                    Group {
+                        header(album)
+                        songs(album)
+                        footer(album)
+                    }
+                    .clearsUpNext()
                     if !more.isEmpty {
                         Shelf(title: "More by \(moreBy)") {
                             ForEach(more) { AlbumLink(app: app, library: library, album: $0, subtitle: .year) }
@@ -31,6 +34,7 @@ struct AlbumPageView: View {
                 .padding(.bottom, Theme.Spacing.xl)
             }
         }
+        .runsUnderUpNext()
         .overlay {
             if loaded && album == nil { ContentUnavailableView("This album is no longer in the library", systemImage: "square.stack") }
         }

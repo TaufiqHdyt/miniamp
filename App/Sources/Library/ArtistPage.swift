@@ -14,8 +14,8 @@ struct ArtistPageView: View {
         ScrollView {
             if let page {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xl - 4) {
-                    header(page)
-                    if !page.topSongs.isEmpty { topSongs(page) }
+                    header(page).clearsUpNext()
+                    if !page.topSongs.isEmpty { topSongs(page).clearsUpNext() }
                     if !page.albums.isEmpty {
                         Shelf(title: "Albums") {
                             ForEach(page.albums) { AlbumLink(app: app, library: library, album: $0, subtitle: .year) }
@@ -30,6 +30,7 @@ struct ArtistPageView: View {
                 .padding(.bottom, Theme.Spacing.xl)
             }
         }
+        .runsUnderUpNext()
         .overlay {
             if loaded && page == nil { ContentUnavailableView("This artist is no longer in the library", systemImage: "music.microphone") }
         }
