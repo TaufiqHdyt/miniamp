@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import MiniAmpKit
 
@@ -17,6 +18,33 @@ import Testing
         #expect(q.current == "b")
         #expect(PlayQueue<String>().current == nil)
         #expect(PlayQueue(["a"], startAt: 9).current == "a")
+    }
+
+    @Test func savedQueuePreservesCurrentEntryAndBothOrders() throws {
+        var rng = SeededGenerator(state: 42)
+        var queue = PlayQueue(["a", "b", "a", "c", "d"], startAt: 2)
+        queue.repeatMode = .all
+        queue.setShuffle(true, using: &rng)
+        queue.advance(automatic: false)
+        queue.remove(atPosition: 3)
+        queue.insert(["next"], next: true)
+        queue.move(fromPositions: [4], toPosition: 2)
+
+        let data = try JSONEncoder().encode(queue)
+        var restored = try JSONDecoder().decode(PlayQueue<String>.self, from: data)
+        #expect(restored == queue)
+        restored.setShuffle(false)
+        queue.setShuffle(false)
+        #expect(restored == queue)
+    }
+
+    @Test func rejectsSavedQueueWithInvalidIndices() throws {
+        let data = Data("""
+        {"items":["a"],"order":[1],"natural":[1],"position":0,"isShuffled":false,"repeatMode":"off"}
+        """.utf8)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(PlayQueue<String>.self, from: data)
+        }
     }
 
     @Test func repeatOffStopsAtEnd() {

@@ -248,6 +248,8 @@ struct MainWindow: View {
                 }
                 if defaults.bool(forKey: "sleepAtEndOfTrack") { app.sleepTimer.stopAtEndOfTrack() }
             }
+        } else {
+            await app.openPlaybackSession()
         }
     }
 }

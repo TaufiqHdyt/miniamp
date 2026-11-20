@@ -1,6 +1,6 @@
 /// Play order over a list of items, with shuffle and repeat. Pure value type; Player drives it.
 public struct PlayQueue<Item: Sendable & Equatable>: Sendable, Equatable {
-    public enum Repeat: String, Sendable, CaseIterable {
+    public enum Repeat: String, Sendable, CaseIterable, Codable {
         case off, all, one
     }
 
@@ -177,5 +177,35 @@ public struct PlayQueue<Item: Sendable & Equatable>: Sendable, Equatable {
         let current = order[now]
         order.insert(item, at: now + 1)
         natural.insert(item, at: (natural.firstIndex(of: current) ?? natural.count - 1) + 1)
+    }
+}
+
+extension PlayQueue: Codable where Item: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case items, order, natural, position, isShuffled, repeatMode
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let data = try decoder.container(keyedBy: CodingKeys.self)
+        items = try data.decode([Item].self, forKey: .items)
+        order = try data.decode([Int].self, forKey: .order)
+        natural = try data.decode([Int].self, forKey: .natural)
+        position = try data.decodeIfPresent(Int.self, forKey: .position)
+        isShuffled = try data.decode(Bool.self, forKey: .isShuffled)
+        repeatMode = try data.decode(Repeat.self, forKey: .repeatMode)
+
+        let active = Set(order)
+        guard active.count == order.count, active.count == natural.count, active == Set(natural),
+              order.allSatisfy(items.indices.contains),
+              position.map(order.indices.contains) ?? (order.isEmpty && items.isEmpty),
+              isShuffled || order == natural else {
+            throw DecodingError.dataCorruptedError(forKey: .order, in: data, debugDescription: "Invalid queue order")
+        }
+    }
+
+    /// Keeps item indices stable when a security-scoped bookmark resolves to a moved file.
+    mutating func replaceItems(_ replacements: [Item]) {
+        precondition(replacements.count == items.count)
+        items = replacements
     }
 }

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MiniAmpKit
 
@@ -60,6 +61,57 @@ enum Preferences {
         }
     }
 
+    // MARK: Playback session
+
+    private static let playbackSessionKey = "playbackSession"
+
+    @MainActor
+    static func restorePlaybackSession(on player: Player) async throws {
+        guard let data = UserDefaults.standard.data(forKey: playbackSessionKey),
+              let session = try? JSONDecoder().decode(Player.Session.self, from: data) else { return }
+        try await player.restoreSession(session)
+    }
+
+    @MainActor
+    static func watchPlaybackSession(of player: Player) {
+        observePlaybackSession(of: player)
+        _ = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification,
+                                               object: nil, queue: .main) { [weak player] _ in
+            MainActor.assumeIsolated {
+                if let player { savePlaybackSession(of: player) }
+            }
+        }
+        Task { @MainActor [weak player] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                guard let player else { return }
+                if player.state == .playing { savePlaybackSession(of: player) }
+            }
+        }
+    }
+
+    @MainActor
+    private static func observePlaybackSession(of player: Player) {
+        withObservationTracking {
+            _ = player.queue
+            _ = player.autoplayItems
+            _ = player.state
+            _ = player.seekCount
+        } onChange: { [weak player] in
+            Task { @MainActor in
+                guard let player else { return }
+                observePlaybackSession(of: player)
+                savePlaybackSession(of: player)
+            }
+        }
+    }
+
+    @MainActor
+    private static func savePlaybackSession(of player: Player) {
+        guard player.state != .preparing, let data = try? JSONEncoder().encode(player.session()) else { return }
+        UserDefaults.standard.set(data, forKey: playbackSessionKey)
+    }
+
     // MARK: Backups
 
     /// The app's own settings, for a backup: everything in its defaults except what the
@@ -78,6 +130,6 @@ enum Preferences {
     }
 
     private static let excludedPrefixes = ["NS", "Apple", "com.apple."]
-    private static let testHooks: Set<String> = ["libraryDatabase", "libraryFolder", "autoplay", "sidebar", "hog",
+    private static let testHooks: Set<String> = [playbackSessionKey, "libraryDatabase", "libraryFolder", "autoplay", "sidebar", "hog",
                                                   "sleepAtEndOfTrack", "logHangs"]
 }

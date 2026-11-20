@@ -269,6 +269,46 @@ public final class Player {
         try await start(position: position, frame: 0, autoplay: true)
     }
 
+    public struct Session: Codable, Sendable {
+        fileprivate let queue: PlayQueue<URL>
+        fileprivate let elapsed: Duration
+        fileprivate let autoplayItems: Set<Int>
+        fileprivate let bookmarks: [URL: Data]
+    }
+
+    /// Saves the exact order and the underlying unshuffled order, including duplicate entries.
+    public func session() -> Session {
+        var bookmarks: [URL: Data] = [:]
+        let active = Set(queue.order.map { queue.items[$0] })
+        for url in scopedURLs where active.contains(url) && bookmarks[url] == nil {
+            bookmarks[url] = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
+                                                   includingResourceValuesForKeys: nil, relativeTo: nil)
+        }
+        return Session(queue: queue, elapsed: max(exactTime, .zero),
+                       autoplayItems: autoplayItems.intersection(queue.order), bookmarks: bookmarks)
+    }
+
+    /// Reopens the last track paused. Folder grants must have been reopened by the library first.
+    public func restoreSession(_ session: Session) async throws {
+        guard queue.isEmpty, state == .stopped else { return }
+        let resolved = session.bookmarks.compactMapValues { data in
+            var stale = false
+            return try? URL(resolvingBookmarkData: data, options: [.withSecurityScope, .withoutUI],
+                            relativeTo: nil, bookmarkDataIsStale: &stale)
+        }
+        scopedURLs = resolved.values.filter { $0.startAccessingSecurityScopedResource() }
+        var restored = session.queue
+        restored.replaceItems(restored.items.map { resolved[$0] ?? $0 })
+        autoplayItems = session.autoplayItems.intersection(restored.order)
+        queue = restored
+        guard let position = queue.position else { return }
+        let restoreGeneration = generation + 1
+        try await start(position: position, frame: 0, autoplay: false)
+        if generation == restoreGeneration, state == .paused, session.elapsed > .zero {
+            seek(to: min(session.elapsed, duration))
+        }
+    }
+
     public func setShuffle(_ on: Bool) {
         queue.setShuffle(on)
         Task { await queueChanged() }

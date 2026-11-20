@@ -18,7 +18,7 @@ struct PlayerBar: View {
                 .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 4) {
-                if app.fullView == nil { TransportButtons(app: app) }
+                TransportButtons(app: app)
                 // While the next song loads, its length, from its tags.
                 SeekBar(player: player, loadingDurationMs: current?.url == app.currentURL ? current?.durationMs : nil)
             }
@@ -144,7 +144,7 @@ struct BarLinkStyle: ButtonStyle {
     }
 }
 
-struct TransportButtons: View {
+private struct TransportButtons: View {
     /// Previous, play and next in the text's own colour: borderless buttons draw their symbols
     /// in a dimmed, vibrant tone on the glass, which read as disabled beside the song's title.
     /// (Shuffle and repeat keep theirs: dim is how they say they're off.)

@@ -1,7 +1,7 @@
 import MiniAmpKit
 import SwiftUI
 
-/// Full-window Now Playing, with one shared cover and transport column across modes.
+/// Full-window Now Playing, with the page content spanning all available space.
 struct FullPlayingView: View {
     let app: AppState
     let url: URL
@@ -10,51 +10,20 @@ struct FullPlayingView: View {
 
     var body: some View {
         let song = entry?.url == url ? entry : app.upNextEntries[url]
-        HStack(spacing: Theme.Spacing.l) {
-            ViewThatFits(in: .vertical) {
-                songColumn(song, coverSize: 270)
-                songColumn(song, coverSize: 160)
-                songColumn(song, coverSize: 96)
+        Group {
+            switch mode {
+            case .lyrics: LyricsView(app: app, url: url).id(url)
+            case .upNext: NowPlayingView(app: app, embedded: true).fullViewToolbar(app: app)
+            case .visualizer: FullVisualizerView(app: app)
             }
-            .frame(minWidth: 220, idealWidth: 280, maxWidth: 340)
-            .frame(maxHeight: .infinity)
-            Group {
-                switch mode {
-                case .lyrics: LyricsView(app: app, url: url).id(url)
-                case .upNext: NowPlayingView(app: app, embedded: true).fullViewToolbar(app: app)
-                case .visualizer: FullVisualizerView(app: app)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, Theme.Spacing.l)
         .padding(.vertical, Theme.Spacing.s)
         .padding(.bottom, app.playerBarInset)
         .background { CoverWash(app: app, entry: song) }
         .environment(\.colorScheme, .dark)
         .modifier(FullViewEntry(app: app, url: url, entry: $entry))
-    }
-
-    private func songColumn(_ song: QueueEntry?, coverSize: CGFloat) -> some View {
-        VStack(spacing: Theme.Spacing.m) {
-            ArtworkView(key: song?.artworkKey, artwork: app.library?.artwork,
-                        fileURL: song?.inLibrary == false ? url : nil, size: .large,
-                        cornerRadius: Theme.Radius.large)
-                .frame(width: coverSize, height: coverSize)
-                .elevation(.floating)
-                .accessibilityHidden(true)
-            VStack(spacing: Theme.Spacing.xs) {
-                Text(song?.title ?? QueueEntry(fileName: url).title)
-                    .font(.title2.bold())
-                    .accessibilityAddTraits(.isHeader)
-                if let subtitle = song?.subtitle {
-                    Text(subtitle).foregroundStyle(.secondary)
-                }
-            }
-            .lineLimit(2)
-            .multilineTextAlignment(.center)
-            TransportButtons(app: app)
-        }
     }
 }
 

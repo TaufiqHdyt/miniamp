@@ -136,7 +136,7 @@ Modern macOS, Apple Music's layout taken further, in phases. The plan, the basel
   - [x] Up Next floats as glass beside the library, as the sidebar does, pages scrolling under it
   - [x] Lyrics and the visualizer fill the page, with a switch between them; the visualizer on glass
   - [x] Lyrics timing as a labelled menu; ∞ in Up Next's Autoplay section
-  - [x] Full-window Now Playing with shared artwork and transport, and one Up Next queue
+  - [x] Full-window Now Playing shares one Up Next queue and keeps song details and transport in the player bar
   - [x] Synced lyrics follow a seek in the lyrics follower test
   - [x] Synced lyrics and visualizer CPU below the recorded baseline ([benchmark results](docs/design/baseline-2026-11-18/bench.txt))
 - [x] Phase 4: Listening Stats, Duplicates, and Settings (#60)

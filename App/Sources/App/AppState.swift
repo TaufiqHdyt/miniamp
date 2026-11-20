@@ -173,12 +173,26 @@ final class AppState {
         }
     }
 
+    @ObservationIgnored private var openedPlaybackSession = false
+
+    func openPlaybackSession() async {
+        guard !openedPlaybackSession, UserDefaults.standard.string(forKey: "libraryDatabase") == nil else { return }
+        openedPlaybackSession = true
+        do {
+            try await Preferences.restorePlaybackSession(on: player)
+        } catch {
+            self.error = error.localizedDescription
+        }
+        Preferences.watchPlaybackSession(of: player)
+    }
+
     // MARK: Autoplay
 
-    /// Checks after every change to the queue (a song starting, an edit, repeat).
+    /// Checks when playback starts and when the queue or repeat mode changes.
     private func watchQueueForAutoplay() {
         withObservationTracking {
             _ = player.queue
+            _ = player.state
         } onChange: { [weak self] in
             Task { @MainActor in self?.watchQueueForAutoplay() }
         }
@@ -189,7 +203,7 @@ final class AppState {
     /// one before it: while it plays, so the next starts gaplessly (or crossfades) as usual.
     private func extendWithAutoplay() {
         let queue = player.queue
-        guard autoplays else { return }
+        guard autoplays, player.state == .playing else { return }
         guard let library, autoplayTask == nil, player.repeatMode == .off, let position = queue.position else {
             autoplayLog.debug("not now: library \(self.library != nil), busy \(self.autoplayTask != nil), repeat \(self.player.repeatMode.rawValue, privacy: .public), queued \(queue.position != nil)")
             return
