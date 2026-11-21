@@ -4,7 +4,7 @@ A native macOS music player for a local library. See [ROADMAP.md](ROADMAP.md).
 
 ## Development setup
 
-Requirements: Apple silicon Mac, [Xcode](https://apps.apple.com/app/xcode/id497799835), [Homebrew](https://brew.sh).
+Requirements: Apple silicon Mac, [Xcode 27 or later](https://apps.apple.com/app/xcode/id497799835) with Swift 6.4 or later, and [Homebrew](https://brew.sh).
 
 ```sh
 sudo xcode-select -s /Applications/Xcode.app   # once, after installing Xcode
