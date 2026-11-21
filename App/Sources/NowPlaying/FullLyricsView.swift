@@ -64,24 +64,50 @@ extension View {
                         .help("Back to the library (Esc)")
                 }
                 ToolbarItem(placement: .principal) {
-                    Picker("Now Playing Mode", selection: Binding(get: { app.fullView ?? .lyrics }, set: { app.showFullView($0) })) {
-                        ForEach(FullView.allCases, id: \.self) { view in
-                            Label(view.label, systemImage: view.symbol).tag(view)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    // The toolbar's glass is light even over the dark artwork wash.
-                    .environment(\.colorScheme, .light)
-                    .labelStyle(.titleAndIcon)
-                    .fixedSize()
-                    .help("Switch between Lyrics, Up Next, and Visualizer")
+                    FullViewModeControl(app: app)
                 }
                 ToolbarItem(placement: .automatic) { timing }
                 // On a glass of its own, apart from the timing.
                 FullViewSpacer(flexible: false)
                 ToolbarItemGroup(placement: .automatic) { controls }
             }
-            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+    }
+}
+
+/// The artwork wash is always dark. Set the label colors directly so the window toolbar
+/// cannot resolve the text against a different material during a mode transition.
+private struct FullViewModeControl: View {
+    let app: AppState
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(FullView.allCases, id: \.self) { mode in
+                let selected = mode == (app.fullView ?? .lyrics)
+                Button {
+                    app.showFullView(mode)
+                } label: {
+                    Text(mode.label)
+                        .font(.callout.weight(selected ? .semibold : .regular))
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background {
+                            if selected {
+                                Capsule().fill(.white.opacity(0.2))
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(.black.opacity(0.55), in: Capsule())
+        .fixedSize()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Now Playing Mode")
+        .help("Switch between Lyrics, Up Next, and Visualizer")
     }
 }
 

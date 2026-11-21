@@ -8,8 +8,10 @@ struct MainWindow: View {
     @SceneStorage("sidebarSelection") private var selection: SidebarItem = .home
     @FocusState private var searchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        let showsFullView = app.fullView != nil && app.player.queue.current != nil
         Group {
             if #available(macOS 26, *) {
                 // The library runs to the bottom of the window and the bar floats over it, as
@@ -40,6 +42,11 @@ struct MainWindow: View {
                 }
             }
         }
+        // The toolbar survives the switch between the library and Now Playing.
+        // Set its background and appearance together from the window's active page.
+        .toolbarBackground(showsFullView ? AnyShapeStyle(Color(white: 0.14)) : AnyShapeStyle(.bar), for: .windowToolbar)
+        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        .toolbarColorScheme(showsFullView ? .dark : colorScheme, for: .windowToolbar)
         .frame(minWidth: 860, minHeight: 520)
         .onKeyPress(.space) {
             app.perform { try await app.player.togglePlayPause() }

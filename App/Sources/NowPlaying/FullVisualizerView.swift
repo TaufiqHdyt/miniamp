@@ -1,17 +1,20 @@
 import MiniAmpKit
 import SwiftUI
 
-/// The spectrum visualizer mode in Now Playing.
+/// The visualizer mode in Now Playing.
 struct FullVisualizerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("visualizerType") private var type: VisualizerType = .spectrum
     let app: AppState
 
     var body: some View {
-        // As much of the page as there is: the bars stretch to the height, and more of
-        // them fit the width.
-        SpectrumView(player: app.player)
+        VisualizerView(type: type, tap: app.player.visualizerTap,
+                       isPlaying: app.player.state == .playing, isSendingDoP: app.player.isSendingDoP)
+            .accessibilityElement()
+            .accessibilityLabel("\(type.title) visualizer")
+            .accessibilityAddTraits(.isImage)
             .padding(Theme.Spacing.l)
-            .modifier(SpectrumPanel(tint: app.tint))
+            .modifier(VisualizerPanel(tint: app.tint))
             .overlay {
                 Group {
                     if app.player.isSendingDoP {
@@ -26,13 +29,22 @@ struct FullVisualizerView: View {
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: app.player.state == .paused)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .fullViewToolbar(app: app)
+            .fullViewToolbar(app: app) {
+                Picker("Visualization Type", selection: $type) {
+                    ForEach(VisualizerType.allCases, id: \.self) { type in
+                        Text(type.title).tag(type)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .help("Choose a visualization type")
+            }
     }
 }
 
-/// Behind the bars: glass tinted with the cover, as Up Next is beside it (macOS 26 and later);
+/// Behind the visualization: glass tinted with the cover, as Up Next is beside it (macOS 26 and later);
 /// before that, the classic black panel.
-private struct SpectrumPanel: ViewModifier {
+private struct VisualizerPanel: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let tint: Color?
 
@@ -45,7 +57,7 @@ private struct SpectrumPanel: ViewModifier {
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: tint)
         } else {
             content
-                .background(Color(nsColor: SpectrumNSView.background), in: shape)
+                .background(Color(nsColor: SpectrumRenderer.background), in: shape)
                 .clipShape(shape)
                 .elevation(.panel)
         }

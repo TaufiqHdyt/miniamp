@@ -4,6 +4,8 @@
 # (-libraryDatabase), never the real one, and plays silent files. Quit miniamp first.
 # Usage: scripts/app-bench.sh [seconds-per-case]   (default 30; CONFIG=Release for a Release build)
 # APP=path/to/miniamp.app measures that build instead, unbuilt (an older commit's, for a baseline).
+# VISUALIZER_ONLY=1 skips the other views. WAVEFORM=1 adds the Waveform case.
+# TONE_LEVEL=0.1 gives the visualizers a signal to draw.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -12,10 +14,12 @@ CONFIG="${CONFIG:-Debug}"
 APP="${APP:-build/Build/Products/$CONFIG/miniamp.app}"
 DATA="$HOME/Library/Containers/dev.miniamp.app/Data/tmp/miniamp-app-bench"
 MUSIC="$DATA/music"
+TONE_LEVEL="${TONE_LEVEL:-0}"
+if [ "$TONE_LEVEL" != 0 ]; then MUSIC="$DATA/music-$TONE_LEVEL"; fi
 SONG="$MUSIC/tone-96k-24.flac"
 
 if pgrep -xq miniamp; then echo "Quit miniamp first." >&2; exit 1; fi
-[ -f "$SONG" ] || TONE_LEVEL=0 scripts/make-fixtures.sh "$MUSIC" 60 >/dev/null
+[ -f "$SONG" ] || TONE_LEVEL="$TONE_LEVEL" scripts/make-fixtures.sh "$MUSIC" 60 >/dev/null
 # Synced lyrics beside the song, a line every two seconds, for the lyrics.
 python3 -I - "$MUSIC/tone-96k-24.lrc" <<'PY'
 import sys
@@ -55,10 +59,15 @@ run() {
 }
 
 printf "%-34s %6s %8s %8s %8s\n" "case ($CONFIG)" "cpu%" "energy" "wakeup/s" "mem MB"
-# -inspectorPane is for builds before Phase 3 (#59), which had the lyrics in the inspector too.
-run "idle, window open"               -showsNowPlaying YES -inspectorPane upNext
-run "playing 96/24, Up Next"          -showsNowPlaying YES -inspectorPane upNext -autoplay "$SONG"
-run "playing 96/24, Up Next closed"   -showsNowPlaying NO -autoplay "$SONG"
-run "playing 96/24, lyrics (synced)"  -showsNowPlaying NO -autoplay "$SONG" -fullView lyrics
-run "playing 96/24, visualizer"       -showsNowPlaying NO -autoplay "$SONG" -fullView visualizer
+if [ "${VISUALIZER_ONLY:-0}" != 1 ]; then
+  # -inspectorPane is for builds before Phase 3 (#59), which had the lyrics in the inspector too.
+  run "idle, window open"              -showsNowPlaying YES -inspectorPane upNext
+  run "playing 96/24, Up Next"         -showsNowPlaying YES -inspectorPane upNext -autoplay "$SONG"
+  run "playing 96/24, Up Next closed"  -showsNowPlaying NO -autoplay "$SONG"
+  run "playing 96/24, lyrics (synced)" -showsNowPlaying NO -autoplay "$SONG" -fullView lyrics
+fi
+run "playing 96/24, visualizer"       -showsNowPlaying NO -autoplay "$SONG" -fullView visualizer -visualizerType spectrum
+if [ "${WAVEFORM:-0}" = 1 ]; then
+  run "playing 96/24, waveform"      -showsNowPlaying NO -autoplay "$SONG" -fullView visualizer -visualizerType waveform
+fi
 rm -rf "$DATA/db"

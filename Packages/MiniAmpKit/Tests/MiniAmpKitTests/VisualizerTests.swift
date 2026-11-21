@@ -38,6 +38,19 @@ import Testing
         }
     }
 
+    @Test func waveformPreservesPeaksAcrossUnevenColumns() {
+        let analyzer = WaveformAnalyzer()
+        let samples: [Float] = [0, 0, -0.75, 0.9, 0, -0.25, 0.5]
+        samples.withUnsafeBufferPointer { analyzer.analyze($0, columnCount: 3) }
+
+        #expect(analyzer.columns.map(\.minimum) == [0, -0.75, -0.25])
+        #expect(analyzer.columns.map(\.maximum) == [0, 0.9, 0.5])
+
+        let silence: [Float] = [0, 0, 0]
+        silence.withUnsafeBufferPointer { analyzer.analyze($0, columnCount: 4) }
+        #expect(analyzer.columns.isEmpty)
+    }
+
     @Test func silenceIsFlatAndSettles() {
         let analyzer = SpectrumAnalyzer(bandCount: 24)
         let silence = [Float](repeating: 0, count: 2048)
