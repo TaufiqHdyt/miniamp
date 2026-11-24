@@ -56,6 +56,68 @@ import Testing
         #expect(try live.writer.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM trackSearch WHERE trackSearch MATCH 'lost'") } == 1)
     }
 
+    @Test func mergesPlayHistoryAcrossDifferentPathsWithoutDuplicatingPlays() throws {
+        let folder = try TestFolder()
+        let source = try AppDatabase.inMemory()
+        let destination = try AppDatabase.inMemory()
+        let playedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let later = playedAt.addingTimeInterval(60)
+        try source.writer.write { db in
+            let song = try SchemaTests.insertTrack("Song", artist: "Band", album: "Album", db)
+            let missing = try SchemaTests.insertTrack("Missing", artist: nil, album: nil, db)
+            for (track, date) in [(song, playedAt), (song, later), (missing, later)] {
+                var play = Play(trackId: try #require(track.id), playedAt: date, listenedMs: 45_000)
+                try play.insert(db)
+            }
+        }
+        try destination.writer.write { db in
+            _ = try SchemaTests.insertTrack("Local song", artist: nil, album: nil, db)
+            let song = try SchemaTests.insertTrack("Song", artist: "Band", album: "Album",
+                                                   path: "/another/mac/Song.flac", db)
+            var play = Play(trackId: try #require(song.id), playedAt: playedAt, listenedMs: 30_000)
+            try play.insert(db)
+        }
+
+        let backup = folder.url.appendingPathComponent("merge.miniampbackup")
+        try LibraryBackup.write(source, settings: [:], appVersion: "1.2", to: backup)
+        let result = try LibraryBackup.mergePlayHistory(from: backup, into: destination)
+        #expect((result.added, result.updated, result.unmatched) == (1, 1, 1))
+        let repeated = try LibraryBackup.mergePlayHistory(from: backup, into: destination)
+        #expect((repeated.added, repeated.updated, repeated.unmatched) == (0, 0, 1))
+
+        try destination.writer.read { db in
+            let stats = try ListeningStats.compute(year: nil, db)
+            #expect(stats.plays == 2)
+            #expect(stats.listened == .seconds(90))
+            #expect(stats.topTracks.first?.item.track.path == "/another/mac/Song.flac")
+        }
+    }
+
+    @Test func mergesICloudPlaysBeforeLocalTagsAreAvailable() throws {
+        let folder = try TestFolder()
+        let source = try AppDatabase.inMemory()
+        let destination = try AppDatabase.inMemory()
+        let relative = "/Library/Mobile Documents/com~apple~CloudDocs/Music/Song.flac"
+        try source.writer.write { db in
+            let song = try SchemaTests.insertTrack("Tagged song", artist: "Band", album: "Album",
+                                                   path: "/Users/source" + relative, db)
+            var play = Play(trackId: try #require(song.id), playedAt: Date(), listenedMs: 45_000)
+            try play.insert(db)
+        }
+        try destination.writer.write { db in
+            var placeholder = try SchemaTests.insertTrack("Song", artist: nil, album: nil,
+                                                          path: "/Users/destination" + relative, db)
+            placeholder.isEvicted = true
+            placeholder.durationMs = 0
+            try placeholder.update(db)
+        }
+
+        let backup = folder.url.appendingPathComponent("icloud.miniampbackup")
+        try LibraryBackup.write(source, settings: [:], appVersion: "1.2", to: backup)
+        let result = try LibraryBackup.mergePlayHistory(from: backup, into: destination)
+        #expect((result.added, result.updated, result.unmatched) == (1, 0, 0))
+    }
+
     @Test func refusesOtherFiles() throws {
         let folder = try TestFolder()
         let live = try AppDatabase.inMemory()

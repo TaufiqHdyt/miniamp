@@ -17,6 +17,7 @@ public struct ListeningStats: Sendable, Equatable {
         public var title: String
         public var artist: String?
         public var artworkKey: String?
+        public var isInLibrary: Bool
     }
 
     /// Listening in one span of time: a month, a year, or a day.
@@ -55,7 +56,7 @@ public struct ListeningStats: Sendable, Equatable {
 
     /// Years with at least one play, newest first.
     public static func years(calendar: Calendar = .current, _ db: Database) throws -> [Int] {
-        let dates = try Date.fetchAll(db, sql: "SELECT playedAt FROM play ORDER BY playedAt")
+        let dates = try Date.fetchAll(db, sql: "SELECT playedAt FROM historyPlay AS play ORDER BY playedAt")
         var years: [Int] = []
         for date in dates {
             let year = calendar.component(.year, from: date)
@@ -80,11 +81,11 @@ public struct ListeningStats: Sendable, Equatable {
         if let row = try Row.fetchOne(db, sql: """
             SELECT count(*), ifnull(sum(play.listenedMs), 0), count(DISTINCT play.trackId),
                    (SELECT count(DISTINCT artistCredit.artistId)
-                    FROM play JOIN track ON track.id = play.trackId
+                    FROM historyPlay AS play JOIN historyTrack AS track ON track.id = play.trackId
                     JOIN artistCredit ON artistCredit.creditId = track.artistId
                     WHERE \(inRange)),
                    count(DISTINCT track.albumId)
-            FROM play JOIN track ON track.id = play.trackId
+            FROM historyPlay AS play JOIN historyTrack AS track ON track.id = play.trackId
             WHERE \(inRange)
             """, arguments: range + range) {
             stats.plays = row[0]
@@ -102,7 +103,7 @@ public struct ListeningStats: Sendable, Equatable {
             stats.newArtists = try Int.fetchOne(db, sql: """
                 SELECT count(*) FROM (
                     SELECT min(play.playedAt) AS first
-                    FROM play JOIN track ON track.id = play.trackId
+                    FROM historyPlay AS play JOIN historyTrack AS track ON track.id = play.trackId
                     JOIN artistCredit ON artistCredit.creditId = track.artistId
                     GROUP BY artistCredit.artistId)
                 WHERE first >= ? AND first < ?
@@ -113,8 +114,8 @@ public struct ListeningStats: Sendable, Equatable {
         let n = Track.columnNames.count + 4
         stats.topTracks = try Row.fetchAll(db, sql: """
             SELECT \(TrackInfo.selectColumns), NULL AS playlistItemId, count(*), sum(play.listenedMs)
-            FROM play
-            JOIN track ON track.id = play.trackId
+            FROM historyPlay AS play
+            JOIN historyTrack AS track ON track.id = play.trackId
             LEFT JOIN artist ON artist.id = track.artistId
             LEFT JOIN album ON album.id = track.albumId
             LEFT JOIN artist AS albumArtist ON albumArtist.id = album.artistId
@@ -125,33 +126,34 @@ public struct ListeningStats: Sendable, Equatable {
         }
         stats.topArtists = try Row.fetchAll(db, sql: """
             SELECT artist.name, count(*), sum(play.listenedMs)
-            FROM play JOIN track ON track.id = play.trackId
+            FROM historyPlay AS play JOIN historyTrack AS track ON track.id = play.trackId
             JOIN artistCredit ON artistCredit.creditId = track.artistId
             JOIN artist ON artist.id = artistCredit.artistId
             WHERE \(inRange)
             GROUP BY artist.id \(ranking)
             """, arguments: range).map { Ranked(item: $0[0], plays: $0[1], listened: .milliseconds($0[2] as Int64)) }
         stats.topAlbums = try Row.fetchAll(db, sql: """
-            SELECT album.id, album.title, albumArtist.name, album.artworkKey, count(*), sum(play.listenedMs)
-            FROM play
-            JOIN track ON track.id = play.trackId
+            SELECT album.id, album.title, albumArtist.name, album.artworkKey, count(*), sum(play.listenedMs),
+                   EXISTS (SELECT 1 FROM track AS libraryTrack WHERE libraryTrack.albumId = album.id)
+            FROM historyPlay AS play
+            JOIN historyTrack AS track ON track.id = play.trackId
             JOIN album ON album.id = track.albumId
             LEFT JOIN artist AS albumArtist ON albumArtist.id = album.artistId
             WHERE \(inRange)
             GROUP BY album.id \(ranking)
             """, arguments: range).map {
-            Ranked(item: AlbumItem(id: $0[0], title: $0[1], artist: $0[2], artworkKey: $0[3]),
+            Ranked(item: AlbumItem(id: $0[0], title: $0[1], artist: $0[2], artworkKey: $0[3], isInLibrary: $0[6]),
                    plays: $0[4], listened: .milliseconds($0[5] as Int64))
         }
         stats.topGenres = try Row.fetchAll(db, sql: """
             SELECT min(track.genre), count(*), sum(play.listenedMs)
-            FROM play JOIN track ON track.id = play.trackId
+            FROM historyPlay AS play JOIN historyTrack AS track ON track.id = play.trackId
             WHERE \(inRange) AND trim(ifnull(track.genre, '')) != ''
             GROUP BY track.genre COLLATE NOCASE \(ranking)
             """, arguments: range).map { Ranked(item: $0[0], plays: $0[1], listened: .milliseconds($0[2] as Int64)) }
 
         // Spans of time, bucketed here rather than in SQL so they're in the calendar's time zone.
-        let events = try Row.fetchAll(db, sql: "SELECT playedAt, listenedMs FROM play WHERE \(inRange) ORDER BY playedAt",
+        let events = try Row.fetchAll(db, sql: "SELECT playedAt, listenedMs FROM historyPlay AS play WHERE \(inRange) ORDER BY playedAt",
                                       arguments: range).map { (date: $0[0] as Date, listened: Duration.milliseconds($0[1] as Int64)) }
         stats.timeline = timeline(year: year, events: events, calendar: calendar)
         var days: [Date: Bucket] = [:]

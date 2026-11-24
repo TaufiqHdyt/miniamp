@@ -23,12 +23,14 @@ struct StatsView: View {
         /// Plays are recorded as tracks play, and tracks come and go with the library.
         var trackStarts: Int
         var revision: Int
+        var playHistoryRevision: Int
     }
 
     var body: some View {
         content
             .pageTitle("Listening Stats") { PeriodControl(period: $period, years: yearChoices) }
-        .task(id: LoadKey(period: period, trackStarts: app.player.trackStarts, revision: library.revision)) {
+        .task(id: LoadKey(period: period, trackStarts: app.player.trackStarts, revision: library.revision,
+                          playHistoryRevision: app.playHistoryRevision)) {
             await load()
         }
     }
@@ -145,14 +147,18 @@ private struct StatsContent: View {
             if !stats.topTracks.isEmpty {
                 Shelf(title: "Top songs", contents: stats.topTracks.map { AnyHashable($0.item.id) }) {
                     ForEach(stats.topTracks, id: \.item.id) { entry in
-                        Button {
-                            app.play(stats.topTracks.map(\.item), from: entry.item.id)
-                        } label: {
-                            rankCard(entry.item.track.title, subtitle: entry.item.artistName,
-                                     artworkKey: entry.item.track.artworkKey, plays: entry.plays, listened: entry.listened)
+                        let card = rankCard(entry.item.track.title, subtitle: entry.item.artistName,
+                                            artworkKey: entry.item.track.artworkKey, plays: entry.plays, listened: entry.listened)
+                        if let id = entry.item.track.id, id > 0 {
+                            Button {
+                                let playable = stats.topTracks.map(\.item).filter { ($0.track.id ?? 0) > 0 }
+                                app.play(playable, from: entry.item.id)
+                            } label: { card }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Plays the top songs from here")
+                        } else {
+                            card
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Plays the top songs from here")
                     }
                 }
             }
@@ -166,11 +172,14 @@ private struct StatsContent: View {
             if !stats.topAlbums.isEmpty {
                 Shelf(title: "Top albums", contents: stats.topAlbums.map { AnyHashable($0.item.id) }) {
                     ForEach(stats.topAlbums, id: \.item.id) { entry in
-                        NavigationLink(value: LibraryDestination.album(entry.item.id)) {
-                            rankCard(entry.item.title, subtitle: entry.item.artist,
-                                     artworkKey: entry.item.artworkKey, plays: entry.plays, listened: entry.listened)
+                        let card = rankCard(entry.item.title, subtitle: entry.item.artist,
+                                            artworkKey: entry.item.artworkKey, plays: entry.plays, listened: entry.listened)
+                        if entry.item.isInLibrary {
+                            NavigationLink(value: LibraryDestination.album(entry.item.id)) { card }
+                                .buttonStyle(.plain)
+                        } else {
+                            card
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }

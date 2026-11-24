@@ -21,6 +21,7 @@ final class AppState {
     var importingFiles = false
     var addingFolder = false
     var error: String?
+    var playHistoryRevision = 0
     /// The toolbar search. While it has text, the window shows results instead of the sidebar's choice.
     var searchText = ""
     /// Bumped by Edit › Find to move focus to the search field.

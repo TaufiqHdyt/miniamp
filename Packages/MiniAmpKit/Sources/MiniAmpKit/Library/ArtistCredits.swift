@@ -65,10 +65,11 @@ public enum ArtistCredits {
     /// Rewrites `artistMember` from the artist names in use, adding an artist row for each
     /// member the library doesn't have yet. Rows of members already there are kept, so their
     /// ids (remembered by the Artists page) don't change.
-    static func rebuild(_ db: Database) throws {
+    static func rebuild(_ db: Database, includingHistory: Bool = false) throws {
+        let tracks = includingHistory ? "historyTrack" : "track"
         let rows = try Row.fetchAll(db, sql: """
             SELECT id, name FROM artist
-            WHERE id IN (SELECT artistId FROM track WHERE artistId IS NOT NULL)
+            WHERE id IN (SELECT artistId FROM \(tracks) WHERE artistId IS NOT NULL)
                OR id IN (SELECT artistId FROM album WHERE artistId IS NOT NULL)
             """)
         let ids = Dictionary(rows.map { (($0["name"] as String), $0["id"] as Int64) }, uniquingKeysWith: { a, _ in a })

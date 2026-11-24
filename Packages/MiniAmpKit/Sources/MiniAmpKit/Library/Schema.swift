@@ -235,7 +235,7 @@ enum Schema {
     /// Splits the credits again, after the splitter stopped making artists of stray
     /// separators ("A, & B" had an artist "&"), and removes artists left with nothing.
     static func v9(_ db: Database) throws {
-        try LibraryScanner.deleteOrphans(db)
+        try LibraryScanner.deleteOrphans(db, includingHistory: false)
     }
 
     /// Tags in a legacy East Asian encoding are read properly now (see LegacyText). Tracks
@@ -263,4 +263,33 @@ enum Schema {
     static func v11(_ db: Database) throws {
         try v10(db)
     }
+    /// Keeps listening history when the user removes a library folder.
+    static func v12(_ db: Database) throws {
+        let columns = Track.columnNames.dropFirst().joined(separator: ", ")
+        try db.execute(sql: """
+            CREATE TABLE archivedTrack (id INTEGER PRIMARY KEY, \(columns), UNIQUE(path));
+            CREATE TABLE archivedPlay (
+                id INTEGER PRIMARY KEY,
+                trackId INTEGER NOT NULL REFERENCES archivedTrack(id) ON DELETE CASCADE,
+                playedAt DATETIME NOT NULL,
+                listenedMs INTEGER NOT NULL
+            );
+            CREATE INDEX archivedPlay_trackTime ON archivedPlay(trackId, playedAt);
+
+            CREATE VIEW historyTrack AS
+                SELECT id, \(columns) FROM track
+                UNION ALL SELECT -id AS id, \(columns) FROM archivedTrack;
+            CREATE VIEW historyPlay AS
+                SELECT id, trackId, playedAt, listenedMs FROM play
+                UNION ALL SELECT -id AS id, -trackId AS trackId, playedAt, listenedMs FROM archivedPlay;
+
+            CREATE TRIGGER track_restore_history AFTER INSERT ON track BEGIN
+                INSERT INTO play (trackId, playedAt, listenedMs)
+                    SELECT new.id, playedAt, listenedMs FROM archivedPlay
+                    WHERE trackId = (SELECT id FROM archivedTrack WHERE path = new.path);
+                DELETE FROM archivedTrack WHERE path = new.path;
+            END;
+            """)
+    }
+
 }

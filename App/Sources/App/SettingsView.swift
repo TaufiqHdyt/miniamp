@@ -115,7 +115,7 @@ private struct LibrarySettings: View {
                             Button("Remove", role: .destructive) {
                                 app.perform { try await library.removeFolder(folder) }
                             }
-                            .help("Remove from the library. The files stay on disk.")
+                            .help("Remove from the library. Your files and listening stats are kept.")
                         }
                     }
                 } header: {

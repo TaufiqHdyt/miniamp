@@ -14,7 +14,8 @@ public enum LibraryFolders {
 
     /// Adds `url` (a folder the user picked) to the library and returns its record.
     ///
-    /// A folder inside one that's already in the library returns that one. A folder that
+    /// Selecting a saved folder again renews its access. An iCloud Drive folder restored from
+    /// another Mac is matched by its path within iCloud Drive. A folder that
     /// contains library folders takes over their tracks (keeping play history), and they're removed.
     public static func add(_ url: URL, to database: AppDatabase) async throws -> LibraryFolder {
         let accessing = url.startAccessingSecurityScopedResource()
@@ -24,8 +25,19 @@ public enum LibraryFolders {
         let bookmark = try url.bookmarkData(options: creationOptions, includingResourceValuesForKeys: nil, relativeTo: nil)
         return try await database.writer.write { db in
             let existing = try LibraryFolder.fetchAll(db)
-            if let covering = existing.first(where: { path == $0.path || path.hasPrefix($0.path + "/") }) {
+            if var saved = existing.first(where: { $0.path == path }) {
+                saved.bookmark = bookmark
+                try saved.update(db)
+                return saved
+            }
+            if let covering = existing.first(where: { path.hasPrefix($0.path + "/") }) {
                 return covering
+            }
+            if let relative = LibraryPaths.iCloudRelativePath(path) {
+                let matches = existing.filter { LibraryPaths.iCloudRelativePath($0.path) == relative }
+                if matches.count == 1, let saved = matches.first {
+                    return try relocate(saved, to: path, bookmark: bookmark, db)
+                }
             }
             var folder = LibraryFolder(path: path, bookmark: bookmark, addedAt: Date())
             try folder.insert(db)
@@ -39,9 +51,34 @@ public enum LibraryFolders {
         }
     }
 
-    /// Removes the folder and its tracks (and with them, their play history and playlist entries).
+    private static func relocate(_ folder: LibraryFolder, to path: String, bookmark: Data,
+                                 _ db: Database) throws -> LibraryFolder {
+        let prefix = folder.path + "/"
+        try db.execute(sql: """
+            UPDATE track SET path = ? || substr(path, length(?) + 1)
+            WHERE folderId = ? AND substr(path, 1, length(?)) = ?
+            """, arguments: [path + "/", prefix, folder.id, prefix, prefix])
+        var relocated = folder
+        relocated.path = path
+        relocated.bookmark = bookmark
+        try relocated.update(db)
+        return relocated
+    }
+
+    /// Removes the folder and its tracks from the library, retaining their listening history.
     public static func remove(_ folder: LibraryFolder, from database: AppDatabase) async throws {
         try await database.writer.write { db in
+            let columns = Track.columnNames.dropFirst().joined(separator: ", ")
+            try db.execute(sql: """
+                INSERT INTO archivedTrack (\(columns))
+                    SELECT \(columns) FROM track
+                    WHERE folderId = ? AND EXISTS (SELECT 1 FROM play WHERE play.trackId = track.id);
+                INSERT INTO archivedPlay (trackId, playedAt, listenedMs)
+                    SELECT archivedTrack.id, play.playedAt, play.listenedMs
+                    FROM play JOIN track ON track.id = play.trackId
+                    JOIN archivedTrack ON archivedTrack.path = track.path
+                    WHERE track.folderId = ?;
+                """, arguments: [folder.id, folder.id])
             _ = try folder.delete(db)
             try LibraryScanner.deleteOrphans(db)
         }
@@ -65,16 +102,29 @@ public enum LibraryFolders {
         let accessing = url.startAccessingSecurityScopedResource()
         var folder = folder
         let path = LibraryPaths.canonical(url)
-        if stale || path != folder.path {
-            if stale, let fresh = try? url.bookmarkData(options: creationOptions, includingResourceValuesForKeys: nil, relativeTo: nil) {
-                folder.bookmark = fresh
+        do {
+            if stale || path != folder.path {
+                if stale, let fresh = try? url.bookmarkData(options: creationOptions, includingResourceValuesForKeys: nil, relativeTo: nil) {
+                    folder.bookmark = fresh
+                }
+                if path != folder.path {
+                    log.notice("library folder moved: \(folder.path, privacy: .public) → \(path, privacy: .public)")
+                }
+                let updated = folder
+                folder = try await database.writer.write { db in
+                    if path != updated.path, let relative = LibraryPaths.iCloudRelativePath(path),
+                       relative == LibraryPaths.iCloudRelativePath(updated.path) {
+                        return try relocate(updated, to: path, bookmark: updated.bookmark, db)
+                    }
+                    var relocated = updated
+                    relocated.path = path
+                    try relocated.update(db)
+                    return relocated
+                }
             }
-            if path != folder.path {
-                log.notice("library folder moved: \(folder.path, privacy: .public) → \(path, privacy: .public)")
-                folder.path = path
-            }
-            let updated = folder
-            try await database.writer.write { db in try updated.update(db) }
+        } catch {
+            if accessing { url.stopAccessingSecurityScopedResource() }
+            throw error
         }
         return Access(folder: folder, url: url, accessing: accessing)
     }

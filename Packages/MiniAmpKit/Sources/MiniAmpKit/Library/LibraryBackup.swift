@@ -22,7 +22,7 @@ public enum LibraryBackup {
     }
 
     public struct NewerBackup: Error, CustomStringConvertible {
-        public var description: String { "That backup was made by a newer miniamp; update the app to restore it." }
+        public var description: String { "That backup was made by a newer miniamp; update the app to import it." }
     }
 
     /// Writes a backup of `database` with `settings` (property-list values) to `url`, replacing
@@ -95,6 +95,110 @@ public enum LibraryBackup {
         return settings
     }
 
+    public struct PlayMerge: Sendable, Equatable {
+        public var added = 0
+        public var updated = 0
+        public var unmatched = 0
+    }
+
+    private struct TrackIdentity: Hashable {
+        let title: String
+        let artist: String?
+        let album: String?
+        let albumArtist: String?
+        let disc: Int?
+        let track: Int?
+        let duration: Int
+
+        init(_ row: Row) {
+            title = row["title"]
+            artist = row["artist"]
+            album = row["album"]
+            albumArtist = row["albumArtist"]
+            disc = row["discNumber"]
+            track = row["trackNumber"]
+            duration = row["durationMs"]
+        }
+    }
+
+    private static func trackIdentities(_ tracks: String) -> String {
+        """
+        SELECT track.id, track.path, track.title, track.discNumber, track.trackNumber, track.durationMs,
+               artist.name AS artist, album.title AS album, albumArtist.name AS albumArtist
+        FROM \(tracks) AS track
+        LEFT JOIN artist ON artist.id = track.artistId
+        LEFT JOIN album ON album.id = track.albumId
+        LEFT JOIN artist AS albumArtist ON albumArtist.id = album.artistId
+        """
+    }
+
+    /// Imports plays for tracks in the destination library and keeps the longer duration
+    /// when both libraries have a play for the same track at the same timestamp.
+    public static func mergePlayHistory(from url: URL, into database: AppDatabase) throws -> PlayMerge {
+        try withBackup(at: url) { source in
+            let applied = try Set(String.fetchAll(source, sql: "SELECT identifier FROM grdb_migrations"))
+            guard applied.isSubset(of: Set(AppDatabase.migrator.migrations)) else { throw NewerBackup() }
+            let tracks = try source.viewExists("historyTrack") ? "historyTrack" : "track"
+            let history = try source.viewExists("historyPlay") ? "historyPlay" : "play"
+            let sourceTracks = try Row.fetchAll(source, sql: """
+                \(trackIdentities(tracks)) WHERE EXISTS (SELECT 1 FROM \(history) AS play WHERE play.trackId = track.id)
+                """)
+            let plays = try Row.fetchAll(source, sql: "SELECT trackId, playedAt, listenedMs FROM \(history)")
+            return try database.writer.write { destination in
+                var paths: [String: Int64] = [:]
+                var cloudPaths: [String: [Int64]] = [:]
+                var identities: [TrackIdentity: [Int64]] = [:]
+                for row in try Row.fetchAll(destination, sql: trackIdentities("historyTrack")) {
+                    let id: Int64 = row["id"]
+                    let path: String = row["path"]
+                    paths[path] = id
+                    if let relative = LibraryPaths.iCloudRelativePath(path) {
+                        cloudPaths[relative, default: []].append(id)
+                    }
+                    identities[TrackIdentity(row), default: []].append(id)
+                }
+
+                var trackIDs: [Int64: Int64] = [:]
+                for row in sourceTracks {
+                    let path: String = row["path"]
+                    let cloudMatches = LibraryPaths.iCloudRelativePath(path).flatMap { cloudPaths[$0] } ?? []
+                    let metadataMatches = identities[TrackIdentity(row), default: []]
+                    trackIDs[row["id"]] = paths[path]
+                        ?? (cloudMatches.count == 1 ? cloudMatches.first : nil)
+                        ?? (metadataMatches.count == 1 ? metadataMatches.first : nil)
+                }
+
+                var result = PlayMerge()
+                for play in plays {
+                    guard let trackID = trackIDs[play["trackId"]] else {
+                        result.unmatched += 1
+                        continue
+                    }
+                    let table = trackID < 0 ? "archivedPlay" : "play"
+                    let storedTrackID = abs(trackID)
+                    let playedAt: String = play["playedAt"]
+                    let listenedMs: Int64 = play["listenedMs"]
+                    let existing = try Row.fetchOne(destination, sql: """
+                        SELECT id, listenedMs FROM \(table) WHERE playedAt = ? AND trackId = ?
+                        ORDER BY listenedMs DESC, id LIMIT 1
+                        """, arguments: [playedAt, storedTrackID])
+                    if let existing {
+                        if listenedMs > (existing["listenedMs"] as Int64) {
+                            try destination.execute(sql: "UPDATE \(table) SET listenedMs = ? WHERE id = ?",
+                                                    arguments: [listenedMs, existing["id"] as Int64])
+                            result.updated += 1
+                        }
+                    } else {
+                        try destination.execute(sql: "INSERT INTO \(table) (trackId, playedAt, listenedMs) VALUES (?, ?, ?)",
+                                                arguments: [storedTrackID, playedAt, listenedMs])
+                        result.added += 1
+                    }
+                }
+                return result
+            }
+        }
+    }
+
     private static var readOnly: Configuration {
         var configuration = Configuration()
         configuration.readonly = true
@@ -113,9 +217,10 @@ public enum LibraryBackup {
 
     private static func info(_ db: Database) throws -> Info {
         guard let row = try Row.fetchOne(db, sql: "SELECT createdAt, appVersion FROM backupInfo") else { throw NotABackup() }
+        let history = try db.viewExists("historyPlay") ? "historyPlay" : "play"
         return Info(createdAt: row["createdAt"], appVersion: row["appVersion"],
                     tracks: try Int.fetchOne(db, sql: "SELECT count(*) FROM track") ?? 0,
                     playlists: try Int.fetchOne(db, sql: "SELECT count(*) FROM playlist") ?? 0,
-                    plays: try Int.fetchOne(db, sql: "SELECT count(*) FROM play") ?? 0)
+                    plays: try Int.fetchOne(db, sql: "SELECT count(*) FROM \(history)") ?? 0)
     }
 }

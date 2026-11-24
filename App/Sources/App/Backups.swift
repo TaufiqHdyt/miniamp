@@ -3,7 +3,7 @@ import MiniAmpKit
 import os
 import UniformTypeIdentifiers
 
-/// File › Back Up Library… and Restore from Backup….
+/// File menu and Finder actions for library backups.
 ///
 /// A restore replaces the database under a running library (its folders, watchers, and
 /// playback all depend on it), so it isn't done in place: the backup is copied into the app's
@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 @MainActor
 enum Backups {
     static let log = Logger(subsystem: "dev.miniamp", category: "backup")
-    static var contentType: UTType { UTType(filenameExtension: LibraryBackup.fileExtension, conformingTo: .data) ?? .data }
+    static var contentType: UTType { UTType(exportedAs: "dev.miniamp.library-backup", conformingTo: .data) }
 
     /// Where a backup waits for the relaunch that restores it.
     static var pendingRestoreURL: URL? {
@@ -46,15 +46,56 @@ enum Backups {
 
     // MARK: Restore
 
-    static func chooseRestore(_ app: AppState) {
+    static func chooseBackup(_ app: AppState) {
         let panel = NSOpenPanel()
-        panel.title = "Restore from Backup"
+        panel.title = "Open miniamp Backup"
         panel.allowedContentTypes = [contentType]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let info: LibraryBackup.Info
-        do { info = try LibraryBackup.info(of: url) } catch { return app.error = "\(error)" }
+        open(url, in: app)
+    }
 
+    static func open(_ url: URL, in app: AppState) {
+        guard url.isFileURL, url.pathExtension.lowercased() == LibraryBackup.fileExtension,
+              let library = app.library else { return }
+        app.perform {
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            let info = try await Task.detached(priority: .userInitiated) {
+                try readBackup(at: url) { try LibraryBackup.info(of: $0) }
+            }.value
+
+            let canRestore = UserDefaults.standard.string(forKey: "libraryDatabase") == nil
+            let alert = NSAlert()
+            alert.messageText = "Open backup from \(info.createdAt.formatted(date: .long, time: .shortened))"
+            let summary = "This backup has \(info.tracks) songs, \(info.playlists) playlists, and \(info.plays) plays."
+            alert.informativeText = summary + " Merge Listening Stats imports plays for songs already in your library."
+            alert.addButton(withTitle: "Merge Listening Stats")
+            alert.addButton(withTitle: "Cancel")
+            if canRestore { alert.addButton(withTitle: "Restore Library…") }
+            switch alert.runModal() {
+            case .alertFirstButtonReturn:
+                let database = library.database
+                let result = try await Task.detached(priority: .userInitiated) {
+                    try readBackup(at: url) { try LibraryBackup.mergePlayHistory(from: $0, into: database) }
+                }.value
+                app.playHistoryRevision += 1
+                let completed = NSAlert()
+                completed.messageText = "Listening Stats Merged"
+                completed.informativeText = "Added \(result.added) plays and updated \(result.updated). Plays without a unique local match: \(result.unmatched)."
+                if result.unmatched > 0 {
+                    completed.informativeText += " Add the missing music to this Mac’s library and open the backup again."
+                }
+                completed.runModal()
+            case .alertThirdButtonReturn where canRestore:
+                try await confirmRestore(url, info: info, app: app)
+            default:
+                break
+            }
+        }
+    }
+
+    private static func confirmRestore(_ url: URL, info: LibraryBackup.Info, app: AppState) async throws {
         let alert = NSAlert()
         alert.messageText = "Restore the library from \(info.createdAt.formatted(date: .long, time: .shortened))?"
         alert.informativeText = """
@@ -66,15 +107,29 @@ enum Backups {
         alert.alertStyle = .warning
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
-        do {
-            guard let pending = pendingRestoreURL else { return }
-            try? FileManager.default.removeItem(at: pending)
-            try FileManager.default.copyItem(at: url, to: pending)
-        } catch {
-            return app.error = "Couldn't get the backup ready: \(error.localizedDescription)"
-        }
+        guard let pending = pendingRestoreURL else { return }
+        try await Task.detached(priority: .userInitiated) {
+            try readBackup(at: url) { readable in
+                if FileManager.default.fileExists(atPath: pending.path) {
+                    try FileManager.default.removeItem(at: pending)
+                }
+                try FileManager.default.copyItem(at: readable, to: pending)
+            }
+        }.value
         app.player.stop()
         relaunch()
+    }
+
+    /// Coordinates with iCloud Drive so the backup is available before SQLite opens it.
+    private nonisolated static func readBackup<T>(at url: URL, _ read: (URL) throws -> T) throws -> T {
+        var coordinationError: NSError?
+        var result: Result<T, Error>?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { readable in
+            result = Result { try read(readable) }
+        }
+        if let coordinationError { throw coordinationError }
+        guard let result else { throw CocoaError(.fileReadUnknown) }
+        return try result.get()
     }
 
     private static func relaunch() {
@@ -88,7 +143,7 @@ enum Backups {
         }
     }
 
-    /// At launch, before the library opens: restores a backup left by `chooseRestore`. Returns
+    /// At launch, before the library opens: restores a backup left by the restore confirmation. Returns
     /// a message for the user if it couldn't.
     static func restorePending(into database: AppDatabase, artwork: ArtworkCache?) -> String? {
         guard let pending = pendingRestoreURL, FileManager.default.fileExists(atPath: pending.path) else { return nil }

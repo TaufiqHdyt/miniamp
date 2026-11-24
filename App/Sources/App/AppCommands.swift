@@ -19,7 +19,7 @@ struct AppCommands: Commands {
             Divider()
             Button("Back Up Library…") { Backups.backUp(app) }
                 .disabled(app.library == nil)
-            Button("Restore from Backup…") { Backups.chooseRestore(app) }
+            Button("Open Backup…") { Backups.chooseBackup(app) }
                 .disabled(app.library == nil)
         }
         CommandGroup(replacing: .textEditing) {

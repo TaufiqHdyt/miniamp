@@ -20,7 +20,7 @@ struct MiniAmpApp: App {
             MainThreadWatchdog.startIfWanted()
             let opened = try database(.default)
             let cache = artwork()
-            // A backup chosen with Restore from Backup… (only into the real library).
+            // A backup chosen with Restore Library… (only into the real library).
             if UserDefaults.standard.string(forKey: "libraryDatabase") == nil {
                 launchError = Backups.restorePending(into: opened, artwork: cache)
             }
@@ -39,6 +39,7 @@ struct MiniAmpApp: App {
     var body: some Scene {
         Window("miniamp", id: "main") {
             MainWindow(app: app)
+                .onOpenURL { Backups.open($0, in: app) }
         }
         .defaultSize(width: 1180, height: 760)
         // Open at launch even if the window was closed when the app last quit.

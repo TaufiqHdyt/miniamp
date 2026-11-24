@@ -84,9 +84,8 @@ public final class Library {
     /// Adds a folder the user picked, scans it, and watches it.
     public func addFolder(_ url: URL) async throws {
         let folder = try await LibraryFolders.add(url, to: database)
-        if access[folder.id!] == nil {
-            access[folder.id!] = try await LibraryFolders.open(folder, in: database)
-        }
+        let opened = try await LibraryFolders.open(folder, in: database)
+        access.updateValue(opened, forKey: folder.id!)?.stop()
         try await reloadFolders()
         enqueue(folders.first { $0.id == folder.id } ?? folder, .folder)
     }

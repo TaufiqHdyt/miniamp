@@ -28,6 +28,21 @@ targets:
       path: App/Info.plist
       properties:
         MiniAmpAppGroup: $(TeamIdentifierPrefix)dev.miniamp
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: miniamp Backup
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Owner
+            LSItemContentTypes:
+              - dev.miniamp.library-backup
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: dev.miniamp.library-backup
+            UTTypeDescription: miniamp Backup
+            UTTypeConformsTo:
+              - public.data
+              - public.content
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - miniampbackup
     entitlements:
       path: App/miniamp.entitlements
       properties:
