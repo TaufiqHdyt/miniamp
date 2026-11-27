@@ -15,6 +15,14 @@ struct SettingsView: View {
             Tab("Lyrics", systemImage: "quote.bubble") {
                 LyricsSettings(app: app)
             }
+            Tab("Keyboard", systemImage: "keyboard") {
+                Form {
+                    Toggle("Winamp single-key shortcuts", isOn: Bindable(app).winampShortcuts)
+                    Text("Turn these off to use all letters for type-to-select in song lists.")
+                        .foregroundStyle(.secondary)
+                }
+                .formStyle(.grouped)
+            }
             Tab("Advanced", systemImage: "slider.vertical.3") {
                 AdvancedSettings(app: app, player: app.player)
             }

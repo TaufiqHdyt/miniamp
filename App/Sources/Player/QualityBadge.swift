@@ -15,16 +15,18 @@ struct QualityBadge: View {
                 HStack(spacing: Theme.Spacing.xs) {
                     icon
                     Text(short)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11, weight: .medium).monospacedDigit())
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                 }
                 .fixedSize()
                 icon
             }
+            .frame(minHeight: 30)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .help("\(title)\n\n\(headline)")
         .popover(isPresented: $showsDetails, arrowEdge: .top) {
             SignalDetails(path: path, headline: headline, title: title)
@@ -40,7 +42,7 @@ struct QualityBadge: View {
 
     private var icon: some View {
         Image(systemName: symbol)
-            .imageScale(.medium)
+            .font(.system(size: 13, weight: .medium))
             .foregroundStyle(color)
     }
 

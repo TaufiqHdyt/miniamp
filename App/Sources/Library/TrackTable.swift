@@ -21,6 +21,7 @@ struct TrackTable: NSViewRepresentable {
     /// The playlist the rows are, if they are one.
     var playlist: Int64?
     @Binding var sort: TrackSort
+    var acceptsRequestedFocus = true
 
     var inPlaylist: Bool { playlist != nil }
 
@@ -45,7 +46,8 @@ struct TrackTable: NSViewRepresentable {
         table.target = coordinator
         table.doubleAction = #selector(Coordinator.doubleClicked(_:))
         table.onReturn = { [weak coordinator] in coordinator?.playSelection() }
-        table.onSpace = { [weak coordinator] in coordinator?.togglePlayPause() }
+        table.onEnqueue = { [weak coordinator] next in coordinator?.enqueueSelection(next: next) }
+        table.onMove = { [weak coordinator] step in coordinator?.moveSelection(by: step) ?? false }
         table.onDelete = { [weak coordinator] in coordinator?.removeSelectionFromPlaylist() }
         table.onGetInfo = { [weak coordinator] in coordinator?.getInfoForSelection() }
         table.registerForDraggedTypes([Coordinator.rowType])
@@ -97,14 +99,21 @@ struct TrackTable: NSViewRepresentable {
         let isPlaying = app.player.state == .playing
         let waiting: Set<TrackInfo.ID> = app.waitingToPlayID.map { [$0] } ?? []
         context.coordinator.update(self, playing: playing, isPlaying: isPlaying, waiting: waiting)
-        // Room after the last row for the floating player bar. AppKit doesn't see SwiftUI's
-        // safe area, so it's set by hand; the table sits below the page header, so nothing
-        // else needs insetting.
-        let bottom = app.playerBarInset
-        if scroll.contentInsets.bottom != bottom {
-            scroll.automaticallyAdjustsContentInsets = false
-            scroll.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: bottom, right: 0)
-            scroll.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: bottom, right: 0)
+        let request = app.contentFocusRequests
+        if acceptsRequestedFocus, request > context.coordinator.contentFocusRequest, let table = context.coordinator.table {
+            context.coordinator.contentFocusRequest = request
+            let app = app
+            Task { @MainActor [weak table] in
+                guard let table, let window = table.window, window.isKeyWindow,
+                      window.attachedSheet == nil, !table.isHiddenOrHasHiddenAncestor,
+                      !(window.firstResponder is NSText), app.fullView == nil,
+                      request == app.contentFocusRequests, app.claimContentFocus() else { return }
+                window.makeFirstResponder(table)
+                if table.selectedRow < 0, table.numberOfRows > 0 {
+                    table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+                    table.scrollRowToVisible(0)
+                }
+            }
         }
     }
 
@@ -112,6 +121,7 @@ struct TrackTable: NSViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
+        var contentFocusRequest = 0
         weak var table: NSTableView?
         weak var headerMenu: NSMenu?
         private var config: TrackTable?
@@ -302,16 +312,34 @@ struct TrackTable: NSViewRepresentable {
             guard canReorder, let playlist = config?.playlist, let library = config?.app.library else { return false }
             let items = (info.draggingPasteboard.pasteboardItems ?? []).compactMap { $0.string(forType: Self.rowType).flatMap(Int64.init) }
             guard !items.isEmpty else { return false }
-            // Shown at once; the reload after the write brings the same order.
+            reorder(items, to: row, playlist: playlist, library: library, table: tableView)
+            return true
+        }
+
+        func moveSelection(by step: Int) -> Bool {
+            guard canReorder, let table, let playlist = config?.playlist, let library = config?.app.library else {
+                return false
+            }
+            let rows = table.selectedRowIndexes
+            guard let first = rows.first, let last = rows.last else { return true }
+            let destination = step < 0 ? first - 1 : last + 2
+            guard (0...tracks.count).contains(destination) else { return true }
+            let items = rows.compactMap { tracks[$0].playlistItemId }
+            if !items.isEmpty { reorder(items, to: destination, playlist: playlist, library: library, table: table) }
+            return true
+        }
+
+        private func reorder(_ items: [Int64], to row: Int, playlist: Int64, library: Library, table: NSTableView) {
+            // Show the order immediately. The reload after the write brings the same order.
             let moving = Set(items)
             let moved = tracks.filter { $0.playlistItemId.map(moving.contains) ?? false }
             var rest = tracks.filter { !($0.playlistItemId.map(moving.contains) ?? false) }
             let at = row - tracks[..<min(row, tracks.count)].filter { $0.playlistItemId.map(moving.contains) ?? false }.count
             rest.insert(contentsOf: moved, at: at)
-            showLocally(rest, in: tableView)
-            tableView.selectRowIndexes(IndexSet(at..<(at + moved.count)), byExtendingSelection: false)
+            showLocally(rest, in: table)
+            table.selectRowIndexes(IndexSet(at..<(at + moved.count)), byExtendingSelection: false)
+            table.scrollRowToVisible(at)
             config?.app.perform { try await library.movePlaylistItems(items, in: playlist, to: row) }
-            return true
         }
 
         func removeSelectionFromPlaylist() {
@@ -354,9 +382,9 @@ struct TrackTable: NSViewRepresentable {
             config?.app.play(tracks, from: tracks[row].id)
         }
 
-        func togglePlayPause() {
-            guard let app = config?.app else { return }
-            app.perform { try await app.player.togglePlayPause() }
+        func enqueueSelection(next: Bool) {
+            guard let table else { return }
+            config?.app.enqueue(table.selectedRowIndexes.map { tracks[$0] }, next: next)
         }
 
         // MARK: Menus
@@ -735,18 +763,34 @@ private final class TrackCell: NSTableCellView {
 /// (in a playlist) removes the selection from it; ⌘I opens Get Info.
 private final class KeyHandlingTableView: NSTableView {
     var onReturn: (() -> Void)?
-    var onSpace: (() -> Void)?
+    var onEnqueue: ((Bool) -> Void)?
+    var onMove: ((Int) -> Bool)?
     var onDelete: (() -> Void)?
     var onGetInfo: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
-        let modifiers = event.modifierFlags.intersection([.command, .option, .control])
-        let plain = modifiers.isEmpty
-        switch event.charactersIgnoringModifiers {
-        case "\r" where plain, "\u{3}" where plain: onReturn?()
-        case " " where plain: onSpace?()
-        case "\u{7F}" where plain, "\u{F728}" where plain: onDelete?()
-        case "i" where modifiers == .command: onGetInfo?()
+        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        let key = event.charactersIgnoringModifiers
+        if key == "\r" || key == "\u{3}" {
+            switch modifiers {
+            case []:
+                if !event.isARepeat { onReturn?() }
+                return
+            case .option, [.option, .shift]:
+                if !event.isARepeat { onEnqueue?(modifiers == .option) }
+                return
+            default: break
+            }
+        }
+        switch (key, modifiers) {
+        case ("\u{7F}", []), ("\u{F728}", []): if !event.isARepeat { onDelete?() }
+        case ("i", .command): if !event.isARepeat { onGetInfo?() }
+        case ("\u{F700}", .option):
+            if event.isARepeat || onMove?(-1) == true { return }
+            super.keyDown(with: event)
+        case ("\u{F701}", .option):
+            if event.isARepeat || onMove?(1) == true { return }
+            super.keyDown(with: event)
         default: super.keyDown(with: event)
         }
     }

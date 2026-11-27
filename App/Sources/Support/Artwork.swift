@@ -52,14 +52,13 @@ final class ArtworkImages {
     }
 
     /// Tints already worked out, by cover (nil: a cover with no colour to take).
-    private var colours: [String: CoverColours] = [:]
+    private var tints: [String: ArtworkTint?] = [:]
 
-    /// The colour to tint with and how light the cover is, for a library cover or the one
-    /// embedded in a file outside it.
-    func colours(key: String?, fileURL: URL?, in artwork: ArtworkCache?) async -> CoverColours? {
+    /// The tint of a library cover or the artwork embedded in a file outside the library.
+    func tint(key: String?, fileURL: URL?, in artwork: ArtworkCache?) async -> ArtworkTint? {
         let id = key ?? fileURL.map { "file:" + $0.path } ?? ""
         guard !id.isEmpty else { return nil }
-        if let known = colours[id] { return known }
+        if let known = tints[id] { return known }
         var image: NSImage?
         if let key, let artwork {
             image = await self.image(for: key, size: .small, in: artwork)
@@ -68,10 +67,10 @@ final class ArtworkImages {
         }
         guard let cgImage = image?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         let found = await Task.detached(priority: .utility) {
-            CoverColours(tint: ArtworkTint.of(cgImage), brightness: ArtworkTint.brightness(of: cgImage))
+            ArtworkTint.of(cgImage)
         }.value
-        if colours.count > 500 { colours.removeAll() }
-        colours[id] = found
+        if tints.count > 500 { tints.removeAll() }
+        tints.updateValue(found, forKey: id)
         return found
     }
 
@@ -121,7 +120,9 @@ struct ArtworkView: View {
 
     var body: some View {
         // Already decoded: show it in this frame, without a placeholder flash.
-        let image = loadedID == id ? loaded : key.flatMap { ArtworkImages.shared.cached($0, size) }
+        let source = artwork == nil ? nil : key
+        let cacheKey = source ?? fileURL.map { "file:" + $0.path }
+        let image = loadedID == id ? loaded : cacheKey.flatMap { ArtworkImages.shared.cached($0, size) }
         // A square that the image fills; a non-square cover is cropped, never stretched.
         Color.clear
             .aspectRatio(1, contentMode: .fit)
@@ -131,11 +132,13 @@ struct ArtworkView: View {
                 } else {
                     Rectangle().fill(.quaternary)
                         .overlay {
-                            Image(systemName: "music.note")
-                                .resizable()
-                                .scaledToFit()
-                                .scaleEffect(0.4)
-                                .foregroundStyle(.secondary)
+                            if cacheKey == nil || loadedID == id {
+                                Image(systemName: "music.note")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .scaleEffect(0.4)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                 }
             }
@@ -154,13 +157,6 @@ struct ArtworkView: View {
             }
             .accessibilityHidden(true)
     }
-}
-
-/// What a cover lends what's around it: its colour (nil when it has too little) and how
-/// light it is overall.
-struct CoverColours: Equatable, Sendable {
-    var tint: ArtworkTint?
-    var brightness: Double?
 }
 
 extension ArtworkTint {

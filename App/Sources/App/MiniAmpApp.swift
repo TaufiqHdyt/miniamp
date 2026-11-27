@@ -37,7 +37,7 @@ struct MiniAmpApp: App {
     }()
 
     var body: some Scene {
-        Window("miniamp", id: "main") {
+        Window("MiniAmp", id: "main") {
             MainWindow(app: app)
                 .onOpenURL { Backups.open($0, in: app) }
         }

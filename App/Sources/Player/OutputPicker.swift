@@ -1,31 +1,9 @@
 import MiniAmpKit
 import SwiftUI
 
-/// The AirPlay button, as in Apple Music: click it for a panel of output devices, grouped into
-/// this Mac's outputs and AirPlay speakers, with a volume slider under the one playing.
-/// Virtual and aggregate devices are left out.
-struct OutputButton: View {
+struct OutputPanel: View {
     let player: Player
-    @State private var showsPanel = false
-
-    var body: some View {
-        Button { showsPanel.toggle() } label: {
-            Image(systemName: "airplay.audio").frame(width: 22)
-        }
-        .buttonStyle(.borderless)
-        .imageScale(.large)
-        .foregroundStyle(.secondary)
-        .help("Output: \(player.outputDevice?.name ?? "None")")
-        .accessibilityLabel("Output device")
-        .accessibilityValue(player.outputDevice?.name ?? "None")
-        .popover(isPresented: $showsPanel, arrowEdge: .top) {
-            OutputPanel(player: player)
-        }
-    }
-}
-
-private struct OutputPanel: View {
-    let player: Player
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         // Read each device's name and kind once per refresh; they're HAL calls.
@@ -37,7 +15,12 @@ private struct OutputPanel: View {
         let computer = rows.filter { $0.kind != .airPlay }
         let airPlay = rows.filter { $0.kind == .airPlay }
 
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Audio Output").font(.headline)
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+            }
             section("Computer", computer)
             if !airPlay.isEmpty {
                 Divider().padding(.vertical, 4)

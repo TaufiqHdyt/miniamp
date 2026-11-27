@@ -39,8 +39,14 @@ struct TrackListView: View {
     }
 
     var body: some View {
-        table
-            .pageTitle(title, subtitle: tracks.isEmpty ? "" : CountFormat.songs(tracks.count))
+        Group {
+            if case .all = scope {
+                table
+            } else {
+                table.pageSummary(loaded ? CountFormat.songs(tracks.count) : "")
+            }
+        }
+        .navigationTitle(title)
         .task(id: TrackQuery(scope: scope, sort: sort, revision: library.revision)) {
             await load()
         }
@@ -50,12 +56,15 @@ struct TrackListView: View {
     private var table: some View {
         TrackTable(app: app, rows: rows, playlist: playlist,
                    sort: Binding(get: { sort }, set: { sort = $0 }))
-            .clearsUpNext()
             .overlay {
                 if loaded && tracks.isEmpty {
                     if library.folders.isEmpty {
-                        ContentUnavailableView("No Music Yet", systemImage: "music.note",
-                                               description: Text("Add a music folder with File › Add Music Folder…"))
+                        ContentUnavailableView {
+                            Label("No Music Yet", systemImage: "music.note")
+                        } actions: {
+                            Button("Add Music Folder…") { app.run(.addFolder) }
+                            Button("Open Files…") { app.run(.open) }
+                        }
                     } else if inPlaylist {
                         ContentUnavailableView("Empty Playlist", systemImage: "music.note.list",
                                                description: Text("Right-click songs and choose Add to Playlist."))
@@ -111,30 +120,31 @@ struct SearchResultsView: View {
     @State private var rows = TrackRows()
     private var results: [TrackInfo] { rows.tracks }
     @State private var sort = TrackSort(.relevance)
-    @State private var searched = false
+    @State private var displayedQuery: String?
+    private var matchesQuery: Bool { displayedQuery == query }
 
     static let limit = 1000
 
     var body: some View {
-        TrackTable(app: app, rows: rows, sort: $sort)
+        TrackTable(app: app, rows: rows, sort: $sort, acceptsRequestedFocus: matchesQuery && !results.isEmpty)
+            .allowsHitTesting(matchesQuery)
             .overlay {
-                if searched && results.isEmpty {
+                if matchesQuery && results.isEmpty {
                     ContentUnavailableView.search(text: query)
                 }
             }
-            .clearsUpNext()
-            .pageTitle("Search", subtitle: subtitle)
-        .task(id: SearchQuery(text: query, sort: sort, revision: library.revision)) {
-                // Wait for a pause in typing.
-                try? await Task.sleep(for: .milliseconds(120))
-                guard !Task.isCancelled else { return }
+            .navigationTitle("Search")
+            .pageSummary(subtitle)
+            .task(id: SearchQuery(text: query, sort: sort, revision: library.revision)) {
                 do {
+                    try await Task.sleep(for: .milliseconds(120))
                     let found = try await library.search(query, sort: sort, limit: Self.limit)
                     guard !Task.isCancelled else { return }
                     if found != rows.tracks { rows = TrackRows(found) }
-                    searched = true
+                    displayedQuery = query
+                } catch is CancellationError {
                 } catch {
-                    app.error = "\(error)"
+                    if !Task.isCancelled { app.error = "\(error)" }
                 }
             }
     }

@@ -14,7 +14,6 @@ struct FullVisualizerView: View {
             .accessibilityLabel("\(type.title) visualizer")
             .accessibilityAddTraits(.isImage)
             .padding(Theme.Spacing.l)
-            .modifier(VisualizerPanel(tint: app.tint))
             .overlay {
                 Group {
                     if app.player.isSendingDoP {
@@ -29,6 +28,8 @@ struct FullVisualizerView: View {
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: app.player.state == .paused)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: SpectrumRenderer.background))
+            .environment(\.colorScheme, .dark)
             .fullViewToolbar(app: app) {
                 Picker("Visualization Type", selection: $type) {
                     ForEach(VisualizerType.allCases, id: \.self) { type in
@@ -39,27 +40,5 @@ struct FullVisualizerView: View {
                 .pickerStyle(.menu)
                 .help("Choose a visualization type")
             }
-    }
-}
-
-/// Behind the visualization: glass tinted with the cover, as Up Next is beside it (macOS 26 and later);
-/// before that, the classic black panel.
-private struct VisualizerPanel: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let tint: Color?
-
-    func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: Theme.Radius.floatingPanel, style: .continuous)
-        if #available(macOS 26, *) {
-            content
-                .clipShape(shape)
-                .glassBackground(in: shape, tint: tint?.opacity(Theme.Tint.inspector.top))
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: tint)
-        } else {
-            content
-                .background(Color(nsColor: SpectrumRenderer.background), in: shape)
-                .clipShape(shape)
-                .elevation(.panel)
-        }
     }
 }

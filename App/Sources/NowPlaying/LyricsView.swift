@@ -76,35 +76,24 @@ struct LyricsView: View {
         }
     }
 
-    /// Big lyrics, the line being sung a third of the way down, fading out at the edges.
+    /// Full-size lyrics with room to scroll the last line up into reading position.
     private var full: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    fullRows
-                }
-                .frame(maxWidth: 760, alignment: .leading)
-                .padding(.horizontal, Theme.Spacing.page)
-                .padding(.top, Theme.Spacing.l)
-                .padding(.bottom, 280)
-                .frame(maxWidth: .infinity)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                fullRows
             }
-            .scrollIndicators(.never)
-            .mask {
-                VStack(spacing: 0) {
-                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                        .frame(height: Theme.Spacing.m)
-                    Rectangle().fill(.black)
-                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                        .frame(height: Theme.Spacing.xl)
-                }
-            }
+            .frame(maxWidth: 760, alignment: .leading)
+            .padding(.horizontal, Theme.Spacing.page)
+            .padding(.top, Theme.Spacing.l)
+            .padding(.bottom, 280)
+            .frame(maxWidth: .infinity)
         }
         .fullViewToolbar(app: app) {
             if case .found(let found) = state, !found.lyrics.isInstrumental, found.lyrics.isSynced {
                 TimingControl(app: app, url: url)
             }
-        } controls: { fullControls }
+            fullControls
+        }
     }
 
     @ViewBuilder
@@ -454,7 +443,7 @@ private struct LyricLine: View {
     private func lineColor(current: Bool, elapsed: Bool) -> Color {
         switch style {
         case .pane: current ? .primary : .secondary
-        case .full: .white.opacity(current ? 1 : (contrast == .increased ? 0.85 : (elapsed ? 0.5 : 0.65)))
+        case .full: .primary.opacity(current ? 1 : (contrast == .increased ? 0.85 : (elapsed ? 0.55 : 0.7)))
         }
     }
 
@@ -465,7 +454,7 @@ private struct LyricLine: View {
                 Text("♪").foregroundStyle(style == .pane && !current ? Color(nsColor: .tertiaryLabelColor) : color)
             } else if current, position != nil, !line.words.isEmpty {
                 // Sung words lit; the rest still to come.
-                let upcoming = style == .full ? Color.white.opacity(0.7) : .secondary
+                let upcoming = style == .full ? Color.primary.opacity(0.7) : .secondary
                 line.words.enumerated().reduce(Text(verbatim: "")) { text, item in
                     let sung = item.offset <= (position?.word ?? -1)
                     return Text("\(text)\(Text(verbatim: item.element.text).foregroundStyle(sung ? color : upcoming))")

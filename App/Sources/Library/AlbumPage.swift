@@ -1,12 +1,12 @@
 import MiniAmpKit
 import SwiftUI
 
-/// An album: the cover large over its wash, its songs by disc, what format and how long, and
-/// more by the same artist.
+/// An album’s artwork, songs by disc, format, duration, and more by the same artist.
 struct AlbumPageView: View {
     let app: AppState
     let library: Library
     let albumID: Int64
+    let initialTitle: String?
     @State private var album: AlbumSummary?
     @State private var tracks: [TrackInfo] = []
     @State private var more: [AlbumSummary] = []
@@ -23,7 +23,6 @@ struct AlbumPageView: View {
                         songs(album)
                         footer(album)
                     }
-                    .clearsUpNext()
                     if !more.isEmpty {
                         Shelf(title: "More by \(moreBy)") {
                             ForEach(more) { AlbumLink(app: app, library: library, album: $0, subtitle: .year) }
@@ -34,18 +33,17 @@ struct AlbumPageView: View {
                 .padding(.bottom, Theme.Spacing.xl)
             }
         }
-        .runsUnderUpNext()
         .overlay {
             if loaded && album == nil { ContentUnavailableView("This album is no longer in the library", systemImage: "square.stack") }
         }
-        .navigationTitle(album?.title ?? "Album")
+        .navigationTitle(album?.title ?? initialTitle ?? "Album")
         .task(id: library.revision) { await load() }
     }
 
     private func header(_ album: AlbumSummary) -> some View {
         HeroHeader(kind: kind(album), title: album.title, subtitle: album.artistName ?? "Unknown Artist",
                    openSubtitle: album.artistId == nil ? nil : { app.showArtist(credit: album.artistId) },
-                   details: details(album), washKey: album.artworkKey, artwork: library.artwork) {
+                   details: details(album)) {
             ArtworkView(key: album.artworkKey, artwork: library.artwork, size: .medium, cornerRadius: Theme.Radius.large)
         } actions: {
             PlayShuffleButtons(play: { app.play(tracks, from: nil) }, shuffle: { app.play(tracks, from: nil, shuffled: true) })
@@ -113,23 +111,29 @@ struct AlbumPageView: View {
 
     private func load() async {
         do {
-            guard let found = try await library.album(albumID) else {
+            let found = try await library.album(albumID)
+            guard !Task.isCancelled else { return }
+            guard let found else {
                 album = nil
                 loaded = true
                 return
             }
-            tracks = try await library.tracks(in: .album(albumID))
+            let albumTracks = try await library.tracks(in: .album(albumID))
+            guard !Task.isCancelled else { return }
+            tracks = albumTracks
             album = found
             loaded = true
             if let credit = found.artistId, !Self.isCompilationArtist(found.artistName),
                let lead = try await library.leadArtistNamed(ofCredit: credit) {
-                more = try await library.albums(artistId: lead.id).filter { $0.id != albumID }
+                let albums = try await library.albums(artistId: lead.id).filter { $0.id != albumID }
+                guard !Task.isCancelled else { return }
+                more = albums
                 moreBy = lead.name
-            } else {
+            } else if !Task.isCancelled {
                 more = []
             }
         } catch {
-            app.error = "\(error)"
+            if !Task.isCancelled { app.error = "\(error)" }
         }
     }
 }
@@ -145,7 +149,7 @@ struct AlbumLink: View {
     var width: CGFloat? = 160
 
     var body: some View {
-        NavigationLink(value: LibraryDestination.album(album.id)) {
+        NavigationLink(value: LibraryDestination.album(album.id, title: album.title)) {
             ArtworkTile(title: album.title, subtitle: subtitleText, artworkKey: album.artworkKey,
                         artwork: library.artwork) { play(shuffled: false) }
                 .frame(width: width)

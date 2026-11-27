@@ -28,7 +28,8 @@ struct StatsView: View {
 
     var body: some View {
         content
-            .pageTitle("Listening Stats") { PeriodControl(period: $period, years: yearChoices) }
+            .navigationTitle("Listening Stats")
+            .pageSummary { PeriodControl(period: $period, years: yearChoices) }
         .task(id: LoadKey(period: period, trackStarts: app.player.trackStarts, revision: library.revision,
                           playHistoryRevision: app.playHistoryRevision)) {
             await load()
@@ -175,7 +176,7 @@ private struct StatsContent: View {
                         let card = rankCard(entry.item.title, subtitle: entry.item.artist,
                                             artworkKey: entry.item.artworkKey, plays: entry.plays, listened: entry.listened)
                         if entry.item.isInLibrary {
-                            NavigationLink(value: LibraryDestination.album(entry.item.id)) { card }
+                            NavigationLink(value: LibraryDestination.album(entry.item.id, title: entry.item.title)) { card }
                                 .buttonStyle(.plain)
                         } else {
                             card
@@ -317,7 +318,7 @@ private struct Tooltip: View {
             Text(value).font(.callout.bold().monospacedDigit())
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
+        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
         .elevation(.card)
     }
 }

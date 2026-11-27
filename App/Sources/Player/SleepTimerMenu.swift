@@ -56,6 +56,7 @@ struct SleepTimerButton: View {
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
+        .focusable(false)
         .menuIndicator(.hidden)
         .fixedSize()
         .help(help)

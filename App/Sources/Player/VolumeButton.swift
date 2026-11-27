@@ -44,11 +44,10 @@ struct VolumeButton: View {
             Image(systemName: volume <= 0 ? "speaker.slash.fill" : "speaker.wave.3.fill",
                   variableValue: Double(volume))
                 .contentTransition(.symbolEffect(.replace))
-                .frame(width: 22)
+                .playerBarIcon(active: showsSlider)
         }
-        .buttonStyle(.borderless)
-        .imageScale(.large)
-        .foregroundStyle(.secondary)
+        .buttonStyle(.plain)
+        .focusable(false)
         .disabled(player.isSendingDoP)
         .help(player.isSendingDoP ? Self.dopHelp : volume >= 1
               ? "Volume: 100%. Scroll or press ⌘↑ ⌘↓ to change it; ⌥⌘↓ mutes."

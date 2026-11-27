@@ -1,21 +1,16 @@
 import MiniAmpKit
 import SwiftUI
 
-/// The strip along the bottom of the window, in three parts: what's playing on the left,
-/// transport and position in the middle (centred on the window), and on the right the
-/// quality, Up Next, Lyrics, volume, output device, and a menu with the visualizer and sleep
-/// timer (whose moon shows beside it while it runs). On macOS 26 and later it's a glass
-/// panel inset from the window's edges, tinted with the cover.
 struct PlayerBar: View {
     let app: AppState
     @State private var current: QueueEntry?
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let player = app.player
+        let sideWidth: CGFloat = 218
         HStack(spacing: Theme.Spacing.m) {
             NowPlayingSummary(entry: current, artwork: app.library?.artwork, app: app)
-                .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
+                .frame(minWidth: sideWidth, maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 4) {
                 TransportButtons(app: app)
@@ -27,26 +22,37 @@ struct PlayerBar: View {
             .layoutPriority(1)
 
             HStack(spacing: Theme.Spacing.s) {
-                SignalSummary(player: player)
-                PaneButton(app: app, pane: .upNext)
-                PaneButton(app: app, pane: .lyrics)
-                VolumeButton(player: player)
-                OutputButton(player: player)
-                if app.sleepTimer.isActive { SleepTimerButton(timer: app.sleepTimer) }
-                MoreMenu(app: app)
+                if player.signalPath != nil || player.deviceWarning != nil {
+                    SignalSummary(player: player)
+                    Divider().frame(height: 18)
+                }
+                HStack(spacing: Theme.Spacing.xxs) {
+                    Button { app.run(.queue) } label: {
+                        Image(systemName: "list.bullet")
+                            .playerBarIcon(active: app.showsUpNext)
+                    }
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .accessibilityLabel("Queue")
+                    .accessibilityAddTraits(app.showsUpNext ? .isSelected : [])
+                    .help("Queue (⌘2)")
+                    VolumeButton(player: player)
+                    if app.sleepTimer.isActive { SleepTimerButton(timer: app.sleepTimer) }
+                    MoreMenu(app: app)
+                }
+                .fixedSize()
             }
-            .frame(minWidth: 180, maxWidth: .infinity, alignment: .trailing)
+            .frame(minWidth: sideWidth, maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .modifier(PlayerBarBackground(tint: app.tint))
-        .environment(\.colorScheme, app.fullView == nil ? colorScheme : .dark)
+        .padding(.horizontal, Theme.Spacing.m)
+        .padding(.vertical, Theme.Spacing.s)
+        .frame(maxWidth: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
         // Re-read when the track changes, or when the library does (a retagged file).
         .task(id: CurrentKey(url: app.currentURL, revision: app.library?.revision ?? 0)) {
             guard let url = app.currentURL else {
                 current = nil
                 app.artworkTint = nil
-                app.artworkBrightness = nil
                 return
             }
             // Up Next has the next song's tags already: straight to them, rather than the file's
@@ -56,12 +62,10 @@ struct PlayerBar: View {
             guard !Task.isCancelled else { return }
             current = loaded ?? (current?.url == url ? current : QueueEntry(fileName: url))
             guard let entry = current, entry.url == url else { return }
-            let colours = await ArtworkImages.shared.colours(key: entry.artworkKey, fileURL: entry.inLibrary ? nil : url,
-                                                             in: app.library?.artwork)
-            if !Task.isCancelled {
-                app.artworkTint = colours?.tint
-                app.artworkBrightness = colours?.brightness
-            }
+            let tint = await ArtworkImages.shared.tint(key: entry.artworkKey,
+                                                       fileURL: entry.inLibrary ? nil : entry.url,
+                                                       in: app.library?.artwork)
+            if !Task.isCancelled { app.artworkTint = tint }
         }
     }
 
@@ -86,14 +90,16 @@ private struct NowPlayingSummary: View {
                     .elevation(.hairline)
             }
             .buttonStyle(.plain)
+            .focusable(false)
             .disabled(entry == nil)
             .accessibilityLabel(app.fullView == nil ? "Show Now Playing" : "Back to the Library")
-            .help(app.fullView == nil ? "Show Now Playing" : "Back to the library")
+            .help("Now Playing (⌘3)")
 
             VStack(alignment: .leading, spacing: 3) {
                 if let entry, let album = entry.albumId {
-                    Button(entry.title) { app.show(.album(album)) }
+                    Button(entry.title) { app.show(.album(album, title: entry.album)) }
                         .buttonStyle(BarLinkStyle())
+                        .focusable(false)
                         .fontWeight(.semibold)
                         .help("Go to \(entry.album ?? "the album")")
                 } else {
@@ -105,13 +111,14 @@ private struct NowPlayingSummary: View {
                     if let credit = entry?.artistId {
                         Button(artist) { app.showArtist(credit: credit) }
                             .buttonStyle(BarLinkStyle(secondary: true))
+                            .focusable(false)
                             .font(.callout)
                             .help("Go to \(artist)")
                     } else {
                         Text(artist).font(.callout).foregroundStyle(.secondary)
                     }
                 } else if entry == nil {
-                    Text("Double-click a song to play it").font(.callout).foregroundStyle(.tertiary)
+                    Text("Open files or jump to a song").font(.callout).foregroundStyle(.tertiary)
                 }
             }
             .lineLimit(1)
@@ -145,9 +152,6 @@ struct BarLinkStyle: ButtonStyle {
 }
 
 private struct TransportButtons: View {
-    /// Previous, play and next in the text's own colour: borderless buttons draw their symbols
-    /// in a dimmed, vibrant tone on the glass, which read as disabled beside the song's title.
-    /// (Shuffle and repeat keep theirs: dim is how they say they're off.)
     static let transportColour = Color.primary
 
     let app: AppState
@@ -164,19 +168,21 @@ private struct TransportButtons: View {
                     .symbolEffect(.bounce, value: reduceMotion ? false : player.isShuffled)
             }
             .toggleStyle(.button)
+            .focusable(false)
             .help(player.isShuffled ? "Shuffle is on (⌥⌘S)" : "Shuffle is off (⌥⌘S)")
             .accessibilityLabel("Shuffle")
             Button {
                 if !reduceMotion { previousClicks += 1 }
-                app.perform { try await player.previous() }
+                app.run(.previous)
             } label: {
                 Image(systemName: "backward.fill").symbolEffect(.bounce.down, value: previousClicks)
                     .foregroundStyle(Self.transportColour)
             }
+            .focusable(false)
             .accessibilityLabel("Previous Track")
-            .help("Previous (⌘←)")
+            .help("Previous (\(AppAction.previous.keys(classic: app.winampShortcuts)))")
             .disabled(player.queue.isEmpty)
-            Button { app.perform { try await player.togglePlayPause() } } label: {
+            Button { app.run(.playPause) } label: {
                 // Pause while the next song loads too: it's about to play.
                 Image(systemName: player.state == .playing || player.state == .preparing ? "pause.fill" : "play.fill")
                     .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
@@ -184,18 +190,20 @@ private struct TransportButtons: View {
                     .font(.title2)
                     .frame(width: 24)
             }
+            .focusable(false)
             .accessibilityLabel(player.state == .playing || player.state == .preparing ? "Pause" : "Play")
             .help(player.state == .playing ? "Pause (Space)" : "Play (Space)")
             .disabled(player.queue.isEmpty)
             Button {
                 if !reduceMotion { nextClicks += 1 }
-                app.perform { try await player.next() }
+                app.run(.next)
             } label: {
                 Image(systemName: "forward.fill").symbolEffect(.bounce.down, value: nextClicks)
                     .foregroundStyle(Self.transportColour)
             }
+            .focusable(false)
             .accessibilityLabel("Next Track")
-            .help("Next (⌘→)")
+            .help("Next (\(AppAction.next.keys(classic: app.winampShortcuts)))")
             .disabled(player.queue.isEmpty)
             RepeatButton(player: player)
         }
@@ -217,6 +225,7 @@ struct RepeatButton: View {
                 .symbolEffect(.bounce, value: !reduceMotion && mode != .off)
         }
         .toggleStyle(.button)
+        .focusable(false)
         .help("\(mode.help) (⌥⌘R)")
         .accessibilityLabel("Repeat")
         .accessibilityValue(mode.label)
@@ -249,45 +258,21 @@ extension PlayQueue<URL>.Repeat {
     }
 }
 
-/// Up Next (the inspector) or Lyrics (filling the library area, as the visualizer does), lit
-/// while showing; again closes it.
-private struct PaneButton: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    enum Pane { case upNext, lyrics }
-
-    let app: AppState
-    let pane: Pane
-
-    var body: some View {
-        let (name, symbol, key) = switch pane {
-        case .upNext: ("Up Next", "list.bullet", "⌥⌘I")
-        case .lyrics: ("Lyrics", "quote.bubble", "⌥⌘L")
-        }
-        let showing = pane == .upNext ? app.showsUpNext : app.showsFullLyrics
-        Toggle(isOn: Binding(get: { showing }, set: { _ in pane == .upNext ? app.toggleUpNext() : app.toggleFullLyrics() })) {
-            Label(name, systemImage: symbol)
-                .symbolEffect(.bounce, value: !reduceMotion && showing)
-        }
-        .toggleStyle(.button)
-        .buttonStyle(.borderless)
-        .labelStyle(.iconOnly)
-        .imageScale(.large)
-        // Lyrics are the playing song's.
-        .disabled(pane == .lyrics && !showing && app.currentURL == nil)
-        .help("\(showing ? "Hide" : "Show") \(name) (\(key))")
-    }
-}
-
 /// The quality label, and any problem setting up the device.
 private struct SignalSummary: View {
     let player: Player
 
     var body: some View {
-        if let path = player.signalPath {
-            QualityBadge(path: path)
-        }
-        if let warning = player.deviceWarning {
-            Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).help(warning)
+        HStack(spacing: Theme.Spacing.xs) {
+            if let path = player.signalPath {
+                QualityBadge(path: path)
+            }
+            if let warning = player.deviceWarning {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel(warning)
+                    .help(warning)
+            }
         }
     }
 }
@@ -298,53 +283,54 @@ private struct MoreMenu: View {
 
     var body: some View {
         Menu {
-            Toggle("Visualizer", isOn: Binding(get: { app.showsVisualizer }, set: { _ in app.toggleVisualizer() }))
-                .disabled(!app.showsVisualizer && app.currentURL == nil)
+            Button("Jump to Song…") { app.run(.jump) }
+            Button(app.showsFullLyrics ? "Hide Lyrics" : "Show Lyrics") { app.run(.lyrics) }
+                .disabled(!AppAction.lyrics.isEnabled(in: app))
+            Button(app.showsVisualizer ? "Hide Visualizer" : "Show Visualizer") { app.run(.visualizer) }
+                .disabled(!AppAction.visualizer.isEnabled(in: app))
+            Divider()
+            Button("Audio Output…") { app.run(.output) }
+            Button(app.isMuted ? "Unmute" : "Mute") { app.run(.mute) }
+                .disabled(app.player.isSendingDoP)
             Menu("Sleep Timer") { SleepTimerChoices(timer: app.sleepTimer) }
+            Divider()
+            Button("Find a Command…") { app.run(.commands) }
+            Button("Keyboard Shortcuts") { app.run(.shortcuts) }
         } label: {
-            Image(systemName: "ellipsis.circle")
+            Image(systemName: "ellipsis")
+                .playerBarIcon()
         }
         .menuStyle(.button)
+        .focusable(false)
         .buttonStyle(.borderless)
         .menuIndicator(.hidden)
-        .imageScale(.large)
-        .fixedSize()
-        .help("Visualizer (⇧⌥⌘V) and sleep timer")
+        .help("Playback options")
         .accessibilityLabel("More")
     }
 }
 
-/// The bar's background: on macOS 26 and later a glass panel inset from the window's edges,
-/// tinted with the cover; before that, the bar material across the window with the tint
-/// fading from the left.
-private struct PlayerBarBackground: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    let tint: Color?
-    private let shape = RoundedRectangle(cornerRadius: Theme.Radius.bar, style: .continuous)
+
+extension View {
+    func playerBarIcon(active: Bool = false) -> some View {
+        modifier(PlayerBarIcon(active: active))
+    }
+}
+
+private struct PlayerBarIcon: ViewModifier {
+    let active: Bool
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
 
     func body(content: Content) -> some View {
-        if #available(macOS 26, *) {
-            content
-                .glassBackground(in: shape, tint: tint?.opacity(Theme.Tint.playerBar.leading))
-                .padding(.horizontal, Theme.Spacing.s)
-                .padding(.bottom, Theme.Spacing.s)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: tint)
-        } else {
-            content.background {
-                ZStack {
-                    if reduceTransparency {
-                        Color(nsColor: .windowBackgroundColor)
-                    } else {
-                        Rectangle().fill(.bar)
-                    }
-                    if let tint, !reduceTransparency {
-                        LinearGradient(colors: [tint.opacity(Theme.Tint.playerBar.leading), tint.opacity(Theme.Tint.playerBar.trailing)],
-                                       startPoint: .leading, endPoint: .trailing)
-                    }
-                }
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: tint)
+        content
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(isEnabled ? (active ? Color.accentColor : Color.primary) : Color.secondary)
+            .frame(width: 30, height: 30)
+            .background {
+                RoundedRectangle(cornerRadius: Theme.Radius.small)
+                    .fill(active ? Color.accentColor.opacity(0.14) : Color.primary.opacity(hovering && isEnabled ? 0.08 : 0))
             }
-        }
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
     }
 }

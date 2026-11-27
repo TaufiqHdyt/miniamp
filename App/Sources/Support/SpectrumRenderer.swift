@@ -11,8 +11,7 @@ final class SpectrumRenderer: VisualizerRenderer {
 
     private let grid = CAShapeLayer()
     private let gradient = CAGradientLayer()
-    /// Holds the bars; masked by `segments`, so the gaps between segments show what's behind
-    /// (glass, or the panel's black) rather than being painted over in a colour.
+    /// The segment mask lets the background show through the gaps between bars.
     private let barsLayer = CALayer()
     /// The gradient shows through these: a layer per bar.
     private let barMask = CALayer()

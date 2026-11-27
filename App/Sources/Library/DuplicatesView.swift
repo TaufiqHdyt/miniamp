@@ -34,11 +34,11 @@ struct DuplicatesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if mode == .sound { fingerprintBar.clearsUpNext() }
+            if mode == .sound { fingerprintBar }
             content
         }
-        .pageTitle("Duplicates",
-                   subtitle: groups.map { $0.isEmpty ? "" : "\($0.count.formatted()) group\($0.count == 1 ? "" : "s")" } ?? "") {
+        .navigationTitle("Duplicates")
+        .pageSummary(groups.map { $0.isEmpty ? "" : "\($0.count.formatted()) group\($0.count == 1 ? "" : "s")" } ?? "") {
                 Picker("Find", selection: $mode) {
                     Text("By Tags").tag(Mode.tags)
                     Text("By Sound").tag(Mode.sound)
@@ -87,7 +87,7 @@ struct DuplicatesView: View {
         }
         .font(.callout)
         .padding(.horizontal, 16).padding(.vertical, 8)
-        .background(.bar)
+        .background(Color(nsColor: .windowBackgroundColor))
         Divider()
     }
 

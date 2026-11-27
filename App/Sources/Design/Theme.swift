@@ -1,9 +1,7 @@
 import MiniAmpKit
 import SwiftUI
 
-/// The design's values in one place: spacing, corner radii, shadows, and how strongly each
-/// surface takes the playing song's cover colour. Views use these rather than numbers of
-/// their own, so the look can change here. See DESIGN.md.
+/// Shared spacing, corner radii, and shadows.
 enum Theme {
     enum Spacing {
         static let xxs: CGFloat = 2
@@ -23,10 +21,6 @@ enum Theme {
         static let medium: CGFloat = 8
         /// Cards.
         static let large: CGFloat = 12
-        /// The big panels, all alike: the player bar (glass, macOS 26 and later), Up Next
-        /// (floating like the sidebar), the visualizer. Continuous corners.
-        static let floatingPanel: CGFloat = 20
-        static let bar: CGFloat = floatingPanel
     }
 
     /// How far a thing sits above the page.
@@ -37,8 +31,6 @@ enum Theme {
         case tile, lifted
         /// A cover in a header, a tooltip.
         case card
-        /// A cover over the coloured wash.
-        case floating
         /// A panel over the wash, a preview.
         case panel
 
@@ -47,7 +39,6 @@ enum Theme {
             case .hairline, .tile: 0.15
             case .card: 0.2
             case .lifted: 0.25
-            case .floating: 0.3
             case .panel: 0.35
             }
         }
@@ -57,7 +48,7 @@ enum Theme {
             case .hairline: 1.5
             case .tile: 2
             case .card: 3
-            case .lifted, .floating: 4
+            case .lifted: 4
             case .panel: 12
             }
         }
@@ -66,46 +57,18 @@ enum Theme {
             switch self {
             case .hairline: 0.5
             case .tile, .lifted, .card: 1
-            case .floating: 2
             case .panel: 4
             }
         }
     }
-
-    /// How strongly surfaces take the playing song's cover colour, as gradient ends.
-    enum Tint {
-        static let playerBar = (leading: 0.28, trailing: 0.08)
-        static let inspector = (top: 0.22, bottom: 0.04)
-    }
-
-    /// The black laid over the blurred cover behind full lyrics and the visualizer, so white
-    /// text reads on it, the dimmed lines included: more the lighter the cover is overall
-    /// (a white cover gets 80%), whatever its tint.
-    static func washDarkness(brightness: Double?) -> Double {
-        guard let brightness else { return 0.35 }
-        return min(0.35 + max(0, brightness - 0.3) * 0.75, 0.8)
-    }
 }
 
 extension View {
-    /// Room after a List's last row for the floating player bar. Lists on macOS are AppKit
-    /// tables and ignore contentMargins, but leave room for a bottom safe-area inset.
-    func clearsPlayerBar(_ app: AppState) -> some View {
-        safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: app.playerBarInset).allowsHitTesting(false)
-        }
-    }
-
     func elevation(_ level: Theme.Elevation) -> some View {
         shadow(color: .black.opacity(level.opacity), radius: level.radius, y: level.y)
     }
 
     func panelSurface() -> some View { modifier(PanelSurface()) }
-
-    func glassBackground(in shape: some Shape, fallback: Material = .regularMaterial,
-                         tint: Color? = nil) -> some View {
-        modifier(GlassBackground(shape: shape, fallback: fallback, tint: tint))
-    }
 }
 
 private struct PanelSurface: ViewModifier {
@@ -118,22 +81,5 @@ private struct PanelSurface: ViewModifier {
                 shape.strokeBorder(.primary.opacity(contrast == .increased ? 0.4 : 0.09))
                     .allowsHitTesting(false)
             }
-    }
-}
-
-private struct GlassBackground<Surface: Shape>: ViewModifier {
-    let shape: Surface
-    let fallback: Material
-    let tint: Color?
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
-    func body(content: Content) -> some View {
-        if reduceTransparency {
-            content.background(Color(nsColor: .windowBackgroundColor), in: shape)
-        } else if #available(macOS 26, *) {
-            content.glassEffect(.regular.tint(tint), in: shape)
-        } else {
-            content.background(fallback, in: shape)
-        }
     }
 }

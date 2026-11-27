@@ -200,6 +200,7 @@ public final class Player {
     @ObservationIgnored var lastKnownFrame: AVAudioFramePosition = 0
     @ObservationIgnored private var playhead: Duration = .zero
     @ObservationIgnored private var scopedURLs: [URL] = []
+    @ObservationIgnored private var scopedFolder: URL?
     @ObservationIgnored var ticker: Task<Void, Never>?
     @ObservationIgnored private var deviceWatcher: Task<Void, Never>?
     @ObservationIgnored private var volumeWatcher: Task<Void, Never>?
@@ -252,8 +253,10 @@ public final class Player {
     }
 
     /// Replaces the queue and starts playing at `index`.
-    public func setQueue(_ urls: [URL], startAt index: Int = 0) async throws {
+    public func setQueue(_ urls: [URL], startAt index: Int = 0, accessFolder: URL? = nil) async throws {
+        let newScope = accessFolder.flatMap { $0.startAccessingSecurityScopedResource() ? $0 : nil }
         releaseAccess()
+        scopedFolder = newScope
         // Files from the open panel need this in the sandbox; plain paths return false and
         // are readable anyway. Access is held for as long as the URLs are queued.
         scopedURLs = urls.filter { $0.startAccessingSecurityScopedResource() }
@@ -274,6 +277,7 @@ public final class Player {
         fileprivate let elapsed: Duration
         fileprivate let autoplayItems: Set<Int>
         fileprivate let bookmarks: [URL: Data]
+        fileprivate let folderBookmark: Data?
     }
 
     /// Saves the exact order and the underlying unshuffled order, including duplicate entries.
@@ -284,8 +288,12 @@ public final class Player {
             bookmarks[url] = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
                                                    includingResourceValuesForKeys: nil, relativeTo: nil)
         }
+        let folderBookmark = scopedFolder.flatMap {
+            try? $0.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
+                                 includingResourceValuesForKeys: nil, relativeTo: nil)
+        }
         return Session(queue: queue, elapsed: max(exactTime, .zero),
-                       autoplayItems: autoplayItems.intersection(queue.order), bookmarks: bookmarks)
+                       autoplayItems: autoplayItems.intersection(queue.order), bookmarks: bookmarks, folderBookmark: folderBookmark)
     }
 
     /// Reopens the last track paused. Folder grants must have been reopened by the library first.
@@ -295,6 +303,14 @@ public final class Player {
             var stale = false
             return try? URL(resolvingBookmarkData: data, options: [.withSecurityScope, .withoutUI],
                             relativeTo: nil, bookmarkDataIsStale: &stale)
+        }
+        if let data = session.folderBookmark {
+            var stale = false
+            if let folder = try? URL(resolvingBookmarkData: data, options: [.withSecurityScope, .withoutUI],
+                                     relativeTo: nil, bookmarkDataIsStale: &stale),
+               folder.startAccessingSecurityScopedResource() {
+                scopedFolder = folder
+            }
         }
         scopedURLs = resolved.values.filter { $0.startAccessingSecurityScopedResource() }
         var restored = session.queue
@@ -781,5 +797,7 @@ public final class Player {
     private func releaseAccess() {
         scopedURLs.forEach { $0.stopAccessingSecurityScopedResource() }
         scopedURLs = []
+        scopedFolder?.stopAccessingSecurityScopedResource()
+        scopedFolder = nil
     }
 }

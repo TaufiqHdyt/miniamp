@@ -4,8 +4,8 @@ import SwiftUI
 
 /// A page opened over a sidebar item: an album or an artist, by id, or all an artist's songs.
 enum LibraryDestination: Hashable {
-    case album(Int64)
-    case artist(Int64)
+    case album(Int64, title: String?)
+    case artist(Int64, name: String)
     case artistSongs(Int64, String)
 }
 
@@ -14,13 +14,13 @@ extension AppState {
     func showArtist(credit: Int64?) {
         guard let credit, let library else { return }
         Task {
-            guard let id = try? await library.leadArtist(ofCredit: credit) else { return }
-            show(.artist(id))
+            guard let artist = try? await library.leadArtistNamed(ofCredit: credit) else { return }
+            show(.artist(artist.id, name: artist.name))
         }
     }
 
     func showAlbum(of info: TrackInfo) {
-        if let id = info.track.albumId { show(.album(id)) }
+        if let id = info.track.albumId { show(.album(id, title: info.albumTitle)) }
     }
 }
 
@@ -32,8 +32,8 @@ struct LibraryDestinationView: View {
 
     var body: some View {
         switch destination {
-        case .album(let id): AlbumPageView(app: app, library: library, albumID: id)
-        case .artist(let id): ArtistPageView(app: app, library: library, artistID: id)
+        case .album(let id, let title): AlbumPageView(app: app, library: library, albumID: id, initialTitle: title)
+        case .artist(let id, let name): ArtistPageView(app: app, library: library, artistID: id, initialName: name)
         case .artistSongs(let id, let name): TrackListView(app: app, library: library, scope: .artist(id), title: name)
         }
     }

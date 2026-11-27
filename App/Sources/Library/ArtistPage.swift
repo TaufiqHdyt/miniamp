@@ -7,6 +7,7 @@ struct ArtistPageView: View {
     let app: AppState
     let library: Library
     let artistID: Int64
+    let initialName: String
     @State private var page: ArtistPage?
     @State private var loaded = false
 
@@ -14,8 +15,8 @@ struct ArtistPageView: View {
         ScrollView {
             if let page {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xl - 4) {
-                    header(page).clearsUpNext()
-                    if !page.topSongs.isEmpty { topSongs(page).clearsUpNext() }
+                    header(page)
+                    if !page.topSongs.isEmpty { topSongs(page) }
                     if !page.albums.isEmpty {
                         Shelf(title: "Albums") {
                             ForEach(page.albums) { AlbumLink(app: app, library: library, album: $0, subtitle: .year) }
@@ -30,26 +31,26 @@ struct ArtistPageView: View {
                 .padding(.bottom, Theme.Spacing.xl)
             }
         }
-        .runsUnderUpNext()
         .overlay {
             if loaded && page == nil { ContentUnavailableView("This artist is no longer in the library", systemImage: "music.microphone") }
         }
-        .navigationTitle(page?.artist.name ?? "Artist")
+        .navigationTitle(page?.artist.name ?? initialName)
         .task(id: library.revision) {
             do {
-                page = try await library.artistPage(artistID)
+                let found = try await library.artistPage(artistID)
+                guard !Task.isCancelled else { return }
+                page = found
+                loaded = true
             } catch {
-                app.error = "\(error)"
+                if !Task.isCancelled { app.error = "\(error)" }
             }
-            loaded = true
         }
     }
 
     private func header(_ page: ArtistPage) -> some View {
         let covers = (page.albums + page.appearsOn).compactMap(\.artworkKey)
         let keys = Array(NSOrderedSet(array: covers).array.compactMap { $0 as? String }.prefix(4))
-        return HeroHeader(kind: "Artist", title: page.artist.name, details: details(page.artist),
-                          washKey: keys.first ?? page.artist.artworkKey, artwork: library.artwork) {
+        return HeroHeader(kind: "Artist", title: page.artist.name, details: details(page.artist)) {
             CoverMosaic(keys: keys.isEmpty ? page.artist.artworkKey.map { [$0] } ?? [] : keys, artwork: library.artwork)
         } actions: {
             PlayShuffleButtons(play: { playAll(shuffled: false) }, shuffle: { playAll(shuffled: true) })

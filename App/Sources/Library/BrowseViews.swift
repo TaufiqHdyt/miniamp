@@ -13,7 +13,7 @@ struct ArtistsView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 130, maximum: 180), spacing: Theme.Spacing.l)],
                       spacing: Theme.Spacing.l + 2) {
                 ForEach(artists) { artist in
-                    NavigationLink(value: LibraryDestination.artist(artist.id)) {
+                    NavigationLink(value: LibraryDestination.artist(artist.id, name: artist.name)) {
                         ArtistTile(artist: artist, artwork: library.artwork)
                     }
                     .buttonStyle(.plain)
@@ -28,7 +28,8 @@ struct ArtistsView: View {
         .overlay {
             if loaded && artists.isEmpty { ContentUnavailableView("No Artists", systemImage: "music.microphone") }
         }
-        .pageTitle("Artists", subtitle: artists.isEmpty ? "" : count)
+        .navigationTitle("Artists")
+        .pageSummary(artists.isEmpty ? "" : count)
         .task(id: library.revision) {
             let found = (try? await library.artists()) ?? []
             if found != artists { artists = found }
@@ -120,7 +121,8 @@ struct AlbumsView: View {
                 ContentUnavailableView("No Albums from the \(String(decade))s", systemImage: "square.stack")
             }
         }
-        .pageTitle("Albums", subtitle: albums.isEmpty ? "" : count(shown.count)) { controls }
+        .navigationTitle("Albums")
+        .pageSummary(albums.isEmpty ? "" : count(shown.count)) { controls }
         .task(id: library.revision) {
             let found = (try? await library.albums()) ?? []
             if found != albums { albums = found }

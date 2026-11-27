@@ -15,7 +15,7 @@ struct HomeView: View {
                 if !shelves.recentlyPlayed.isEmpty {
                     albumShelf("Recently Played", shelves.recentlyPlayed)
                 }
-                if !shelves.topThisMonth.isEmpty { topThisMonth.clearsUpNext() }
+                if !shelves.topThisMonth.isEmpty { topThisMonth }
                 if !shelves.recentlyAdded.isEmpty {
                     albumShelf("Recently Added", shelves.recentlyAdded, seeAll: { app.sidebarRequest = .albums })
                 }
@@ -26,14 +26,13 @@ struct HomeView: View {
             .padding(.top, Theme.Spacing.m)
             .padding(.bottom, Theme.Spacing.xl)
         }
-        .runsUnderUpNext()
         .overlay {
             if loaded && shelves.isEmpty {
                 ContentUnavailableView("No Music Yet", systemImage: "music.note.house",
                                        description: Text("Add a music folder with File › Add Music Folder…"))
             }
         }
-        .pageTitle("Home")
+        .navigationTitle("Home")
         .task(id: library.revision) {
             // A scan changes the library many times a second; Home needn't keep up with each.
             if loaded { try? await Task.sleep(for: .seconds(1)) }

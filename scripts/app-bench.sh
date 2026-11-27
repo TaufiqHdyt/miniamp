@@ -60,9 +60,9 @@ run() {
 
 printf "%-34s %6s %8s %8s %8s\n" "case ($CONFIG)" "cpu%" "energy" "wakeup/s" "mem MB"
 if [ "${VISUALIZER_ONLY:-0}" != 1 ]; then
-  # -inspectorPane is for builds before Phase 3 (#59), which had the lyrics in the inspector too.
-  run "idle, window open"              -showsNowPlaying YES -inspectorPane upNext
-  run "playing 96/24, Up Next"         -showsNowPlaying YES -inspectorPane upNext -autoplay "$SONG"
+  # Older builds use -showsNowPlaying and -inspectorPane for the queue.
+  run "idle, window open"              -showsNowPlaying YES -inspectorPane upNext -showQueue YES
+  run "playing 96/24, Up Next"         -showsNowPlaying YES -inspectorPane upNext -showQueue YES -autoplay "$SONG"
   run "playing 96/24, Up Next closed"  -showsNowPlaying NO -autoplay "$SONG"
   run "playing 96/24, lyrics (synced)" -showsNowPlaying NO -autoplay "$SONG" -fullView lyrics
 fi

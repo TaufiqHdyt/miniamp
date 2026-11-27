@@ -4,17 +4,30 @@ import SwiftUI
 // Pieces the pages share. See Theme for the values they use.
 
 extension View {
-    /// A page's name in the toolbar, its count under it, and the page's own controls at the
-    /// toolbar's trailing end (as in Finder and Mail).
-    func pageTitle(_ title: String, subtitle: String = "") -> some View {
-        navigationTitle(title).navigationSubtitle(subtitle)
+    /// Keep page counts and controls below the fixed navigation title.
+    func pageSummary(_ subtitle: String) -> some View {
+        pageSummary(subtitle) { EmptyView() }
     }
 
-    func pageTitle(_ title: String, subtitle: String = "", @ViewBuilder controls: () -> some View) -> some View {
+    func pageSummary(_ subtitle: String = "", @ViewBuilder controls: () -> some View) -> some View {
         let controls = controls()
-        return pageTitle(title, subtitle: subtitle)
-            .toolbar { ToolbarItem(placement: .primaryAction) { controls } }
+        return VStack(spacing: 0) {
+            HStack(spacing: Theme.Spacing.m) {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .accessibilityHidden(subtitle.isEmpty)
+                Spacer(minLength: 0)
+                controls
+            }
+            .frame(minHeight: 36)
+            .padding(.horizontal, Theme.Spacing.m)
+            Divider()
+            self.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
+
     func lyricsTextEditorStyle() -> some View {
         let shape = RoundedRectangle(cornerRadius: Theme.Radius.medium)
         return font(.system(.body, design: .monospaced))
@@ -26,6 +39,17 @@ extension View {
             .overlay { shape.strokeBorder(.quaternary).allowsHitTesting(false) }
     }
 
+}
+
+extension ToolbarContent {
+    @ToolbarContentBuilder
+    func withoutSharedBackground() -> some ToolbarContent {
+        if #available(macOS 26, *) {
+            sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
+    }
 }
 
 /// A cover with a title and a line under it (an album and its artist). Hovering dims the cover a little and shows a
@@ -111,9 +135,6 @@ struct Shelf<Content: View>: View {
     var contents: [AnyHashable] = []
     @ViewBuilder var content: Content
     @State private var position = ScrollPosition(edge: .leading)
-    @State private var viewport = CGRect.zero
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.upNextRoom) private var upNextRoom
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.s) {
@@ -125,7 +146,6 @@ struct Shelf<Content: View>: View {
                 }
             }
             .padding(.horizontal, Theme.Spacing.page)
-            .clearsUpNext()
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: Theme.Spacing.l) { content }
                     .padding(.horizontal, Theme.Spacing.page)
@@ -134,31 +154,16 @@ struct Shelf<Content: View>: View {
                     .padding(.bottom, Theme.Spacing.m)
             }
             .scrollPosition($position)
-            .onScrollGeometryChange(for: CGRect.self) { $0.visibleRect } action: { _, rect in viewport = rect }
-            .focusable()
+            .focusable(false)
             .accessibilityLabel(title)
-            .accessibilityHint("Use the arrow keys to scroll")
-            .onKeyPress(.leftArrow) { scrollShelf(-1) }
-            .onKeyPress(.rightArrow) { scrollShelf(1) }
             .onChange(of: contents) { position.scrollTo(edge: .leading) }
             .scrollIndicators(.automatic)
-            // Out under Up Next (the page runs to the window's edge, see `runsUnderUpNext`),
-            // the last cover clear of it; not out under the sidebar.
-            .contentMargins(.trailing, upNextRoom, for: .scrollContent)
             .clipped()
         }
     }
-
-    private func scrollShelf(_ direction: CGFloat) -> KeyPress.Result {
-        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
-            position.scrollTo(x: max(0, viewport.minX + direction * viewport.width * 0.8))
-        }
-        return .handled
-    }
 }
 
-/// The top of an album or artist page: the cover large, over a blur of it that fades into
-/// the page, with the title, what it is, a line of details, and Play and Shuffle.
+/// An album or artist header with artwork, details, and playback actions.
 struct HeroHeader<Artwork: View, Actions: View>: View {
     /// "Album", "Single", "Artist".
     let kind: String
@@ -166,18 +171,13 @@ struct HeroHeader<Artwork: View, Actions: View>: View {
     var subtitle: String? = nil
     var openSubtitle: (() -> Void)? = nil
     let details: String
-    let washKey: String?
-    let artwork: ArtworkCache?
     @ViewBuilder var cover: Artwork
     @ViewBuilder var actions: Actions
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var visible = false
 
     var body: some View {
         HStack(alignment: .bottom, spacing: Theme.Spacing.l + 4) {
             cover
                 .frame(width: 200, height: 200)
-                .elevation(.floating)
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text(kind)
                     .font(.callout.weight(.medium))
@@ -208,40 +208,6 @@ struct HeroHeader<Artwork: View, Actions: View>: View {
         .padding(.horizontal, Theme.Spacing.page)
         .padding(.top, Theme.Spacing.m)
         .padding(.bottom, Theme.Spacing.xl)
-        .background { HeroWash(key: washKey, artwork: artwork) }
-        .opacity(visible ? 1 : 0)
-        .onAppear { withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { visible = true } }
-    }
-}
-
-/// A blur of the cover behind a header, fading into the page toward the bottom. It reaches
-/// up past the header, under the toolbar (which the page scrolls beneath), so no white strip
-/// shows there.
-private struct HeroWash: View {
-    /// More than any toolbar is tall.
-    static let reach: CGFloat = 120
-    let key: String?
-    let artwork: ArtworkCache?
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
-    var body: some View {
-        if !reduceTransparency, let key {
-            GeometryReader { geometry in
-                ArtworkView(key: key, artwork: artwork, size: .small, cornerRadius: 0)
-                    .frame(width: geometry.size.width, height: geometry.size.width)
-                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                    .blur(radius: 60, opaque: true)
-                    .saturation(1.3)
-                    .opacity(0.45)
-            }
-            .overlay {
-                Rectangle().fill(.background)
-                    .mask { LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom) }
-            }
-            .clipped()
-            .padding(.top, -HeroWash.reach)
-            .accessibilityHidden(true)
-        }
     }
 }
 
@@ -267,32 +233,5 @@ struct CoverMosaic: View {
 
     private func tile(_ key: String?) -> some View {
         ArtworkView(key: key, artwork: artwork, size: .medium, cornerRadius: 0)
-    }
-}
-
-extension EnvironmentValues {
-    /// How much of the library area's trailing side Up Next covers (floating, macOS 26 and
-    /// later), panel and margins; 0 while it's closed. Scroll views keep their content clear
-    /// of it by a content margin and run on under it; see `clearsUpNext` for what isn't a
-    /// scroll view, and `runsUnderUpNext` for pages of shelves.
-    @Entry var upNextRoom: CGFloat = 0
-}
-
-extension View {
-    /// Keeps clear of Up Next: for what doesn't scroll, or (tables, lists) ignores content margins.
-    func clearsUpNext() -> some View { modifier(UpNextRoom()) }
-
-    /// A page with shelves: its scroll view's content runs to the window's edge, under Up
-    /// Next, so the shelves can; all else on it clears Up Next itself (`clearsUpNext`). Not
-    /// the shelves widened past the page instead: a shelf so widened came up scrolled
-    /// partway, its first cover cut.
-    func runsUnderUpNext() -> some View { contentMargins(.trailing, 0, for: .scrollContent) }
-}
-
-private struct UpNextRoom: ViewModifier {
-    @Environment(\.upNextRoom) private var room
-
-    func body(content: Content) -> some View {
-        content.padding(.trailing, room)
     }
 }

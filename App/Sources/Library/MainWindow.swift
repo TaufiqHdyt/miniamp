@@ -1,3 +1,4 @@
+import AppKit
 import MiniAmpKit
 import os
 import SwiftUI
@@ -5,52 +6,41 @@ import UniformTypeIdentifiers
 
 struct MainWindow: View {
     @Bindable var app: AppState
-    @SceneStorage("sidebarSelection") private var selection: SidebarItem = .home
+    @AppStorage("showsLibrarySidebar") private var showsSidebar = true
+    @SceneStorage("sidebarSelection") private var selection: SidebarItem = .songs
     @FocusState private var searchFocused: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var colorScheme
+    @State private var handledSearchRequest = 0
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        let showsFullView = app.fullView != nil && app.player.queue.current != nil
-        Group {
-            if #available(macOS 26, *) {
-                // The library runs to the bottom of the window and the bar floats over it, as
-                // glass: lists scroll under it, fading out before the window's edge, and leave
-                // room after their last row to clear it. Laid over the whole window, not the
-                // split view, which slides about as the sidebar opens and closes.
-                ZStack(alignment: .bottom) {
-                    windowContent(floatingUpNext: true)
-                    // Not over full lyrics or the visualizer: their wash runs to the window's edge.
-                    if app.fullView == nil { BarFade(height: app.playerBarInset) }
-                    // Over the whole window, as the bar is, rather than in the library area:
-                    // there, album and artist pages (pushed onto a navigation stack) covered it.
-                    if app.showsNowPlaying && app.fullView == nil {
-                        upNextPanel
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
-                    PlayerBar(app: app)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { app.playerBarInset = $0 }
-                }
-                .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: app.showsNowPlaying)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: app.fullView != nil)
-            } else {
-                VStack(spacing: 0) {
-                    windowContent(floatingUpNext: false)
-                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: app.fullView != nil)
-                    Divider()
-                    PlayerBar(app: app)
-                }
-            }
+        VStack(spacing: 0) {
+            windowContent
+            Divider()
+            PlayerBar(app: app)
         }
-        // The toolbar survives the switch between the library and Now Playing.
-        // Set its background and appearance together from the window's active page.
-        .toolbarBackground(showsFullView ? AnyShapeStyle(Color(white: 0.14)) : AnyShapeStyle(.bar), for: .windowToolbar)
+        .transaction(value: app.fullView) {
+            $0.animation = nil
+            $0.disablesAnimations = true
+        }
+        .toolbar(removing: .title)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .toolbarBackground(Color(nsColor: .windowBackgroundColor), for: .windowToolbar)
         .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
-        .toolbarColorScheme(showsFullView ? .dark : colorScheme, for: .windowToolbar)
         .frame(minWidth: 860, minHeight: 520)
-        .onKeyPress(.space) {
-            app.perform { try await app.player.togglePlayPause() }
-            return .handled
+        .background(WindowKeyboard(app: app).allowsHitTesting(false))
+        .onChange(of: app.equalizerRequests) { app.showEqualizer(openWindow) }
+        .sheet(item: $app.keyboardSheet, onDismiss: {
+            guard let action = app.commandAfterSheet else { return }
+            app.commandAfterSheet = nil
+            app.run(action)
+        }) { sheet in
+            switch sheet {
+            case .jump: JumpView(app: app)
+            case .time: JumpTimeView(app: app)
+            case .commands: CommandPalette(app: app)
+            case .shortcuts: ShortcutHelp(app: app)
+            case .output: OutputPanel(player: app.player)
+            }
         }
         .fileImporter(isPresented: $app.importingFiles, allowedContentTypes: AppState.playableTypes, allowsMultipleSelection: true) { result in
             switch result {
@@ -70,20 +60,17 @@ struct MainWindow: View {
             Text(app.error ?? "")
         }
         .onChange(of: app.library?.revision) { app.libraryChanged() }
-        // Anything chosen in the sidebar, or searched for, goes back from the full-size lyrics.
-        .onChange(of: selection) {
-            app.fullView = nil
-            app.libraryPath = []
+        .task(id: app.library?.revision) {
+            await app.reloadPlaylists()
+            if case .playlist(let id) = selection, !app.playlists.contains(where: { $0.id == id }) {
+                selectLibraryPage(.songs)
+            }
         }
-        .onChange(of: app.searchText) {
-            if app.isSearching { app.fullView = nil }
-            app.libraryPath = []
-        }
-        .onChange(of: app.player.queue.current == nil) { if app.player.queue.current == nil { app.fullView = nil } }
+        .onChange(of: app.player.queue.current == nil) { if app.player.queue.current == nil, app.fullView != .upNext { app.fullView = nil } }
         .onChange(of: app.sidebarRequest) {
             guard let item = app.sidebarRequest else { return }
-            app.searchText = ""
-            selection = item
+            selectLibraryPage(item)
+            app.contentFocusRequests += 1
             app.sidebarRequest = nil
         }
         .sheet(item: $app.editingTags) { target in
@@ -97,82 +84,152 @@ struct MainWindow: View {
         .task { await start() }
     }
 
-    /// Fades what scrolls under the floating bar into the window's background toward the
-    /// bottom edge, so rows don't show in the gap below the bar.
-    private struct BarFade: View {
-        let height: CGFloat
-
-        var body: some View {
-            Rectangle()
-                .fill(.background)
-                .mask {
-                    LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black.opacity(0.85), location: 0.55),
-                                           .init(color: .black, location: 1)],
-                                   startPoint: .top, endPoint: .bottom)
-                }
-                .frame(height: height + Theme.Spacing.l)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
-    }
-
-    /// Up Next floating over the library's trailing side, as wide as this, inset like the sidebar.
-    static let upNextWidth: CGFloat = 300
-
-    /// How much of the library area's trailing side Up Next covers: the panel and its margin
-    /// from the window's edge. Pages keep their own margin from it, as from the sidebar.
-    private var upNextRoom: CGFloat {
-        guard #available(macOS 26, *), app.showsNowPlaying else { return 0 }
-        return Self.upNextWidth + Theme.Spacing.s
-    }
-
-    /// Up Next, floating at the window's trailing side between the toolbar and the player bar.
-    private var upNextPanel: some View {
-        NowPlayingView(app: app, floating: true)
-            .frame(width: Self.upNextWidth)
-            .padding(.top, Theme.Spacing.s)
-            .padding(.trailing, Theme.Spacing.s)
-            .padding(.bottom, app.playerBarInset + Theme.Spacing.s)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-    }
-
     @ViewBuilder
-    private func windowContent(floatingUpNext: Bool) -> some View {
-        if let mode = app.fullView, let url = app.player.queue.current {
-            FullPlayingView(app: app, url: url, mode: mode)
-                .transition(.opacity)
-        } else {
-            split(floatingUpNext: floatingUpNext)
-                .contentMargins(.bottom, app.playerBarInset, for: .scrollContent)
-        }
-    }
-
-    /// `floatingUpNext`: Up Next as a glass panel over the library (macOS 26 and later), rather
-    /// than the inspector, so it floats like the sidebar instead of being a column beside it.
-    private func split(floatingUpNext: Bool) -> some View {
-        // Read here, in the body: read only inside the binding, SwiftUI doesn't redraw when it
-        // changes. Open or closed as it was left, whether or not anything is playing.
-        let showsUpNext = app.showsNowPlaying
-        return NavigationSplitView {
-            Sidebar(app: app, selection: $selection)
-                .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 300)
-        } detail: {
-            if floatingUpNext {
-                // Up Next floats over the whole window instead (see body).
-                detail
-            } else {
-                detail
-                    .inspector(isPresented: Binding(get: { showsUpNext }, set: { app.showsNowPlaying = $0 })) {
-                        NowPlayingView(app: app)
-                            .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
+    private var windowContent: some View {
+        if app.fullView == .upNext {
+            NowPlayingView(app: app)
+                .navigationTitle("Queue")
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        HStack(spacing: Theme.Spacing.m) {
+                            Button { app.showFullView(nil) } label: {
+                                Label("Back to Library", systemImage: "chevron.left")
+                                    .labelStyle(.iconOnly)
+                            }
+                            .keyboardShortcut(.cancelAction)
+                            .focusable(false)
+                            navigationTitleLabel("Queue")
+                        }
                     }
+                    .withoutSharedBackground()
+                }
+        } else if let mode = app.fullView, let url = app.currentURL {
+            FullPlayingView(app: app, url: url, mode: mode)
+        } else {
+            HSplitView {
+                if showsSidebar {
+                    Sidebar(app: app, selection: Binding(get: { selection }, set: selectLibraryPage))
+                        .frame(minWidth: 180, idealWidth: 210, maxWidth: 280, maxHeight: .infinity)
+                }
+                detail
+                    .frame(minWidth: 550, maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    HStack(spacing: Theme.Spacing.m) {
+                        Button { showsSidebar.toggle() } label: {
+                            Label(showsSidebar ? "Hide Sidebar" : "Show Sidebar", systemImage: "sidebar.left")
+                                .labelStyle(.iconOnly)
+                        }
+                        .focusable(false)
+                        .help(showsSidebar ? "Hide Sidebar" : "Show Sidebar")
+                        navigationTitleLabel(libraryTitle)
+                    }
+                }
+                .withoutSharedBackground()
+                if #available(macOS 26, *) {
+                    ToolbarSpacer(.flexible, placement: .automatic)
+                    ToolbarItem(placement: .automatic) {
+                        librarySearch
+                    }
+                    .withoutSharedBackground()
+                } else {
+                    ToolbarItem(placement: .primaryAction) {
+                        librarySearch.padding(.leading, Theme.Spacing.l)
+                    }
+                }
             }
         }
-        // As in Apple Music: search at the top of the sidebar (in the toolbar while the
-        // sidebar is hidden). Each page names itself in the toolbar (see pageTitle).
-        .searchable(text: $app.searchText, placement: .sidebar, prompt: "Search")
-        .searchFocused($searchFocused)
-        .onChange(of: app.searchFocusRequests) { searchFocused = true }
+    }
+
+    private var libraryTitle: String {
+        if let destination = app.libraryPath.last {
+            switch destination {
+            case .album(_, let title): return title ?? "Album"
+            case .artist(_, let name), .artistSongs(_, let name): return name
+            }
+        }
+        if app.isSearching { return "Search" }
+        if case .playlist(let id) = selection {
+            return app.playlists.first { $0.id == id }?.name ?? selection.title
+        }
+        return selection.title
+    }
+
+    private func navigationTitleLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.headline)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(maxWidth: 260, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private var librarySearch: some View {
+        HStack(spacing: Theme.Spacing.s) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            TextField("Search library", text: Binding(get: { app.searchText }, set: updateLibrarySearch))
+                .textFieldStyle(.plain)
+                .autocorrectionDisabled()
+                .accessibilityLabel("Search library")
+                .focused($searchFocused)
+                .onSubmit {
+                    guard app.isSearching else { return }
+                    searchFocused = false
+                    NSApp.keyWindow?.makeFirstResponder(nil)
+                    app.contentFocusRequests += 1
+                }
+                .onChange(of: app.searchFocusRequests, initial: true) { _, request in
+                    guard request > handledSearchRequest else { return }
+                    handledSearchRequest = request
+                    searchFocused = true
+                }
+            if !app.searchText.isEmpty {
+                Button {
+                    updateLibrarySearch("")
+                    searchFocused = true
+                } label: {
+                    Label("Clear Search", systemImage: "xmark.circle.fill")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.plain)
+                .focusable(false)
+                .foregroundStyle(.secondary)
+                .help("Clear Search")
+            } else if !searchFocused {
+                Text("⌘F")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.s)
+        .frame(width: 224, height: 28)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: Theme.Radius.medium))
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.Radius.medium)
+                .strokeBorder(searchFocused ? Color.accentColor : Color.primary.opacity(0.14))
+                .allowsHitTesting(false)
+        }
+        .onExitCommand {
+            updateLibrarySearch("")
+            searchFocused = false
+            NSApp.keyWindow?.makeFirstResponder(nil)
+            app.contentFocusRequests += 1
+        }
+    }
+
+    private func selectLibraryPage(_ item: SidebarItem) {
+        updateLibrarySearch("")
+        app.fullView = nil
+        selection = item
+    }
+
+    private func updateLibrarySearch(_ text: String) {
+        app.libraryPath = []
+        app.searchText = text
     }
 
     @ViewBuilder
@@ -180,16 +237,18 @@ struct MainWindow: View {
         if let library = app.library {
             // Album and artist pages open over the page showing, with Back to return.
             NavigationStack(path: $app.libraryPath) {
-                // Each page keeps clear of Up Next itself: a page pushed onto the stack doesn't
-                // take margins set around the stack.
                 page(library)
-                    .transition(.opacity)
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: selection)
-                    .clearingUpNext(upNextRoom)
                     .navigationDestination(for: LibraryDestination.self) { destination in
                         LibraryDestinationView(app: app, library: library, destination: destination)
-                            .clearingUpNext(upNextRoom)
                     }
+            }
+            .transaction(value: selection) {
+                $0.animation = nil
+                $0.disablesAnimations = true
+            }
+            .transaction(value: app.libraryPath) {
+                $0.animation = nil
+                $0.disablesAnimations = true
             }
         } else {
             ContentUnavailableView("The library couldn't be opened", systemImage: "externaldrive.badge.exclamationmark",
@@ -200,7 +259,8 @@ struct MainWindow: View {
     @ViewBuilder
     private func page(_ library: Library) -> some View {
         if app.isSearching {
-            SearchResultsView(app: app, library: library, query: app.searchText)
+            SearchResultsView(app: app, library: library,
+                              query: app.searchText.trimmingCharacters(in: .whitespacesAndNewlines))
         } else {
             switch selection {
             case .home:
@@ -217,7 +277,8 @@ struct MainWindow: View {
                 DuplicatesView(app: app, library: library)
             case .playlist(let id):
                 TrackListView(app: app, library: library, scope: .playlist(id),
-                              title: app.playlists.first { $0.id == id }?.name ?? "Playlist")
+                              title: app.playlists.first { $0.id == id }?.name ?? selection.title)
+                    .id(id)
             }
         }
     }
@@ -235,6 +296,11 @@ struct MainWindow: View {
         #endif
         if addsFolders, let item = defaults.string(forKey: "sidebar").flatMap(SidebarItem.init(rawValue:)) {
             selection = item
+        }
+        if addsFolders, defaults.bool(forKey: "showQueue") {
+            app.showFullView(.upNext)
+        } else {
+            app.contentFocusRequests += 1
         }
         await app.library?.open()
         if addsFolders, let path = defaults.string(forKey: "libraryFolder") {
@@ -258,15 +324,5 @@ struct MainWindow: View {
         } else {
             await app.openPlaybackSession()
         }
-    }
-}
-
-private extension View {
-    /// Keeps a page's content clear of Up Next, `room` wide at the trailing side: scroll views
-    /// by a content margin, running on under it as under the sidebar; what doesn't scroll by
-    /// `clearsUpNext`.
-    func clearingUpNext(_ room: CGFloat) -> some View {
-        contentMargins(.trailing, room, for: .scrollContent)
-            .environment(\.upNextRoom, room)
     }
 }

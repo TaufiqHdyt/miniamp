@@ -20,6 +20,18 @@ enum SidebarItem: Hashable, RawRepresentable {
         }
     }
 
+    var title: String {
+        switch self {
+        case .home: "Home"
+        case .songs: "Songs"
+        case .albums: "Albums"
+        case .artists: "Artists"
+        case .stats: "Listening Stats"
+        case .duplicates: "Duplicates"
+        case .playlist: "Playlist"
+        }
+    }
+
     var rawValue: String {
         switch self {
         case .home: "home"
@@ -42,16 +54,16 @@ struct Sidebar: View {
     var body: some View {
         List(selection: Binding(get: { selection }, set: { if let new = $0 { selection = new } })) {
             Section("Library") {
-                Label("Home", systemImage: "house").tag(SidebarItem.home)
-                Label("Songs", systemImage: "music.note").tag(SidebarItem.songs)
-                Label("Artists", systemImage: "music.microphone").tag(SidebarItem.artists)
-                Label("Albums", systemImage: "square.stack").tag(SidebarItem.albums)
-                Label("Listening Stats", systemImage: "chart.bar.xaxis").tag(SidebarItem.stats)
-                Label("Duplicates", systemImage: "square.on.square").tag(SidebarItem.duplicates)
+                Label(SidebarItem.songs.title, systemImage: "music.note").tag(SidebarItem.songs)
+                Label(SidebarItem.albums.title, systemImage: "square.stack").tag(SidebarItem.albums)
+                Label(SidebarItem.artists.title, systemImage: "music.microphone").tag(SidebarItem.artists)
+                Label(SidebarItem.home.title, systemImage: "house").tag(SidebarItem.home)
             }
-            // Only once there's a playlist: make the first with File › New Playlist (⌘N) or a
-            // song's Add to Playlist menu.
-            if !app.playlists.isEmpty {
+            Section("Library Tools") {
+                Label(SidebarItem.stats.title, systemImage: "chart.bar.xaxis").tag(SidebarItem.stats)
+                Label(SidebarItem.duplicates.title, systemImage: "square.on.square").tag(SidebarItem.duplicates)
+            }
+            if library != nil {
                 Section {
                     ForEach(app.playlists) { playlist in
                         PlaylistRow(app: app, playlist: playlist)
@@ -77,8 +89,11 @@ struct Sidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .focusable(false)
+        .scrollContentBackground(.hidden)
+        .background(Color(nsColor: .windowBackgroundColor))
         .safeAreaInset(edge: .bottom) {
-            if let library { LibraryStatus(library: library).padding(.bottom, app.playerBarInset) }
+            if let library { LibraryStatus(library: library) { app.run(.addFolder) } }
         }
         .confirmationDialog("Delete the playlist “\(deleting?.name ?? "")”?",
                             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
@@ -88,11 +103,6 @@ struct Sidebar: View {
             }
         } message: {
             Text("The songs stay in the library.")
-        }
-        .task(id: library?.revision) {
-            await app.reloadPlaylists()
-            // A deleted playlist can't stay selected.
-            if case .playlist(let id) = selection, !app.playlists.contains(where: { $0.id == id }) { selection = .songs }
         }
     }
 }
@@ -109,6 +119,7 @@ private struct NewPlaylistRow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .foregroundStyle(targeted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
         .help("New Playlist (⌘N). Drop songs here to make one of them.")
         .onDrop(of: [.fileURL], isTargeted: $targeted) { app.dropTracks($0, onPlaylist: nil) }
@@ -162,39 +173,44 @@ private struct PlaylistRow: View {
 /// Track count and scan progress at the foot of the sidebar.
 private struct LibraryStatus: View {
     let library: Library
-    @Environment(\.openSettings) private var openSettings
+    let addFolder: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let p = library.progress {
-                switch p.phase {
-                case .listing:
-                    ProgressView().progressViewStyle(.linear).controlSize(.small)
-                    Text("Looking for changes…")
-                case .reading, .finished:
-                    ProgressView(value: Double(p.filesRead), total: Double(max(p.filesToRead, 1)))
-                        .progressViewStyle(.linear).controlSize(.small)
-                    Text("Reading \(p.filesRead) of \(p.filesToRead)")
+        VStack(spacing: 0) {
+            Divider()
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                if let progress = library.progress {
+                    switch progress.phase {
+                    case .listing:
+                        ProgressView()
+                        Text("Looking for changes…")
+                    case .reading, .finished:
+                        ProgressView(value: Double(progress.filesRead), total: Double(max(progress.filesToRead, 1)))
+                        Text("Reading \(progress.filesRead) of \(progress.filesToRead)")
+                    }
+                } else if library.folders.isEmpty {
+                    Button("Add Music Folder…", action: addFolder)
+                        .buttonStyle(.link)
+                        .focusable(false)
+                } else {
+                    Text(CountFormat.songs(library.trackCount))
+                        .monospacedDigit()
                 }
-            } else if library.folders.isEmpty {
-                Button("Add Music Folder…") { openSettings() }
-            } else {
-                Label(CountFormat.songs(library.trackCount), systemImage: "music.note.list")
-                    .monospacedDigit()
+                if let message = library.lastError {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                        .lineLimit(2)
+                        .help(message)
+                }
             }
-            if let message = library.lastError {
-                Label(message, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-                    .lineLimit(2)
-                    .help(message)
-            }
+            .progressViewStyle(.linear)
+            .controlSize(.small)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Theme.Spacing.m)
+            .padding(.vertical, Theme.Spacing.s)
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Theme.Spacing.m)
-        .padding(.vertical, Theme.Spacing.s)
-        .panelSurface()
-        .padding(.horizontal, Theme.Spacing.s)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }

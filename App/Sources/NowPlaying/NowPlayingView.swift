@@ -1,14 +1,11 @@
 import MiniAmpKit
 import SwiftUI
 
-/// Up Next: what plays after the song playing (which the player bar shows), each with its
-/// cover; then what autoplay adds. On macOS 26 and later a glass panel floating over the
-/// library, as the sidebar does; before that, the inspector.
+/// The upcoming queue, with a separate section for songs picked by Autoplay.
 struct NowPlayingView: View {
     let app: AppState
-    /// The floating panel (macOS 26 and later), rather than the inspector.
-    var floating = false
-    var embedded = false
+    @State private var selection: Int?
+    @FocusState private var listFocused: Bool
     private var entries: [URL: QueueEntry] { app.upNextEntries }
 
     /// Rows shown in Up Next. A whole-library queue is thousands long; nobody scrolls that far.
@@ -21,12 +18,18 @@ struct NowPlayingView: View {
             if player.queue.current != nil {
                 upNext(upcoming: upcoming)
             } else {
-                ContentUnavailableView("Nothing Playing", systemImage: "music.note",
-                                       description: Text("Double-click a song to play it."))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ContentUnavailableView {
+                    Label("Queue Is Empty", systemImage: "list.bullet")
+                } actions: {
+                    Button("Open Files…") { app.run(.open) }
+                        .focusable(false)
+                    Button("Find a Song…") { app.run(.jump) }
+                        .focusable(false)
+                        .disabled(!AppAction.jump.isEnabled(in: app))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .modifier(UpNextPanel(tint: app.tint, floating: floating || embedded))
         // Read the tags of what's shown when the queue moves, or when the library changes (a retag).
         .task(id: Shown(urls: upcoming.map(\.url), revision: app.library?.revision ?? 0)) {
             let urls = upcoming.map(\.url)
@@ -57,7 +60,7 @@ struct NowPlayingView: View {
         let remaining = remainingCount(player.queue, shown: upcoming.count)
         // Headings and notes are rows, laid out as the songs are, so everything shares one
         // edge on each side (section headers sit apart, with their own insets).
-        return List {
+        return List(selection: $selection) {
             heading("Up Next", first: true) {
                 if player.queue.isShuffled { Image(systemName: "shuffle").help("Shuffled") }
                 if player.repeatMode != .off {
@@ -93,10 +96,36 @@ struct NowPlayingView: View {
             }
         }
         .listStyle(.plain)
-        // The floating panel ends above the player bar; the inspector runs on under it.
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: floating || embedded ? Theme.Spacing.s : app.playerBarInset).allowsHitTesting(false)
+        .focused($listFocused)
+        .onChange(of: app.contentFocusRequests, initial: true) {
+            guard app.claimContentFocus() else { return }
+            listFocused = true
+            if selection == nil { selection = upcoming.first?.item }
         }
+        .onChange(of: upcoming.map(\.item)) {
+            if !upcoming.contains(where: { $0.item == selection }) { selection = upcoming.first?.item }
+        }
+        .onKeyPress(keys: [.return, .delete, .deleteForward, .upArrow, .downArrow], phases: .down) { press in
+            guard let row = upcoming.first(where: { $0.item == selection }) else { return .ignored }
+            switch (press.key, press.modifiers) {
+            case (.return, []): play(row)
+            case (.delete, []), (.deleteForward, []): remove(row)
+            case (.upArrow, .option): move(row, by: -1, in: chosen.contains(row) ? chosen : autoplayed)
+            case (.downArrow, .option): move(row, by: 1, in: chosen.contains(row) ? chosen : autoplayed)
+            default: return .ignored
+            }
+            return .handled
+        }
+    }
+
+    private func remove(_ row: Row) {
+        guard let position = stillThere(row) else { return }
+        Task { await app.player.removeFromQueue(atPosition: position) }
+    }
+
+    private func move(_ row: Row, by step: Int, in rows: [Row]) {
+        guard let index = rows.firstIndex(of: row), rows.indices.contains(index + step) else { return }
+        move(IndexSet(integer: index), to: step < 0 ? index - 1 : index + 2, in: rows)
     }
 
     /// Every row's inset from the list's edges; each pads its content by `rowPadding` inside
@@ -144,6 +173,7 @@ struct NowPlayingView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .listRowInsets(Self.rowInsets)
+                .tag(row.item)
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { play(row) }
                 .accessibilityAction(named: "Play Now") { play(row) }
@@ -156,8 +186,7 @@ struct NowPlayingView: View {
                     .disabled(row.position == (player.queue.position ?? -1) + 1)
                     Divider()
                     Button("Remove from Up Next") {
-                        guard let position = stillThere(row) else { return }
-                        Task { await player.removeFromQueue(atPosition: position) }
+                        remove(row)
                     }
                     Divider()
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([row.url]) }
@@ -214,11 +243,8 @@ struct NowPlayingView: View {
     }
 }
 
-/// A queue entry: cover, title over artist and album, and its length; lit under the pointer,
-/// on the glass rather than between separators.
+/// A queue entry’s artwork, track details, and duration.
 private struct QueueRow: View {
-    /// Secondary text as a plain colour, not the vibrant `.secondary`: that one follows what's
-    /// behind the glass, so it flickered as the library swapped for a full view under it.
     static let dimmed = Color.primary.opacity(0.6)
 
     let entry: QueueEntry
@@ -267,38 +293,5 @@ private struct AutoplayToggle: View {
             .help(app.autoplays ? "Autoplay is on: when Up Next runs out, songs like the last ones keep playing"
                                 : "Turn on autoplay: when Up Next runs out, keep playing songs like the last ones")
             .accessibilityLabel("Autoplay")
-    }
-}
-
-/// Up Next's look. Floating (macOS 26 and later): a glass card tinted with the cover, rounded
-/// like the sidebar. In the inspector: the column takes the cover's colour, strongest at the
-/// top.
-private struct UpNextPanel: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    let tint: Color?
-    let floating: Bool
-
-    func body(content: Content) -> some View {
-        if #available(macOS 26, *), floating {
-            let shape = RoundedRectangle(cornerRadius: Theme.Radius.floatingPanel, style: .continuous)
-            content
-                .scrollContentBackground(.hidden)
-                .padding(.top, Theme.Spacing.xs)
-                .clipShape(shape)
-                .glassBackground(in: shape, tint: tint?.opacity(Theme.Tint.inspector.top))
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: tint)
-        } else {
-            content
-                .scrollContentBackground(tint == nil || reduceTransparency ? .automatic : .hidden)
-                .background {
-                    if let tint, !reduceTransparency {
-                        LinearGradient(colors: [tint.opacity(Theme.Tint.inspector.top), tint.opacity(Theme.Tint.inspector.bottom)],
-                                       startPoint: .top, endPoint: .bottom)
-                            .ignoresSafeArea()
-                    }
-                }
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: tint)
-        }
     }
 }

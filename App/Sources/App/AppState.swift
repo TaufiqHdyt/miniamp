@@ -30,17 +30,25 @@ final class AppState {
     /// Whether the main window is on screen: the position is only updated while it shows.
     var mainWindowVisible = true { didSet { player.updatesPosition = mainWindowVisible } }
 
-    /// Up Next, floating over the library and full views alike. Remembered across launches.
-    /// Read with bool(forKey:), not `as? Bool`: a launch argument (-showsNowPlaying NO) arrives
-    /// as a string.
-    var showsNowPlaying = UserDefaults.standard.object(forKey: "showsNowPlaying") == nil
-        ? true : UserDefaults.standard.bool(forKey: "showsNowPlaying") {
-        didSet { UserDefaults.standard.set(showsNowPlaying, forKey: "showsNowPlaying") }
+    var keyboardSheet: KeyboardSheet?
+    var commandAfterSheet: AppAction?
+    var equalizerRequests = 0
+    var contentFocusRequests = 0
+    @ObservationIgnored private var handledContentFocusRequests = 0
+
+    func claimContentFocus() -> Bool {
+        guard contentFocusRequests > handledContentFocusRequests else { return false }
+        handledContentFocusRequests = contentFocusRequests
+        return true
+    }
+    var winampShortcuts = UserDefaults.standard.object(forKey: "winampShortcuts") == nil
+        || UserDefaults.standard.bool(forKey: "winampShortcuts") {
+        didSet { UserDefaults.standard.set(winampShortcuts, forKey: "winampShortcuts") }
     }
 
     /// The selected Now Playing mode. Each launch starts in the library.
     var fullView: FullView? {
-        didSet { if let fullView { lastFullView = fullView } }
+        didSet { if let fullView, fullView != .upNext { lastFullView = fullView } }
     }
     /// The full view open last, which the player bar's cover opens again.
     @ObservationIgnored private var lastFullView: FullView = .lyrics
@@ -102,22 +110,16 @@ final class AppState {
         didSet { UserDefaults.standard.set(showsLyricsTranslation, forKey: "showsLyricsTranslation") }
     }
 
-    /// Wash the player bar and the inspector in a colour from the playing song's cover.
+    /// Use the playing song’s artwork color in listening charts.
     var tintsWithArtwork = UserDefaults.standard.object(forKey: "tintsWithArtwork") as? Bool ?? true {
         didSet { UserDefaults.standard.set(tintsWithArtwork, forKey: "tintsWithArtwork") }
     }
     /// The playing song's cover colour (set by the player bar as the song changes).
     var artworkTint: ArtworkTint?
-    /// How much of the bottom of the window the floating player bar covers (macOS 26 and
-    /// later; 0 before). What scrolls leaves this much room after its end; what doesn't stays
-    /// above it. Here rather than in the environment, which doesn't reach the inspector.
-    var playerBarInset: CGFloat = 0
-    /// How light the playing song's cover is, 0 to 1 (see ArtworkTint.brightness).
-    var artworkBrightness: Double?
     /// What to tint with now, if anything.
     var tint: Color? { tintsWithArtwork ? artworkTint?.color : nil }
 
-    var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
+    var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     /// An offloaded track that was double-clicked: it plays, with the list it was in, once it's downloaded.
     private(set) var waitingToPlay: (id: TrackInfo.ID, list: [TrackInfo])?
     /// The library's playlists, by name; kept current by the window (see `reloadPlaylists`).
@@ -413,28 +415,20 @@ final class AppState {
 
     // MARK: Lyrics
 
-    var showsUpNext: Bool { fullView.map { $0 == .upNext } ?? showsNowPlaying }
-
-    /// Toggles the library queue or switches to the queue in Now Playing.
-    func toggleUpNext() {
-        if fullView != nil {
-            showFullView(fullView == .upNext ? .lyrics : .upNext)
-        } else {
-            showsNowPlaying.toggle()
-        }
-    }
+    var showsUpNext: Bool { fullView == .upNext }
 
     /// Opens `view` filling the library area (while something is playing), or goes back to the
     /// library (nil): from the full views' switch and back button.
-    func showFullView(_ view: FullView?) {
-        guard view == nil || player.queue.current != nil else { return }
+    func showFullView(_ view: FullView?, focus: Bool = true) {
+        guard view == nil || view == .upNext || player.queue.current != nil else { return }
         fullView = view
+        if focus { contentFocusRequests += 1 }
     }
 
     /// Opens Now Playing (the full view open last) or goes back to the library: the player
     /// bar's cover.
     func toggleNowPlaying() {
-        showFullView(fullView == nil ? lastFullView : nil)
+        showFullView(fullView == nil || showsUpNext ? lastFullView : nil)
     }
 
     func toggleFullLyrics() {
@@ -625,22 +619,14 @@ final class AppState {
     }
 }
 
-enum FullView: CaseIterable {
+enum FullView: Hashable {
     case lyrics, upNext, visualizer
 
     var label: String {
         switch self {
         case .lyrics: "Lyrics"
-        case .upNext: "Up Next"
+        case .upNext: "Queue"
         case .visualizer: "Visualizer"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .lyrics: "quote.bubble"
-        case .upNext: "list.bullet"
-        case .visualizer: "chart.bar.xaxis"
         }
     }
 }
